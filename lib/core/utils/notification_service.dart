@@ -1,0 +1,272 @@
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:timezone/timezone.dart' as tz;
+import 'package:timezone/data/latest.dart' as tz_data;
+import '../database/database.dart' show Transaction;
+
+class NotificationService {
+  static final NotificationService _instance = NotificationService._();
+  NotificationService._();
+
+  static NotificationService get instance => _instance;
+
+  final FlutterLocalNotificationsPlugin _plugin = FlutterLocalNotificationsPlugin();
+  bool _initialized = false;
+  bool _timezoneInitialized = false;
+
+  Future<void> initialize() async {
+    if (_initialized) return;
+
+    _initTimezones();
+
+    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const iosSettings = DarwinInitializationSettings(
+      requestAlertPermission: true,
+      requestBadgePermission: true,
+      requestSoundPermission: true,
+    );
+    const initSettings = InitializationSettings(
+      android: androidSettings,
+      iOS: iosSettings,
+    );
+
+    await _plugin.initialize(initSettings);
+    _initialized = true;
+  }
+
+  void _initTimezones() {
+    if (!_timezoneInitialized) {
+      tz_data.initializeTimeZones();
+      _timezoneInitialized = true;
+    }
+  }
+
+  Future<void> showNotification({
+    int id = 0,
+    required String title,
+    required String body,
+    String? payload,
+  }) async {
+    await _initializeIfNeeded();
+
+    const androidDetails = AndroidNotificationDetails(
+      'payment_reminders',
+      'Payment Reminders',
+      channelDescription: 'Notifications for upcoming recurring payments',
+      importance: Importance.high,
+      priority: Priority.high,
+      icon: '@mipmap/ic_launcher',
+    );
+    const iosDetails = DarwinNotificationDetails();
+    const details = NotificationDetails(
+      android: androidDetails,
+      iOS: iosDetails,
+    );
+
+    await _plugin.show(id, title, body, details, payload: payload);
+  }
+
+  /// Schedule a one-time notification for a specific date/time
+  Future<void> scheduleNotification({
+    int id = 0,
+    required String title,
+    required String body,
+    required DateTime scheduledDate,
+    String? payload,
+  }) async {
+    await _initializeIfNeeded();
+
+    final now = DateTime.now();
+    if (scheduledDate.isBefore(now)) return;
+
+    _initTimezones();
+    final location = tz.local;
+    final tzDate = tz.TZDateTime.from(scheduledDate, location);
+
+    final androidDetails = AndroidNotificationDetails(
+      'payment_reminders',
+      'Payment Reminders',
+      channelDescription: 'Notifications for upcoming recurring payments',
+      importance: Importance.high,
+      priority: Priority.high,
+      icon: '@mipmap/ic_launcher',
+    );
+    const iosDetails = DarwinNotificationDetails();
+    final details = NotificationDetails(
+      android: androidDetails,
+      iOS: iosDetails,
+    );
+
+    await _plugin.zonedSchedule(
+      id,
+      title,
+      body,
+      tzDate,
+      details,
+      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      matchDateTimeComponents: null,
+      uiLocalNotificationDateInterpretation:
+          UILocalNotificationDateInterpretation.absoluteTime,
+      payload: payload,
+    );
+  }
+
+  /// Schedule a recurring notification for a transaction based on its interval
+  Future<void> scheduleForTransaction({
+    required Transaction transaction,
+    required int notificationId,
+    required DateTime nextDueDate,
+  }) async {
+    await _initializeIfNeeded();
+    _initTimezones();
+
+    final location = tz.local;
+    final tzDate = tz.TZDateTime.from(nextDueDate, location);
+
+    final androidDetails = AndroidNotificationDetails(
+      'payment_reminders',
+      'Payment Reminders',
+      channelDescription: 'Notifications for upcoming recurring payments',
+      importance: Importance.high,
+      priority: Priority.high,
+      icon: '@mipmap/ic_launcher',
+    );
+    const iosDetails = DarwinNotificationDetails();
+    final details = NotificationDetails(
+      android: androidDetails,
+      iOS: iosDetails,
+    );
+
+    final note = transaction.note ?? 'Payment';
+    final amount = '₹${transaction.amount.abs().toStringAsFixed(0)}';
+
+    // One-time notification for the next due date
+    if (nextDueDate.isAfter(DateTime.now())) {
+      await _plugin.zonedSchedule(
+        notificationId,
+        'Upcoming Payment: $note',
+        '$amount due ${nextDueDate.day}/${nextDueDate.month}',
+        tzDate,
+        details,
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        matchDateTimeComponents: _matchComponentForInterval(transaction.recurringInterval),
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+        payload: transaction.id,
+      );
+    }
+  }
+
+  DateTimeComponents? _matchComponentForInterval(String? interval) {
+    switch (interval) {
+      case 'daily':
+        return DateTimeComponents.time;
+      case 'weekly':
+        return DateTimeComponents.dayOfWeekAndTime;
+      case 'biweekly':
+        return null; // No built-in biweekly, will be handled by separate scheduling
+      case 'monthly':
+        return DateTimeComponents.dayOfMonthAndTime;
+      case 'quarterly':
+        return null; // Scheduled manually
+      case 'yearly':
+        return DateTimeComponents.dayOfMonthAndTime;
+      default:
+        return null;
+    }
+  }
+
+  /// Cancel all existing notifications and re-schedule for active recurring transactions
+  Future<void> rescheduleAll(List<Transaction> transactions) async {
+    await _initializeIfNeeded();
+    await _plugin.cancelAll();
+
+    int id = 100;
+    for (final t in transactions.where((t) => t.isRecurring)) {
+      final nextDate = calculateNextDueDate(
+        lastDate: t.date,
+        interval: t.recurringInterval,
+      );
+      if (nextDate != null && nextDate.difference(DateTime.now()).inDays <= 30) {
+        await scheduleForTransaction(
+          transaction: t,
+          notificationId: id++,
+          nextDueDate: nextDate,
+        );
+      }
+    }
+  }
+
+  Future<void> cancelNotification(int id) async {
+    await _initializeIfNeeded();
+    await _plugin.cancel(id);
+  }
+
+  Future<void> cancelAll() async {
+    await _initializeIfNeeded();
+    await _plugin.cancelAll();
+  }
+
+  Future<void> _initializeIfNeeded() async {
+    if (!_initialized) await initialize();
+  }
+
+  /// Calculate the next due date for a recurring transaction
+  static DateTime? calculateNextDueDate({
+    required DateTime lastDate,
+    required String? interval,
+  }) {
+    if (interval == null) return null;
+
+    final now = DateTime.now();
+    DateTime next = lastDate;
+
+    switch (interval) {
+      case 'daily':
+        next = lastDate.add(const Duration(days: 1));
+        break;
+      case 'weekly':
+        next = lastDate.add(const Duration(days: 7));
+        break;
+      case 'biweekly':
+        next = lastDate.add(const Duration(days: 14));
+        break;
+      case 'monthly':
+        next = DateTime(lastDate.year, lastDate.month + 1, lastDate.day);
+        break;
+      case 'quarterly':
+        next = DateTime(lastDate.year, lastDate.month + 3, lastDate.day);
+        break;
+      case 'yearly':
+        next = DateTime(lastDate.year + 1, lastDate.month, lastDate.day);
+        break;
+      default:
+        return null;
+    }
+
+    // If the calculated next date is in the past, keep advancing
+    while (next.isBefore(now)) {
+      switch (interval) {
+        case 'daily':
+          next = next.add(const Duration(days: 1));
+          break;
+        case 'weekly':
+          next = next.add(const Duration(days: 7));
+          break;
+        case 'biweekly':
+          next = next.add(const Duration(days: 14));
+          break;
+        case 'monthly':
+          next = DateTime(next.year, next.month + 1, next.day);
+          break;
+        case 'quarterly':
+          next = DateTime(next.year, next.month + 3, next.day);
+          break;
+        case 'yearly':
+          next = DateTime(next.year + 1, next.month, next.day);
+          break;
+      }
+    }
+
+    return next;
+  }
+}

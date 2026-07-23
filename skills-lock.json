@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "ui-ux-master": {
+      "source": "aadish0day/opencode-skills",
+      "sourceType": "github",
+      "skillPath": ".opencode/skills/ui-ux-master/SKILL.md",
+      "computedHash": "5585a90c88341e75c7b4a647e136fbff65a76faca9cfe6238e007408c36647e5"
+    }
+  }
+}
