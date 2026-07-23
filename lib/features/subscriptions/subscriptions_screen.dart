@@ -9,7 +9,6 @@ import '../../core/utils/constants.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/utils/icon_helper.dart';
 import '../../providers/transaction_provider.dart';
-import '../../providers/database_provider.dart';
 import 'dart:async';
 import '../../core/database/database.dart';
 import '../transactions/add_transaction_sheet.dart';
@@ -160,7 +159,7 @@ class _SubscriptionAuditScreenState extends ConsumerState<SubscriptionAuditScree
                     size: 11, weight: FontWeight.w600, color: AppColors.error)),
                 ),
                 const SizedBox(width: 8),
-                Text('$overdueCount payment${overdueCount != 1 ? 's' : ''}',
+                Text('$overdueCount payment${overdueCount != 1 ? "s" : ""}',
                     style: AppTheme.bodyStyle(size: 11, color: colorScheme.onSurfaceVariant)),
               ],
             ),
@@ -190,7 +189,7 @@ class _SubscriptionAuditScreenState extends ConsumerState<SubscriptionAuditScree
                     size: 11, weight: FontWeight.w600, color: AppColors.warning)),
                 ),
                 const SizedBox(width: 8),
-                Text('${dueSoonCount} payment${dueSoonCount != 1 ? 's' : ''}',
+                Text('$dueSoonCount payment${dueSoonCount != 1 ? "s" : ""}',
                     style: AppTheme.bodyStyle(size: 11, color: colorScheme.onSurfaceVariant)),
               ],
             ),
@@ -720,6 +719,7 @@ void markRecurringAsPaid(BuildContext context, WidgetRef ref, RecurringPaymentIn
         date: DateTime.now(),
         paymentMethod: original.paymentMethod,
         isRecurring: original.isRecurring,
+        isRecurringInstance: original.isRecurringInstance,
         recurringInterval: original.recurringInterval,
         receiptImagePath: original.receiptImagePath,
         createdAt: original.createdAt,

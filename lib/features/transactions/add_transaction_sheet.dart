@@ -11,6 +11,7 @@ import '../../core/utils/icon_helper.dart';
 import '../../providers/transaction_provider.dart';
 import '../../providers/budget_provider.dart';
 import '../../providers/database_provider.dart';
+import '../../providers/settings_provider.dart';
 import '../../core/database/database.dart';
 
 class AddTransactionSheet extends ConsumerStatefulWidget {
@@ -85,25 +86,9 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
     super.dispose();
   }
 
-  // Keyword-based auto-categorization mapping
-  static final Map<RegExp, String> _keywordCategories = {
-    RegExp(r'zomato|swiggy|food|restaurant|cafe|starbucks|pizza|burger|dinner|lunch|breakfast|eat|mcdonalds|kfc|domino|ubereats', caseSensitive: false): 'food',
-    RegExp(r'uber|ola|metro|bus|train|petrol|fuel|gas|parking|auto|rapido|cab|lyft|taxi', caseSensitive: false): 'transport',
-    RegExp(r'rent|maintenance|society|housing|flat|apartment|pg|hostel', caseSensitive: false): 'rent',
-    RegExp(r'zara|h&m|myntra|amazon|flipkart|ajio|mall|shopping|clothes|shoe|bag|lifestyle|pantaloons|westside', caseSensitive: false): 'shopping',
-    RegExp(r'bill|electricity|water|gas|internet|phone|recharge|broadband|electric|wifi|mobile', caseSensitive: false): 'bills',
-    RegExp(r'grocery|supermarket|dmart|bigbasket|blinkit|zepto|instamart|provision|store', caseSensitive: false): 'food',
-    RegExp(r'movie|netflix|prime|hotstar|spotify|game|entertain|cinema|theatre|play|pvr|inox', caseSensitive: false): 'other',
-    RegExp(r'salary|income|credit|refund|cashback|bonus|dividend|interest|payment received', caseSensitive: false): 'income',
-  };
-
+  /// Uses the persisted auto-categorization rules from the provider.
   String? _detectCategory(String note) {
-    for (final entry in _keywordCategories.entries) {
-      if (entry.key.hasMatch(note)) {
-        return entry.value;
-      }
-    }
-    return null;
+    return ref.read(autoCategorizationRulesProvider.notifier).detectCategory(note);
   }
 
   void _setTransactionType(String type, List<Category> allCategories) {
@@ -644,6 +629,7 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
         date: _selectedDate,
         paymentMethod: _paymentMethod,
         isRecurring: _isRecurring,
+        isRecurringInstance: widget.transaction!.isRecurringInstance,
         recurringInterval: _recurringInterval,
         receiptImagePath: _receiptImagePath,
         createdAt: widget.transaction!.createdAt,

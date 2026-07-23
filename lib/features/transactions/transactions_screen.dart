@@ -672,6 +672,18 @@ class _TransactionCard extends StatelessWidget {
                             color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                           ),
                         ),
+                        if (transaction.isRecurringInstance) ...[
+                          const SizedBox(width: 6),
+                          Icon(LucideIcons.sparkles, size: 10, color: AppColors.tertiary.withValues(alpha: 0.7)),
+                          const SizedBox(width: 2),
+                          Text(
+                            'Auto',
+                            style: AppTheme.bodyStyle(
+                              size: 9,
+                              color: AppColors.tertiary.withValues(alpha: 0.7),
+                            ),
+                          ),
+                        ],
                         if (transaction.isRecurring) ...[
                           const SizedBox(width: 6),
                           Icon(LucideIcons.rotateCw, size: 10, color: colorScheme.primary.withValues(alpha: 0.6)),

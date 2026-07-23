@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:drift/drift.dart';
@@ -8,6 +9,7 @@ import '../core/utils/sms_parser.dart';
 import '../core/utils/duplicate_detector.dart';
 import '../core/utils/notification_service.dart';
 import 'database_provider.dart';
+import 'settings_provider.dart';
 
 final transactionsProvider = FutureProvider.autoDispose<List<Transaction>>((ref) async {
   final db = ref.read(databaseProvider);
@@ -30,17 +32,68 @@ final thisMonthTransactionsProvider = FutureProvider<List<Transaction>>((ref) as
   return ref.read(transactionsByMonthProvider(Formatters.monthKey).future);
 });
 
+/// Provider for all transactions belonging to a specific account, sorted by date DESC.
+final transactionsByAccountIdProvider =
+    FutureProvider.family<List<Transaction>, String>((ref, accountId) async {
+  final db = ref.read(databaseProvider);
+  return (db.select(db.transactions)
+        ..where((t) => t.accountId.equals(accountId))
+        ..orderBy([(t) => OrderingTerm(expression: t.date, mode: OrderingMode.desc)]))
+      .get();
+});
+
+/// Provider for balance history points of an account (for charting).
+/// Returns a list of (date, balance) record pairs from oldest to newest.
+final accountBalanceHistoryProvider =
+    FutureProvider.family<List<({DateTime date, double balance})>, String>(
+        (ref, accountId) async {
+  final db = ref.read(databaseProvider);
+  final account = await (db.select(db.accounts)
+    ..where((a) => a.id.equals(accountId))).getSingleOrNull();
+  if (account == null) return [];
+
+  final transactions = await (db.select(db.transactions)
+    ..where((t) => t.accountId.equals(accountId))
+    ..orderBy([(t) => OrderingTerm(expression: t.date, mode: OrderingMode.asc)]))
+    .get();
+
+  if (transactions.isEmpty) {
+    return [(date: DateTime.now(), balance: account.balance)];
+  }
+
+  // Walk backwards from current balance to reconstruct history
+  final points = <({DateTime date, double balance})>[];
+  double runningBalance = account.balance;
+
+  // Add current day as the latest point
+  points.add((date: DateTime.now(), balance: runningBalance));
+
+  // Walk backwards through transactions, reversing their effect
+  for (int i = transactions.length - 1; i >= 0; i--) {
+    final txn = transactions[i];
+    // Amount > 0 = expense (decreased balance), so add it back
+    // Amount < 0 = income (increased balance), so subtract it back
+    runningBalance += txn.amount;
+    points.add((date: txn.date, balance: runningBalance));
+  }
+
+  // Reverse to chronological order (oldest first)
+  return points.reversed.toList();
+});
+
+/// Total spending this month, excluding internal transfer entries.
 final totalSpentThisMonthProvider = FutureProvider<double>((ref) async {
   final transactions = await ref.read(thisMonthTransactionsProvider.future);
   return transactions
-      .where((t) => t.amount > 0)
+      .where((t) => t.amount > 0 && t.categoryId != 'transfer')
       .fold<double>(0, (sum, t) => sum + t.amount);
 });
 
+/// Total income this month, excluding internal transfer entries.
 final totalIncomeThisMonthProvider = FutureProvider<double>((ref) async {
   final transactions = await ref.read(thisMonthTransactionsProvider.future);
   return transactions
-      .where((t) => t.amount < 0)
+      .where((t) => t.amount < 0 && t.categoryId != 'transfer')
       .fold<double>(0, (sum, t) => sum + t.amount.abs());
 });
 
@@ -79,6 +132,7 @@ class TransactionNotifier extends StateNotifier<AsyncValue<void>> {
       date: date,
       paymentMethod: Value(paymentMethod),
       isRecurring: Value(isRecurring),
+      isRecurringInstance: const Value(false),
       recurringInterval: Value(recurringInterval),
       receiptImagePath: Value(receiptImagePath),
     ));
@@ -129,37 +183,40 @@ class TransactionNotifier extends StateNotifier<AsyncValue<void>> {
     final fromUuid = const Uuid().v4();
     final toUuid = const Uuid().v4();
 
-    // Outgoing transaction from source account
-    await db.into(db.transactions).insert(TransactionsCompanion.insert(
-      id: fromUuid,
-      amount: amount,
-      categoryId: 'transfer',
-      accountId: fromAccountId,
-      note: Value(note ?? 'Transfer'),
-      date: date,
-    ));
+    // All writes in a single transaction for atomicity
+    await db.transaction(() async {
+      // Outgoing transaction from source account
+      await db.into(db.transactions).insert(TransactionsCompanion.insert(
+        id: fromUuid,
+        amount: amount,
+        categoryId: 'transfer',
+        accountId: fromAccountId,
+        note: Value(note ?? 'Transfer'),
+        date: date,
+      ));
 
-    // Incoming transaction to destination account
-    await db.into(db.transactions).insert(TransactionsCompanion.insert(
-      id: toUuid,
-      amount: -amount,
-      categoryId: 'transfer',
-      accountId: toAccountId,
-      note: Value(note ?? 'Transfer'),
-      date: date,
-    ));
+      // Incoming transaction to destination account
+      await db.into(db.transactions).insert(TransactionsCompanion.insert(
+        id: toUuid,
+        amount: -amount,
+        categoryId: 'transfer',
+        accountId: toAccountId,
+        note: Value(note ?? 'Transfer'),
+        date: date,
+      ));
 
-    // Update balances: subtract from source, add to destination
-    final fromAccount = await (db.select(db.accounts)..where((a) => a.id.equals(fromAccountId))).getSingleOrNull();
-    final toAccount = await (db.select(db.accounts)..where((a) => a.id.equals(toAccountId))).getSingleOrNull();
-    if (fromAccount != null) {
-      await (db.update(db.accounts)..where((a) => a.id.equals(fromAccountId)))
-          .write(AccountsCompanion(balance: Value(fromAccount.balance - amount)));
-    }
-    if (toAccount != null) {
-      await (db.update(db.accounts)..where((a) => a.id.equals(toAccountId)))
-          .write(AccountsCompanion(balance: Value(toAccount.balance + amount)));
-    }
+      // Update balances: subtract from source, add to destination
+      final fromAccount = await (db.select(db.accounts)..where((a) => a.id.equals(fromAccountId))).getSingleOrNull();
+      final toAccount = await (db.select(db.accounts)..where((a) => a.id.equals(toAccountId))).getSingleOrNull();
+      if (fromAccount != null) {
+        await (db.update(db.accounts)..where((a) => a.id.equals(fromAccountId)))
+            .write(AccountsCompanion(balance: Value(fromAccount.balance - amount)));
+      }
+      if (toAccount != null) {
+        await (db.update(db.accounts)..where((a) => a.id.equals(toAccountId)))
+            .write(AccountsCompanion(balance: Value(toAccount.balance + amount)));
+      }
+    });
 
     ref.invalidate(transactionsProvider);
     ref.invalidate(thisMonthTransactionsProvider);
@@ -214,6 +271,132 @@ class TransactionNotifier extends StateNotifier<AsyncValue<void>> {
       note: note,
     );
   }
+
+  /// Post due recurring transactions as instances since the last check.
+  /// Uses `last_recurring_check` in AppSettings to avoid duplicates.
+  /// Each posted instance is flagged with `isRecurringInstance = true`.
+  Future<int> postDueRecurringTransactions() async {
+    final settings = ref.read(settingsNotifierProvider.notifier);
+    final lastCheckStr = await settings.getSetting('last_recurring_check');
+    final lastCheck = lastCheckStr != null ? DateTime.tryParse(lastCheckStr) : null;
+    final now = DateTime.now();
+
+    final db = ref.read(databaseProvider);
+    final templates = await (db.select(db.transactions)
+      ..where((t) => t.isRecurring.equals(true))
+      ..where((t) => t.isRecurringInstance.equals(false)))
+      .get();
+
+    const uuid = Uuid();
+    int postedCount = 0;
+    const int maxInstancesPerTemplate = 31;
+
+    // Wrap all writes + check update in a single transaction for batch atomicity
+    await db.transaction(() async {
+      for (final template in templates) {
+        final interval = template.recurringInterval;
+        if (interval == null) continue;
+
+        // Start enumerating from the later of template.date and lastCheck
+        final startFrom = lastCheck != null && lastCheck.isAfter(template.date)
+            ? lastCheck
+            : template.date;
+
+        // Enumerate all due dates from startFrom up to now (cap at 31)
+        final dueDates = _enumerateDueDates(
+          from: startFrom,
+          interval: interval,
+          upTo: now,
+        );
+
+        // Safety cap: at most 31 instances per template
+        for (final dueDate in dueDates.take(maxInstancesPerTemplate)) {
+          await db.into(db.transactions).insert(TransactionsCompanion.insert(
+            id: uuid.v4(),
+            amount: template.amount,
+            categoryId: template.categoryId,
+            accountId: template.accountId,
+            note: template.note != null
+                ? Value('${template.note} (auto)')
+                : const Value.absent(),
+            date: dueDate,
+            paymentMethod: const Value('cash'),
+            isRecurring: const Value(false),
+            isRecurringInstance: const Value(true),
+            recurringInterval: const Value.absent(),
+            receiptImagePath: const Value.absent(),
+          ));
+
+          // Update account balance
+          final account = await (db.select(db.accounts)
+            ..where((a) => a.id.equals(template.accountId))).getSingleOrNull();
+          if (account != null) {
+            await (db.update(db.accounts)..where((a) => a.id.equals(template.accountId)))
+                .write(AccountsCompanion(balance: Value(account.balance - template.amount)));
+          }
+
+          postedCount++;
+        }
+      }
+    });
+
+    // Update last check time outside the transaction so it's only written
+    // if the DB batch succeeded
+    await settings.setSetting('last_recurring_check', now.toIso8601String());
+
+    if (postedCount > 0) {
+      ref.invalidate(transactionsProvider);
+      ref.invalidate(thisMonthTransactionsProvider);
+      ref.invalidate(accountsListProvider);
+    }
+
+    return postedCount;
+  }
+
+  /// Enumerate all due dates for a recurring interval from [from] (exclusive)
+  /// up to [upTo] (inclusive). Starts from the template date and advances
+  /// one period at a time until all due dates in the range are found.
+  List<DateTime> _enumerateDueDates({
+    required DateTime from,
+    required String interval,
+    required DateTime upTo,
+  }) {
+    final results = <DateTime>[];
+
+    // Find the first due date strictly after [from]
+    DateTime current = _advanceDate(from, interval);
+    if (current == from) return results; // unrecognized interval
+
+    while (!current.isAfter(upTo)) {
+      results.add(current);
+      final next = _advanceDate(current, interval);
+      if (next == current) break;
+      current = next;
+    }
+
+    return results;
+  }
+
+  /// Advance a date by one period of the given interval.
+  /// Returns the same date if the interval is unrecognized.
+  DateTime _advanceDate(DateTime date, String interval) {
+    switch (interval) {
+      case 'daily':
+        return date.add(const Duration(days: 1));
+      case 'weekly':
+        return date.add(const Duration(days: 7));
+      case 'biweekly':
+        return date.add(const Duration(days: 14));
+      case 'monthly':
+        return DateTime(date.year, date.month + 1, date.day);
+      case 'quarterly':
+        return DateTime(date.year, date.month + 3, date.day);
+      case 'yearly':
+        return DateTime(date.year + 1, date.month, date.day);
+      default:
+        return date;
+    }
+  }
 }
 
 final transactionNotifierProvider =
@@ -222,6 +405,95 @@ final transactionNotifierProvider =
 });
 
 final pendingSmsTransactionProvider = StateProvider<ParsedSmsTxn?>((ref) => null);
+
+/// Provider for the persistent SMS review queue, stored in AppSettings as JSON.
+final smsReviewQueueProvider =
+    StateNotifierProvider<SmsReviewQueueNotifier, List<ParsedSmsTxn>>((ref) {
+  return SmsReviewQueueNotifier(ref);
+});
+
+class SmsReviewQueueNotifier extends StateNotifier<List<ParsedSmsTxn>> {
+  SmsReviewQueueNotifier(this.ref) : super([]) {
+    _loadQueue();
+  }
+
+  final Ref ref;
+
+  Future<void> _loadQueue() async {
+    final settings = ref.read(settingsNotifierProvider.notifier);
+    final stored = await settings.getSetting('pending_sms_queue');
+    if (stored != null && stored.isNotEmpty) {
+      try {
+        final list = stored.split('|||').map((json) {
+          try {
+            return ParsedSmsTxn.fromJson(
+              Map<String, dynamic>.from(
+                const JsonDecoder().convert(json) as Map,
+              ),
+            );
+          } catch (_) {
+            return null;
+          }
+        }).whereType<ParsedSmsTxn>().toList();
+        if (list.isNotEmpty) {
+          state = list;
+        }
+      } catch (_) {}
+    }
+  }
+
+  Future<void> _persist() async {
+    final settings = ref.read(settingsNotifierProvider.notifier);
+    final jsonStr = state.map((t) => const JsonEncoder().convert(t.toJson())).join('|||');
+    await settings.setSetting('pending_sms_queue', jsonStr);
+  }
+
+  /// Add a parsed SMS to the review queue
+  Future<void> addToQueue(ParsedSmsTxn txn) async {
+    state = [...state, txn];
+    await _persist();
+  }
+
+  /// Confirm (add as transaction) a single item and remove from queue
+  Future<void> confirmItem(String id, {String? overrideCategory}) async {
+    final txn = state.where((t) => t.id == id).firstOrNull;
+    if (txn == null) return;
+
+    final notifier = ref.read(transactionNotifierProvider.notifier);
+    await notifier.addTransaction(
+      amount: txn.amount,
+      categoryId: overrideCategory ?? txn.categoryId,
+      note: txn.note,
+      date: txn.date,
+      paymentMethod: 'UPI',
+    );
+
+    state = state.where((t) => t.id != id).toList();
+    await _persist();
+  }
+
+  /// Discard (remove without adding) a single item
+  Future<void> discardItem(String id) async {
+    state = state.where((t) => t.id != id).toList();
+    await _persist();
+  }
+
+  /// Confirm all pending items
+  Future<void> confirmAll() async {
+    for (final txn in state.toList()) {
+      await confirmItem(txn.id);
+    }
+  }
+
+  /// Discard all pending items
+  Future<void> discardAll() async {
+    state = [];
+    await _persist();
+  }
+
+  int get pendingCount => state.length;
+}
+
 
 /// Provider for all recurring transactions with computed next due dates
 final recurringTransactionsProvider =

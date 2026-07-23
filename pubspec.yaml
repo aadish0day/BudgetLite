@@ -61,8 +61,20 @@ dev_dependencies:
   drift_dev: ^2.26.0
   build_runner: ^2.4.15
   riverpod_generator: ^2.6.3
+  flutter_launcher_icons: ^0.14.3
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/icon/
 
-
+flutter_launcher_icons:
+  android: "ic_launcher"
+  ios: false
+  image_path: "assets/icon/concept_2_wallet_coin.png"
+  min_sdk_android: 21
+  web:
+    generate: true
+    image_path: "assets/icon/concept_2_wallet_coin.png"
+    background_color: "#0F171E"
+    theme_color: "#0D7377"

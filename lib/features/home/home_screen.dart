@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../core/theme/app_theme.dart';
+import '../accounts/account_detail_screen.dart';
 import '../../core/theme/colors.dart';
 import '../../core/utils/constants.dart';
 import '../../core/utils/formatters.dart';
@@ -19,6 +20,10 @@ import '../../providers/navigation_provider.dart';
 import '../../core/database/database.dart';
 import '../../providers/database_provider.dart';
 import '../subscriptions/subscriptions_screen.dart';
+
+/// Provider for the currently selected account ID in the account switcher.
+/// null means "All Accounts" (combined view).
+final selectedAccountIdProvider = StateProvider<String?>((ref) => null);
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -64,6 +69,10 @@ class HomeScreen extends ConsumerWidget {
               remaining: (monthlyIncome.valueOrNull ?? 0) - (totalSpent.valueOrNull ?? 0),
               monthlyIncome: monthlyIncome.valueOrNull ?? 0,
             ),
+            const SizedBox(height: 28),
+
+            // ── Account switcher / balance summary ──
+            const _AccountSwitcher(),
             const SizedBox(height: 28),
 
             // ── Budget section ──
@@ -244,6 +253,7 @@ class _Balance extends StatelessWidget {
             const SizedBox(width: 20),
 
             // Income & Spent columns — staggered from the right
+            // (animation moved inside _StatItem to avoid Expanded-in-animation issue)
             Expanded(
               child: Row(
                 children: [
@@ -252,14 +262,16 @@ class _Balance extends StatelessWidget {
                     value: Formatters.formatCurrency(monthlyIncome, currency: 'INR'),
                     color: colorScheme.onSurface,
                     valueColor: AppColors.success,
-                  ).animate().fadeIn(duration: 350.ms, delay: 500.ms).slideX(begin: 0.04, curve: Curves.easeOutCubic),
+                    delayMs: 500,
+                  ),
                   const SizedBox(width: 24),
                   _StatItem(
                     label: 'Spent',
                     value: Formatters.formatCurrency(spent, currency: 'INR'),
                     color: colorScheme.onSurface,
                     valueColor: colorScheme.onSurface,
-                  ).animate().fadeIn(duration: 350.ms, delay: 600.ms).slideX(begin: 0.04, curve: Curves.easeOutCubic),
+                    delayMs: 600,
+                  ),
                 ],
               ),
             ),
@@ -275,12 +287,14 @@ class _StatItem extends StatelessWidget {
   final String value;
   final Color color;
   final Color valueColor;
+  final int delayMs;
 
   const _StatItem({
     required this.label,
     required this.value,
     required this.color,
     required this.valueColor,
+    this.delayMs = 0,
   });
 
   @override
@@ -308,6 +322,190 @@ class _StatItem extends StatelessWidget {
             ),
           ),
         ],
+      ).animate().fadeIn(duration: 350.ms, delay: delayMs.ms).slideX(begin: 0.04, curve: Curves.easeOutCubic),
+    );
+  }
+}
+
+/// ── Account switcher — horizontal scrollable balance cards ──
+class _AccountSwitcher extends ConsumerWidget {
+  const _AccountSwitcher();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final accountsAsync = ref.watch(accountsListProvider);
+    final selectedId = ref.watch(selectedAccountIdProvider);
+
+    return accountsAsync.when(
+      data: (accounts) {
+        if (accounts.isEmpty) return const SizedBox.shrink();
+
+        final totalBalance = accounts.fold<double>(0, (sum, a) => sum + a.balance);
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Accounts',
+                  style: AppTheme.displayStyle(
+                    size: 16,
+                    weight: FontWeight.w600,
+                    color: colorScheme.onSurface,
+                  ),
+                ),
+                GestureDetector(
+                  onTap: () => ref.read(currentTabProvider.notifier).state = 4,
+                  child: Text(
+                    'Manage',
+                    style: AppTheme.bodyStyle(
+                      size: 12,
+                      weight: FontWeight.w500,
+                      color: colorScheme.primary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              height: 80,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                physics: const BouncingScrollPhysics(),
+                itemCount: accounts.length + 1, // +1 for "All Accounts"
+                separatorBuilder: (_, _) => const SizedBox(width: 10),
+                itemBuilder: (context, index) {
+                  if (index == 0) {
+                    return _AccountCard(
+                      name: 'All Accounts',
+                      balance: totalBalance,
+                      isSelected: selectedId == null,
+                      onTap: () => ref.read(selectedAccountIdProvider.notifier).state = null,
+                    );
+                  }
+                  final account = accounts[index - 1];
+                  return _AccountCard(
+                    name: account.name,
+                    balance: account.balance,
+                    isSelected: selectedId == account.id,
+                    onTap: () => ref.read(selectedAccountIdProvider.notifier).state = account.id,
+                    onViewDetail: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => AccountDetailScreen(account: account),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ).animate().fadeIn(duration: 400.ms, delay: 350.ms).slideY(begin: 0.04, curve: Curves.easeOutCubic);
+      },
+      loading: () => const SizedBox(
+        height: 80,
+        child: Center(child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))),
+      ),
+      error: (_, _) => const SizedBox.shrink(),
+    );
+  }
+}
+
+/// Individual account card in the switcher row.
+class _AccountCard extends StatelessWidget {
+  final String name;
+  final double balance;
+  final bool isSelected;
+  final VoidCallback onTap;
+  final VoidCallback? onViewDetail;
+
+  const _AccountCard({
+    required this.name,
+    required this.balance,
+    required this.isSelected,
+    required this.onTap,
+    this.onViewDetail,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isDark = colorScheme.brightness == Brightness.dark;
+
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onTap();
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOutCubic,
+        width: 130,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          color: isSelected
+              ? (isDark ? colorScheme.primary.withValues(alpha: 0.15) : colorScheme.primary.withValues(alpha: 0.08))
+              : (isDark ? AppColors.cardDark : AppColors.cardLight),
+          border: Border.all(
+            color: isSelected
+                ? colorScheme.primary.withValues(alpha: 0.4)
+                : (isDark ? AppColors.outlineDark : AppColors.outlineLight),
+            width: isSelected ? 1.5 : 1,
+          ),
+          boxShadow: isSelected
+              ? (isDark ? AppColors.cardShadowDarkHover : AppColors.borderShadowLightHover)
+              : (isDark ? AppColors.cardShadowDark : AppColors.borderShadowLight),
+        ),
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    name,
+                    style: AppTheme.bodyStyle(
+                      size: 11,
+                      weight: FontWeight.w500,
+                      color: isSelected ? colorScheme.primary : colorScheme.onSurfaceVariant,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (onViewDetail != null)
+                  GestureDetector(
+                    onTap: onViewDetail,
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 2),
+                      child: Icon(
+                        LucideIcons.arrowUpRight,
+                        size: 10,
+                        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              Formatters.formatCurrency(balance),
+              style: AppTheme.financialStyle(
+                size: 16,
+                weight: FontWeight.w700,
+                color: isSelected
+                    ? colorScheme.primary
+                    : colorScheme.onSurface,
+                letterSpacing: -0.3,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -805,6 +1003,7 @@ void _markAsPaid(BuildContext context, WidgetRef ref, _UpcomingPayment payment) 
         date: DateTime.now(),
         paymentMethod: originalTransaction.paymentMethod,
         isRecurring: originalTransaction.isRecurring,
+        isRecurringInstance: originalTransaction.isRecurringInstance,
         recurringInterval: originalTransaction.recurringInterval,
         receiptImagePath: originalTransaction.receiptImagePath,
         createdAt: originalTransaction.createdAt,
@@ -884,6 +1083,23 @@ class _TransactionRow extends ConsumerWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
+              if (transaction.isRecurringInstance)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Row(
+                    children: [
+                      Icon(LucideIcons.sparkles, size: 10, color: AppColors.tertiary.withValues(alpha: 0.7)),
+                      const SizedBox(width: 3),
+                      Text(
+                        'Auto',
+                        style: AppTheme.bodyStyle(
+                          size: 9,
+                          color: AppColors.tertiary.withValues(alpha: 0.7),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),

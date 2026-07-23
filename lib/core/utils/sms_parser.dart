@@ -3,13 +3,38 @@ class ParsedSmsTxn {
   final String note;
   final String categoryId;
   final DateTime date;
+  final String id;
+  final DateTime detectedAt;
 
   ParsedSmsTxn({
     required this.amount,
     required this.note,
     required this.categoryId,
     required this.date,
-  });
+    String? id,
+    DateTime? detectedAt,
+  })  : id = id ?? DateTime.now().millisecondsSinceEpoch.toString(),
+        detectedAt = detectedAt ?? DateTime.now();
+
+  /// Serialize to a JSON map for storage in AppSettings
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'amount': amount,
+    'note': note,
+    'categoryId': categoryId,
+    'date': date.toIso8601String(),
+    'detectedAt': detectedAt.toIso8601String(),
+  };
+
+  /// Deserialize from a JSON map
+  factory ParsedSmsTxn.fromJson(Map<String, dynamic> json) => ParsedSmsTxn(
+    id: json['id'] as String,
+    amount: (json['amount'] as num).toDouble(),
+    note: json['note'] as String,
+    categoryId: json['categoryId'] as String,
+    date: DateTime.parse(json['date'] as String),
+    detectedAt: DateTime.parse(json['detectedAt'] as String),
+  );
 }
 
 class SmsParser {

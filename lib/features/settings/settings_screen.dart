@@ -4,6 +4,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/colors.dart';
+import 'package:collection/collection.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:local_auth/local_auth.dart';
@@ -20,6 +21,7 @@ import '../../providers/database_provider.dart';
 import '../../providers/budget_provider.dart';
 import 'csv_import_sheet.dart';
 import 'auto_category_rules_sheet.dart';
+import '../sms/sms_review_queue_screen.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -90,6 +92,36 @@ class SettingsScreen extends ConsumerWidget {
                   value: smsParsing,
                   onChanged: (v) => _toggleSmsParsing(context, ref, v),
                 ),
+              ),
+              const Divider(height: 1, indent: 56),
+              _SettingTile(
+                icon: LucideIcons.inbox,
+                title: 'Review Queue',
+                subtitle: 'Pending SMS transactions awaiting confirmation',
+                trailing: Consumer(
+                  builder: (ctx, ref, _) {
+                    final queue = ref.watch(smsReviewQueueProvider);
+                    return Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (queue.isNotEmpty)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(8),
+                              color: AppColors.warning.withValues(alpha: 0.15),
+                            ),
+                            child: Text('${queue.length}',
+                                style: AppTheme.bodyStyle(
+                                  size: 11, weight: FontWeight.w700, color: AppColors.warning)),
+                          ),
+                        const SizedBox(width: 6),
+                        const Icon(LucideIcons.chevronRight, size: 16),
+                      ],
+                    );
+                  },
+                ),
+                onTap: () => _showSmsReviewQueue(context),
               ),
               const Divider(height: 1, indent: 56),
               _SettingTile(
@@ -315,6 +347,7 @@ class SettingsScreen extends ConsumerWidget {
   }
 
   void _simulateSms(BuildContext context, WidgetRef ref) {
+    final queueNotifier = ref.read(smsReviewQueueProvider.notifier);
     final mockSmsList = [
       'Dear SBI Customer, your A/c X1234 has been debited by Rs. 540.00 at SWIGGY on 22-07-2026. Ref: 62234125',
       'Transaction alert: Rs. 12000.00 debited from HDFC Bank Card ending 4321 at HOUSING SOCIETY on 22/07/2026.',
@@ -327,10 +360,10 @@ class SettingsScreen extends ConsumerWidget {
     final randomSms = mockSmsList[DateTime.now().millisecond % mockSmsList.length];
     final parsed = SmsParser.parseMessage(randomSms);
     if (parsed != null) {
-      ref.read(pendingSmsTransactionProvider.notifier).state = parsed;
+      queueNotifier.addToQueue(parsed);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Simulated Bank SMS Broadcasted! Confirm popup on screen.'),
+        SnackBar(
+          content: Text('Simulated SMS added to review queue (${queueNotifier.pendingCount} pending)'),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -525,12 +558,7 @@ class SettingsScreen extends ConsumerWidget {
             child: const Text('Cancel'),
           ),
           TextButton(
-            onPressed: () async {
-              final db = ref.read(databaseProvider);
-              await (db.delete(db.accounts)..where((a) => a.id.equals(account.id))).go();
-              ref.invalidate(accountsListProvider);
-              if (ctx.mounted) Navigator.pop(ctx);
-            },
+            onPressed: () => _deleteAccountWithCheck(context, ref, account),
             style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
             child: const Text('Delete'),
           ),
@@ -550,6 +578,147 @@ class SettingsScreen extends ConsumerWidget {
             child: const Text('Save'),
           ),
         ],
+      ),
+    );
+  }
+
+  Future<void> _deleteAccountWithCheck(BuildContext context, WidgetRef ref, Account account) async {
+    final db = ref.read(databaseProvider);
+
+    // Check if the account has linked transactions
+    final txnCount = (await (db.select(db.transactions)
+      ..where((t) => t.accountId.equals(account.id)))
+      .get())
+      .length;
+
+    // Find other accounts for potential reassignment
+    final allAccounts = await db.select(db.accounts).get();
+    final otherAccounts = allAccounts.where((a) => a.id != account.id).toList();
+
+    if (txnCount > 0) {
+      // Account has transactions — block deletion, offer reassignment
+      if (!context.mounted) return;
+      if (otherAccounts.isEmpty) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Cannot delete: no other accounts to reassign transactions to.'),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+        return;
+      }
+
+      String? selectedTargetId = otherAccounts.first.id;
+      await showDialog(
+        context: context,
+        builder: (ctx) => StatefulBuilder(
+          builder: (ctx, setDialogState) => AlertDialog(
+            title: Row(
+              children: [
+                Icon(LucideIcons.alertTriangle, size: 20, color: AppColors.warning),
+                const SizedBox(width: 8),
+                Text('Cannot delete "${account.name}"',
+                    style: AppTheme.displayStyle(size: 16, weight: FontWeight.w600)),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'This account has $txnCount transaction${txnCount != 1 ? 's' : ''} linked to it. '
+                  'Choose which account to reassign them to:',
+                  style: AppTheme.bodyStyle(size: 14),
+                ),
+                const SizedBox(height: 16),
+                // Account dropdown
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.2)),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      value: selectedTargetId,
+                      isExpanded: true,
+                      style: AppTheme.bodyStyle(size: 14, weight: FontWeight.w500),
+                      items: otherAccounts.map((a) => DropdownMenuItem(
+                        value: a.id,
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text('${a.name} (₹${a.balance.toStringAsFixed(0)})',
+                                  style: AppTheme.bodyStyle(size: 14)),
+                            ),
+                          ],
+                        ),
+                      )).toList(),
+                      onChanged: (v) {
+                        if (v != null) {
+                          setDialogState(() => selectedTargetId = v);
+                        }
+                      },
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () async {
+                  if (selectedTargetId == null) return;
+                  final target = otherAccounts.firstWhereOrNull((a) => a.id == selectedTargetId);
+                  if (target == null) return;
+                  await (db.update(db.transactions)
+                    ..where((t) => t.accountId.equals(account.id)))
+                    .write(TransactionsCompanion(accountId: Value(target.id)));
+                  await (db.delete(db.accounts)..where((a) => a.id.equals(account.id))).go();
+                  ref.invalidate(accountsListProvider);
+                  ref.invalidate(transactionsProvider);
+                  if (ctx.mounted) Navigator.pop(ctx);   // pop blocking dialog
+                  if (context.mounted) Navigator.pop(context); // pop edit dialog
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('"${account.name}" deleted. $txnCount transactions reassigned to "${target.name}".'),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  }
+                },
+                child: Text('Reassign'),
+              ),
+            ],
+          ),
+        ),
+      );
+    } else {
+      // No transactions — delete directly
+      await (db.delete(db.accounts)..where((a) => a.id.equals(account.id))).go();
+      ref.invalidate(accountsListProvider);
+      if (context.mounted) Navigator.pop(context);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('"${account.name}" deleted'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
+  void _showSmsReviewQueue(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const SmsReviewQueueScreen(),
       ),
     );
   }

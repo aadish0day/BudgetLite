@@ -1,9 +1,11 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:drift/drift.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import '../core/database/database.dart';
+import '../core/utils/categorization_rule.dart';
 import 'database_provider.dart';
 
 final settingsProvider = FutureProvider.family<String?, String>((ref, key) async {
@@ -128,3 +130,55 @@ final smsParsingEnabledProvider = FutureProvider<bool>((ref) async {
   final settings = ref.read(settingsNotifierProvider.notifier);
   return settings.getSmsParsing();
 });
+
+/// Provider that loads/saves auto-categorization rules from AppSettings.
+/// Falls back to [CategorizationRule.defaults] on first load.
+final autoCategorizationRulesProvider =
+    NotifierProvider<AutoCategorizationRulesNotifier, List<CategorizationRule>>(
+  AutoCategorizationRulesNotifier.new,
+);
+
+class AutoCategorizationRulesNotifier extends Notifier<List<CategorizationRule>> {
+  @override
+  List<CategorizationRule> build() {
+    _loadRules();
+    return CategorizationRule.defaults();
+  }
+
+  Future<void> _loadRules() async {
+    final settings = ref.read(settingsNotifierProvider.notifier);
+    final stored = await settings.getSetting('auto_category_rules');
+    if (stored != null && stored.isNotEmpty) {
+      try {
+        final list = (const JsonDecoder().convert(stored) as List)
+            .map((e) => CategorizationRule.fromJson(
+                Map<String, dynamic>.from(e as Map)))
+            .toList();
+        if (list.isNotEmpty) {
+          state = list;
+        }
+      } catch (_) {}
+    }
+  }
+
+  Future<void> _persist() async {
+    final settings = ref.read(settingsNotifierProvider.notifier);
+    final jsonStr = const JsonEncoder().convert(state.map((r) => r.toJson()).toList());
+    await settings.setSetting('auto_category_rules', jsonStr);
+  }
+
+  Future<void> setRules(List<CategorizationRule> rules) async {
+    state = rules;
+    await _persist();
+  }
+
+  /// Detect a category ID from a note string using the current rules.
+  String? detectCategory(String note) {
+    for (final rule in state) {
+      if (rule.toRegExp().hasMatch(note)) {
+        return rule.categoryId;
+      }
+    }
+    return null;
+  }
+}

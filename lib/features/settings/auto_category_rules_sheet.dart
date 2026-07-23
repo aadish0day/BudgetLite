@@ -4,9 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/colors.dart';
+import '../../core/utils/categorization_rule.dart';
 import '../../providers/database_provider.dart';
+import '../../providers/settings_provider.dart';
 
 /// Bottom sheet for viewing/editing keyword-to-category auto-categorization rules.
+/// Rules are persisted to AppSettings via [autoCategorizationRulesProvider].
 class AutoCategoryRulesSheet extends ConsumerStatefulWidget {
   const AutoCategoryRulesSheet({super.key});
 
@@ -15,40 +18,27 @@ class AutoCategoryRulesSheet extends ConsumerStatefulWidget {
 }
 
 class _AutoCategoryRulesSheetState extends ConsumerState<AutoCategoryRulesSheet> {
-  late List<_KeywordRule> _rules;
   bool _showAddForm = false;
   String _newKeyword = '';
   String _newCategoryId = 'food';
 
-  @override
-  void initState() {
-    super.initState();
-    _rules = _defaultRules();
-  }
-
-  List<_KeywordRule> _defaultRules() {
-    return [
-      _KeywordRule(keyword: 'zomato, swiggy, restaurant, cafe, food, mcdonalds, kfc, pizza', categoryId: 'food'),
-      _KeywordRule(keyword: 'uber, ola, metro, petrol, fuel, taxi, bus, train', categoryId: 'transport'),
-      _KeywordRule(keyword: 'rent, maintenance, society, housing, landlord', categoryId: 'rent'),
-      _KeywordRule(keyword: 'amazon, flipkart, myntra, zara, shopping, clothes, mall', categoryId: 'shopping'),
-      _KeywordRule(keyword: 'bill, electricity, water, internet, recharge, phone, jio, airtel', categoryId: 'bills'),
-      _KeywordRule(keyword: 'salary, income, credit, refund, cashback, bonus', categoryId: 'income'),
-      _KeywordRule(keyword: 'netflix, prime, hotstar, spotify, movie, cinema, game', categoryId: 'other'),
-    ];
-  }
-
   void _addRule() {
     if (_newKeyword.trim().isEmpty) return;
+    final notifier = ref.read(autoCategorizationRulesProvider.notifier);
+    final current = [...ref.read(autoCategorizationRulesProvider)];
+    current.add(CategorizationRule(keyword: _newKeyword.trim(), categoryId: _newCategoryId));
+    notifier.setRules(current);
     setState(() {
-      _rules.add(_KeywordRule(keyword: _newKeyword.trim(), categoryId: _newCategoryId));
       _showAddForm = false;
       _newKeyword = '';
     });
   }
 
   void _removeRule(int index) {
-    setState(() => _rules.removeAt(index));
+    final notifier = ref.read(autoCategorizationRulesProvider.notifier);
+    final current = [...ref.read(autoCategorizationRulesProvider)];
+    current.removeAt(index);
+    notifier.setRules(current);
   }
 
   @override
@@ -56,6 +46,7 @@ class _AutoCategoryRulesSheetState extends ConsumerState<AutoCategoryRulesSheet>
     final colorScheme = Theme.of(context).colorScheme;
     final categories = ref.watch(categoriesProvider).valueOrNull ?? [];
     final allCats = categories.toList();
+    final rules = ref.watch(autoCategorizationRulesProvider);
 
     return Container(
       constraints: BoxConstraints(
@@ -165,7 +156,7 @@ class _AutoCategoryRulesSheetState extends ConsumerState<AutoCategoryRulesSheet>
           if (_showAddForm) const SizedBox(height: 12),
 
           // Rules list
-          if (_rules.isEmpty)
+          if (rules.isEmpty)
             Padding(
               padding: const EdgeInsets.all(32),
               child: Center(
@@ -185,9 +176,9 @@ class _AutoCategoryRulesSheetState extends ConsumerState<AutoCategoryRulesSheet>
               child: ListView.builder(
                 shrinkWrap: true,
                 padding: const EdgeInsets.symmetric(horizontal: 24),
-                itemCount: _rules.length,
+                itemCount: rules.length,
                 itemBuilder: (context, index) {
-                  final rule = _rules[index];
+                  final rule = rules[index];
                   final cat = allCats.where((c) => c.id == rule.categoryId).firstOrNull;
                   final catColor = Color(cat?.color ?? 0xFF6B7280);
 
@@ -243,8 +234,8 @@ class _AutoCategoryRulesSheetState extends ConsumerState<AutoCategoryRulesSheet>
           Padding(
             padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
             child: Text(
-              'When adding a transaction, the note text is checked against these keywords. '
-              'The matching category is pre-selected automatically.',
+              'Changes are saved automatically. When adding a transaction, '
+              'the note text is checked against these keywords.',
               style: AppTheme.bodyStyle(size: 11, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7)),
             ),
           ),
@@ -252,11 +243,4 @@ class _AutoCategoryRulesSheetState extends ConsumerState<AutoCategoryRulesSheet>
       ),
     );
   }
-}
-
-class _KeywordRule {
-  final String keyword;
-  String categoryId;
-
-  _KeywordRule({required this.keyword, required this.categoryId});
 }

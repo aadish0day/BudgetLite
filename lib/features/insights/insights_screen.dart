@@ -28,8 +28,9 @@ class InsightsScreen extends ConsumerWidget {
     final transactions = ref.watch(thisMonthTransactionsProvider).valueOrNull ?? [];
     final budgets = ref.watch(thisMonthBudgetsProvider).valueOrNull ?? [];
 
+    // Exclude transfer entries from spending (transfers are balance-neutral)
     final categorySpending = <String, double>{};
-    for (final t in transactions.where((t) => t.amount > 0)) {
+    for (final t in transactions.where((t) => t.amount > 0 && t.categoryId != 'transfer')) {
       categorySpending[t.categoryId] =
           (categorySpending[t.categoryId] ?? 0) + t.amount;
     }
@@ -473,7 +474,7 @@ class _TrendChart extends ConsumerWidget {
       future: Future.wait(months.map((m) async {
         final txns = await ref.read(transactionsByMonthProvider(m).future);
         return txns
-            .where((t) => t.amount > 0)
+            .where((t) => t.amount > 0 && t.categoryId != 'transfer')
             .fold<double>(0, (sum, t) => sum + t.amount);
       })),
       builder: (context, snapshot) {
@@ -586,7 +587,8 @@ class _WeeklyChart extends StatelessWidget {
     List<double> thisWeek = List.filled(7, 0);
     List<double> lastWeek = List.filled(7, 0);
 
-    for (final t in transactions.where((t) => t.amount > 0)) {
+    // Exclude transfer entries from weekly chart (transfers are balance-neutral)
+    for (final t in transactions.where((t) => t.amount > 0 && t.categoryId != 'transfer')) {
       if (t.date.isAfter(thisMonday) && t.date.isBefore(thisWeekEnd)) {
         final dayIdx = t.date.weekday - 1; // 0 = Monday
         if (dayIdx >= 0 && dayIdx < 7) thisWeek[dayIdx] += t.amount;
@@ -691,7 +693,8 @@ class _DayOfWeekChart extends ConsumerWidget {
 
     // Aggregate spending by day of week across ALL data
     final dayTotals = <int, double>{0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0};
-    for (final t in allTransactions.where((t) => t.amount > 0)) {
+    // Exclude transfer entries from day-of-week chart (transfers are balance-neutral)
+    for (final t in allTransactions.where((t) => t.amount > 0 && t.categoryId != 'transfer')) {
       dayTotals[t.date.weekday - 1] =
           (dayTotals[t.date.weekday - 1] ?? 0) + t.amount;
     }

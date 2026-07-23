@@ -164,6 +164,10 @@ class _MainShellState extends ConsumerState<_MainShell> {
   void initState() {
     super.initState();
     NotificationService.instance.initialize();
+    // Post any due recurring transactions on app open
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(transactionNotifierProvider.notifier).postDueRecurringTransactions();
+    });
     // Register navigation callback for app shortcuts
     registerTabNavigation((tabIndex) {
       ref.read(currentTabProvider.notifier).state = tabIndex;
