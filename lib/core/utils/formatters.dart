@@ -3,19 +3,8 @@ import 'package:intl/intl.dart';
 class Formatters {
   Formatters._();
 
-  static String formatCurrency(double amount, {String? currency}) {
-    switch (currency ?? 'INR') {
-      case 'USD':
-        return NumberFormat.currency(symbol: '\$', decimalDigits: 2).format(amount);
-      case 'EUR':
-        return NumberFormat.currency(symbol: '€', decimalDigits: 2).format(amount);
-      case 'GBP':
-        return NumberFormat.currency(symbol: '£', decimalDigits: 2).format(amount);
-      case 'JPY':
-        return NumberFormat.currency(symbol: '¥', decimalDigits: 0).format(amount);
-      default:
-        return NumberFormat.currency(symbol: '₹', decimalDigits: 0).format(amount);
-    }
+  static String formatCurrency(double amount) {
+    return NumberFormat.currency(symbol: '₹', decimalDigits: 0).format(amount);
   }
 
   static String formatDate(DateTime date) {
@@ -40,6 +29,12 @@ class Formatters {
 
   static String get monthKey {
     return formatMonthKey(DateTime.now());
+  }
+
+  static String get previousMonthKey {
+    final now = DateTime.now();
+    final prev = DateTime(now.year, now.month - 1);
+    return formatMonthKey(prev);
   }
 
   static String monthKeyFor(DateTime date) {

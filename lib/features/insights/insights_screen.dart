@@ -11,6 +11,7 @@ import '../../core/utils/formatters.dart';
 import '../../core/utils/icon_helper.dart';
 import '../../providers/transaction_provider.dart';
 import '../../providers/budget_provider.dart';
+import '../../providers/navigation_provider.dart';
 import '../../core/database/database.dart';
 import '../../providers/database_provider.dart';
 import '../../core/widgets/insight_cards.dart';
@@ -104,6 +105,18 @@ class InsightsScreen extends ConsumerWidget {
                               centerSpaceRadius: 40,
                               sectionsSpace: 2,
                               borderData: FlBorderData(show: false),
+                              pieTouchData: PieTouchData(
+                                touchCallback: (FlTouchEvent event, PieTouchResponse? response) {
+                                  if (event is FlTapUpEvent && response?.touchedSection != null) {
+                                    final touchedIndex = response!.touchedSection!.touchedSectionIndex;
+                                    if (touchedIndex >= 0 && touchedIndex < categorySpending.length) {
+                                      final categoryId = categorySpending.keys.elementAt(touchedIndex);
+                                      ref.read(transactionFilterProvider.notifier).state = categoryId;
+                                      ref.read(currentTabProvider.notifier).state = 1;
+                                    }
+                                  }
+                                },
+                              ),
                             ),
                           ),
                         ),

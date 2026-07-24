@@ -24,8 +24,6 @@ class SettingsNotifier extends StateNotifier<AsyncValue<void>> {
 
     if (existing.isNotEmpty) {
       await (db.update(db.appSettings)..where((t) => t.key.equals(key)))
-          .write(AppSettingsCompanion(value: Value('')));
-      await (db.update(db.appSettings)..where((t) => t.key.equals(key)))
           .write(AppSettingsCompanion(value: Value(value)));
     } else {
       await db.into(db.appSettings).insert(AppSettingsCompanion.insert(
@@ -72,14 +70,6 @@ class SettingsNotifier extends StateNotifier<AsyncValue<void>> {
     ref.invalidate(smsParsingEnabledProvider);
   }
 
-  Future<String> getCurrency() async {
-    return (await getSetting('currency')) ?? 'INR';
-  }
-
-  Future<void> setCurrency(String value) async {
-    await setSetting('currency', value);
-  }
-
   Future<double> getNotificationThreshold() async {
     final val = await getSetting('notification_threshold');
     return double.tryParse(val ?? '') ?? 90;
@@ -109,6 +99,67 @@ class SettingsNotifier extends StateNotifier<AsyncValue<void>> {
     await source.copy(dest.path);
     ref.invalidate(databaseProvider);
   }
+  /// Mark a budget threshold as notified for a category (prevents repeated alerts).
+  Future<void> setBudgetNotified(String categoryId, String level) async {
+    final stored = await getSetting('budget_notified');
+    final map = stored != null && stored.isNotEmpty
+        ? Map<String, dynamic>.from(const JsonDecoder().convert(stored) as Map)
+        : <String, dynamic>{};
+    map[categoryId] = level;
+    await setSetting('budget_notified', const JsonEncoder().convert(map));
+  }
+
+  /// Check if a budget threshold was already notified for a category this month.
+  Future<bool> wasBudgetNotified(String categoryId, String level) async {
+    final stored = await getSetting('budget_notified');
+    if (stored == null || stored.isEmpty) return false;
+    try {
+      final map = Map<String, dynamic>.from(const JsonDecoder().convert(stored) as Map);
+      return map[categoryId] == level;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Reset budget notifications for a category (when ratio drops below threshold).
+  Future<void> resetBudgetNotified(String categoryId) async {
+    final stored = await getSetting('budget_notified');
+    if (stored == null || stored.isEmpty) return;
+    try {
+      final map = Map<String, dynamic>.from(const JsonDecoder().convert(stored) as Map);
+      map.remove(categoryId);
+      await setSetting('budget_notified', const JsonEncoder().convert(map));
+    } catch (_) {}
+  }
+  Future<bool> getBalanceHidden() async {
+    final val = await getSetting('balance_hidden');
+    return val == 'true';
+  }
+
+  Future<void> setBalanceHidden(bool value) async {
+    await setSetting('balance_hidden', value.toString());
+    ref.invalidate(balanceHiddenProvider);
+  }
+
+  Future<int> getAutoLockDuration() async {
+    final val = await getSetting('auto_lock_minutes');
+    return int.tryParse(val ?? '') ?? 1;
+  }
+
+  Future<void> setAutoLockDuration(int minutes) async {
+    await setSetting('auto_lock_minutes', minutes.toString());
+    ref.invalidate(autoLockDurationProvider);
+  }
+
+  Future<int?> getAccentColor() async {
+    final val = await getSetting('accent_color');
+    return val != null ? int.tryParse(val) : null;
+  }
+
+  Future<void> setAccentColor(int colorValue) async {
+    await setSetting('accent_color', colorValue.toString());
+    ref.invalidate(accentColorProvider);
+  }
 }
 
 final settingsNotifierProvider =
@@ -129,6 +180,21 @@ final biometricLockEnabledProvider = FutureProvider<bool>((ref) async {
 final smsParsingEnabledProvider = FutureProvider<bool>((ref) async {
   final settings = ref.read(settingsNotifierProvider.notifier);
   return settings.getSmsParsing();
+});
+
+final balanceHiddenProvider = FutureProvider<bool>((ref) async {
+  final settings = ref.read(settingsNotifierProvider.notifier);
+  return settings.getBalanceHidden();
+});
+
+final autoLockDurationProvider = FutureProvider<int>((ref) async {
+  final settings = ref.read(settingsNotifierProvider.notifier);
+  return settings.getAutoLockDuration();
+});
+
+final accentColorProvider = FutureProvider<int?>((ref) async {
+  final settings = ref.read(settingsNotifierProvider.notifier);
+  return settings.getAccentColor();
 });
 
 /// Provider that loads/saves auto-categorization rules from AppSettings.

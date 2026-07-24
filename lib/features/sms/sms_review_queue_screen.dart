@@ -8,6 +8,7 @@ import '../../core/theme/colors.dart';
 import '../../core/utils/constants.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/utils/sms_parser.dart';
+import '../../core/utils/duplicate_detector.dart';
 import '../../providers/transaction_provider.dart';
 import '../../providers/database_provider.dart';
 
@@ -137,7 +138,7 @@ class _SmsReviewQueueScreenState extends ConsumerState<SmsReviewQueueScreen> {
                   txn: txn,
                   colorScheme: colorScheme,
                   onConfirm: () => _confirmItem(txn.id),
-                  onConfirmWithCategory: (catId) => _confirmItem(txn.id, overrideCategory: catId),
+                  onConfirmWithCategory: (catId, note) => _confirmItem(txn.id, overrideCategory: catId, overrideNote: note),
                   onDiscard: () => _discardItem(txn.id),
                 )),
                 const SizedBox(height: 80),
@@ -146,10 +147,10 @@ class _SmsReviewQueueScreenState extends ConsumerState<SmsReviewQueueScreen> {
     );
   }
 
-  Future<void> _confirmItem(String id, {String? overrideCategory}) async {
+  Future<void> _confirmItem(String id, {String? overrideCategory, String? overrideNote}) async {
     if (!mounted) return;
     final notifier = ref.read(smsReviewQueueProvider.notifier);
-    await notifier.confirmItem(id, overrideCategory: overrideCategory);
+    await notifier.confirmItem(id, overrideCategory: overrideCategory, overrideNote: overrideNote);
     ref.invalidate(transactionsProvider);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -283,12 +284,12 @@ class _EmptyQueue extends StatelessWidget {
   }
 }
 
-/// Individual queue item with swipe-to-discard and category picker
-class _QueueItemCard extends StatefulWidget {
+/// Individual queue item with swipe-to-discard, duplicate detection, pocket money linking, editable note, and category picker
+class _QueueItemCard extends ConsumerStatefulWidget {
   final ParsedSmsTxn txn;
   final ColorScheme colorScheme;
   final VoidCallback onConfirm;
-  final ValueChanged<String> onConfirmWithCategory;
+  final void Function(String catId, String? note) onConfirmWithCategory;
   final VoidCallback onDiscard;
 
   const _QueueItemCard({
@@ -300,16 +301,55 @@ class _QueueItemCard extends StatefulWidget {
   });
 
   @override
-  State<_QueueItemCard> createState() => _QueueItemCardState();
+  ConsumerState<_QueueItemCard> createState() => _QueueItemCardState();
 }
 
-class _QueueItemCardState extends State<_QueueItemCard> {
+class _QueueItemCardState extends ConsumerState<_QueueItemCard> {
   String? _editingCategory;
   bool _showCategoryPicker = false;
+  late TextEditingController _noteCtrl;
+  final FocusNode _noteFocus = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _noteCtrl = TextEditingController(text: widget.txn.note);
+  }
+
+  @override
+  void dispose() {
+    _noteCtrl.dispose();
+    _noteFocus.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final isDark = widget.colorScheme.brightness == Brightness.dark;
+
+    // 1. Duplicate detection check
+    final allTxns = ref.watch(transactionsProvider).valueOrNull ?? [];
+    final dupResult = DuplicateDetector.findDuplicates(
+      existingTransactions: allTxns,
+      amount: widget.txn.amount,
+      date: widget.txn.date,
+      note: widget.txn.note,
+      isIncome: widget.txn.isIncome,
+    );
+    final hasDuplicate = dupResult.hasDuplicates;
+    final matchedDup = hasDuplicate ? dupResult.potentialDuplicates.first : null;
+
+    // 2. Recurring pocket money matching (credit SMS / income)
+    final recurringList = ref.watch(recurringTransactionsProvider).valueOrNull ?? [];
+    RecurringPaymentInfo? matchedPocketMoney;
+    if (widget.txn.isIncome) {
+      matchedPocketMoney = recurringList.where((r) {
+        return r.transaction.amount < 0 ||
+            r.transaction.categoryId == 'income' ||
+            (r.category?.name.toLowerCase().contains('income') ?? false) ||
+            (r.transaction.note?.toLowerCase().contains('pocket money') ?? false);
+      }).firstOrNull;
+    }
 
     return Dismissible(
       key: Key('sms_${widget.txn.id}'),
@@ -335,7 +375,9 @@ class _QueueItemCardState extends State<_QueueItemCard> {
           boxShadow: isDark ? AppColors.cardShadowDark : AppColors.cardShadowLight,
           border: Border(
             left: BorderSide(
-              color: AppColors.warning.withValues(alpha: 0.5),
+              color: hasDuplicate
+                  ? AppColors.error
+                  : (widget.txn.isIncome ? AppColors.success : AppColors.warning),
               width: 3,
             ),
           ),
@@ -344,33 +386,122 @@ class _QueueItemCardState extends State<_QueueItemCard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Top row: amount, category
+            // Duplicate warning banner if detected
+            if (hasDuplicate && matchedDup != null)
+              Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8),
+                  color: AppColors.error.withValues(alpha: 0.1),
+                  border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(LucideIcons.alertTriangle, size: 14, color: AppColors.error),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'Possible Duplicate: Matches existing ₹${Formatters.formatCurrency(matchedDup.amount.abs())} on ${Formatters.formatDateShort(matchedDup.date)}',
+                        style: AppTheme.bodyStyle(
+                          size: 11,
+                          weight: FontWeight.w600,
+                          color: AppColors.error,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+            // Pocket Money Recurring match banner
+            if (matchedPocketMoney != null)
+              Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8),
+                  color: AppColors.success.withValues(alpha: 0.1),
+                  border: Border.all(color: AppColors.success.withValues(alpha: 0.3)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(LucideIcons.target, size: 14, color: AppColors.success),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'Matches Recurring Pocket Money (${matchedPocketMoney.intervalLabel})',
+                        style: AppTheme.bodyStyle(
+                          size: 11,
+                          weight: FontWeight.w600,
+                          color: AppColors.success,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+            // Top row: amount, direction badge, category
             Row(
               children: [
                 Container(
                   width: 38, height: 38,
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(10),
-                    color: AppColors.warning.withValues(alpha: 0.12),
+                    color: widget.txn.isIncome
+                        ? AppColors.success.withValues(alpha: 0.12)
+                        : AppColors.warning.withValues(alpha: 0.12),
                   ),
-                  child: Icon(LucideIcons.messageSquare, size: 18,
-                      color: AppColors.warning),
+                  child: Icon(
+                    widget.txn.isIncome ? LucideIcons.arrowDownLeft : LucideIcons.arrowUpRight,
+                    size: 18,
+                    color: widget.txn.isIncome ? AppColors.success : AppColors.warning,
+                  ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        Formatters.formatCurrency(widget.txn.amount),
-                        style: AppTheme.financialStyle(
-                          size: 18, weight: FontWeight.w700,
-                          color: widget.colorScheme.onSurface,
-                        ),
+                      Row(
+                        children: [
+                          Icon(
+                            widget.txn.isIncome ? LucideIcons.plusCircle : LucideIcons.minusCircle,
+                            size: 14,
+                            color: widget.txn.isIncome ? AppColors.success : AppColors.error,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '${widget.txn.isIncome ? '+' : '-'}${Formatters.formatCurrency(widget.txn.amount)}',
+                            style: AppTheme.financialStyle(
+                              size: 18, weight: FontWeight.w700,
+                              color: widget.txn.isIncome ? AppColors.success : widget.colorScheme.onSurface,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(6),
+                              color: widget.txn.isIncome
+                                  ? AppColors.success.withValues(alpha: 0.12)
+                                  : widget.colorScheme.surfaceContainerHighest,
+                            ),
+                            child: Text(
+                              widget.txn.isIncome ? 'Income' : 'Expense',
+                              style: AppTheme.bodyStyle(
+                                size: 9,
+                                weight: FontWeight.w600,
+                                color: widget.txn.isIncome ? AppColors.success : widget.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        'Detected ${Formatters.formatDateShort(widget.txn.detectedAt)}',
+                        '${Formatters.formatDateShort(widget.txn.date)} · detected ${Formatters.formatDateShort(widget.txn.detectedAt)}',
                         style: AppTheme.bodyStyle(
                           size: 10, color: widget.colorScheme.onSurfaceVariant.withValues(alpha: 0.7)),
                       ),
@@ -404,15 +535,43 @@ class _QueueItemCardState extends State<_QueueItemCard> {
               ],
             ),
 
-            // Note/merchant
+            // Note/merchant — always editable
             Padding(
               padding: const EdgeInsets.only(top: 6, left: 48),
-              child: Text(
-                widget.txn.note,
+              child: TextField(
+                controller: _noteCtrl,
+                focusNode: _noteFocus,
                 style: AppTheme.bodyStyle(
-                  size: 13, color: widget.colorScheme.onSurfaceVariant),
+                  size: 13, color: widget.colorScheme.onSurface),
+                decoration: InputDecoration(
+                  hintText: widget.txn.isIncome
+                      ? 'Got it from...'
+                      : 'Spent on...',
+                  hintStyle: AppTheme.bodyStyle(
+                    size: 13, color: widget.colorScheme.onSurfaceVariant.withValues(alpha: 0.5)),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide(
+                      color: widget.colorScheme.outline.withValues(alpha: 0.15)),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide(
+                      color: widget.colorScheme.outline.withValues(alpha: 0.15)),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide(
+                      color: widget.colorScheme.primary.withValues(alpha: 0.4)),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  filled: true,
+                  fillColor: widget.colorScheme.surfaceContainerHighest.withValues(alpha: 0.2),
+                  isDense: true,
+                ),
                 maxLines: 2,
-                overflow: TextOverflow.ellipsis,
+                minLines: 1,
+                textCapitalization: TextCapitalization.sentences,
               ),
             ),
 
@@ -422,8 +581,14 @@ class _QueueItemCardState extends State<_QueueItemCard> {
                 padding: const EdgeInsets.only(top: 8, left: 48),
                 child: _CategoryPicker(
                   currentCategoryId: _editingCategory ?? widget.txn.categoryId,
-                  onChanged: (catId) => setState(() => _editingCategory = catId),
+                  onChanged: (catId) {
+                    setState(() {
+                      _editingCategory = catId.isEmpty ? null : catId;
+                      _showCategoryPicker = false;
+                    });
+                  },
                   colorScheme: widget.colorScheme,
+                  isIncome: widget.txn.isIncome,
                 ),
               ),
 
@@ -446,9 +611,42 @@ class _QueueItemCardState extends State<_QueueItemCard> {
                   ),
                 ),
                 const SizedBox(width: 8),
+                if (matchedPocketMoney != null)
+                  GestureDetector(
+                    onTap: () async {
+                      await ref.read(smsReviewQueueProvider.notifier).confirmAndLinkToRecurring(
+                        widget.txn.id,
+                        matchedPocketMoney!.transaction.id,
+                        overrideCategory: _editingCategory ?? widget.txn.categoryId,
+                        overrideNote: _noteCtrl.text.trim(),
+                      );
+                      ref.invalidate(transactionsProvider);
+                      ref.invalidate(recurringTransactionsProvider);
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(8),
+                        color: widget.colorScheme.primary.withValues(alpha: 0.15),
+                        border: Border.all(color: widget.colorScheme.primary.withValues(alpha: 0.3)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(LucideIcons.link, size: 13, color: widget.colorScheme.primary),
+                          const SizedBox(width: 4),
+                          Text('Link Pocket Money', style: AppTheme.bodyStyle(
+                            size: 11, color: widget.colorScheme.primary, weight: FontWeight.w600)),
+                        ],
+                      ),
+                    ),
+                  ),
+                if (matchedPocketMoney != null) const SizedBox(width: 8),
                 GestureDetector(
                   onTap: () => widget.onConfirmWithCategory(
-                    _editingCategory ?? widget.txn.categoryId),
+                    _editingCategory ?? widget.txn.categoryId,
+                    _noteCtrl.text.trim(),
+                  ),
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
                     decoration: BoxDecoration(
@@ -480,17 +678,22 @@ class _CategoryPicker extends ConsumerWidget {
   final String currentCategoryId;
   final ValueChanged<String> onChanged;
   final ColorScheme colorScheme;
+  final bool isIncome;
 
   const _CategoryPicker({
     required this.currentCategoryId,
     required this.onChanged,
     required this.colorScheme,
+    this.isIncome = false,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final categories = ref.watch(categoriesProvider).valueOrNull ?? [];
-    final expenseCats = categories.where((c) => c.type == 'expense').toList();
+    // Show income categories for income items, expense for expense items
+    final catList = isIncome
+        ? categories.where((c) => c.type == 'income' || c.type == 'expense').toList()
+        : categories.where((c) => c.type == 'expense').toList();
 
     return Container(
       padding: const EdgeInsets.all(8),
@@ -500,28 +703,43 @@ class _CategoryPicker extends ConsumerWidget {
       ),
       child: Wrap(
         spacing: 6, runSpacing: 6,
-        children: expenseCats.map((cat) {
-          final selected = cat.id == currentCategoryId;
-          final catColor = Color(cat.color);
-          return GestureDetector(
-            onTap: () => onChanged(cat.id),
+        children: [
+          // Clear/reset option
+          GestureDetector(
+            onTap: () => onChanged(''),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(8),
-                color: selected
-                    ? catColor.withValues(alpha: 0.15)
-                    : Colors.transparent,
-                border: selected
-                    ? Border.all(color: catColor.withValues(alpha: 0.4))
-                    : null,
+                border: Border.all(color: colorScheme.outline.withValues(alpha: 0.2)),
               ),
-              child: Text(cat.name, style: AppTheme.bodyStyle(
-                size: 11, weight: selected ? FontWeight.w600 : FontWeight.w400,
-                color: selected ? catColor : colorScheme.onSurfaceVariant)),
+              child: Text('Cancel', style: AppTheme.bodyStyle(
+                size: 11, weight: FontWeight.w500, color: colorScheme.onSurfaceVariant)),
             ),
-          );
-        }).toList(),
+          ),
+          ...catList.map((cat) {
+            final selected = cat.id == currentCategoryId;
+            final catColor = Color(cat.color);
+            return GestureDetector(
+              onTap: () => onChanged(cat.id),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8),
+                  color: selected
+                      ? catColor.withValues(alpha: 0.15)
+                      : Colors.transparent,
+                  border: selected
+                      ? Border.all(color: catColor.withValues(alpha: 0.4))
+                      : null,
+                ),
+                child: Text(cat.name, style: AppTheme.bodyStyle(
+                  size: 11, weight: selected ? FontWeight.w600 : FontWeight.w400,
+                  color: selected ? catColor : colorScheme.onSurfaceVariant)),
+              ),
+            );
+          }),
+        ],
       ),
     );
   }

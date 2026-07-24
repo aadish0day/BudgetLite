@@ -10,12 +10,9 @@ import 'core/utils/formatters.dart';
 import 'features/home/home_screen.dart';
 import 'features/transactions/transactions_screen.dart';
 import 'features/transactions/add_transaction_sheet.dart';
-import 'features/transactions/transfer_sheet.dart';
-import 'features/transactions/split_transaction_sheet.dart';
 import 'features/budget/budget_screen.dart';
 import 'features/goals/goals_screen.dart';
 import 'features/insights/insights_screen.dart';
-import 'features/debt/debt_screen.dart';
 import 'features/onboarding/onboarding_screen.dart';
 import 'core/utils/notification_service.dart';
 import 'providers/settings_provider.dart';
@@ -29,12 +26,30 @@ class BudgetLiteApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final darkMode = ref.watch(darkModeProvider).valueOrNull ?? false;
+    final accentColorVal = ref.watch(accentColorProvider).valueOrNull;
+
+    ThemeData lightTheme = AppTheme.light;
+    ThemeData darkTheme = AppTheme.dark;
+
+    if (accentColorVal != null) {
+      final accentColor = Color(accentColorVal);
+      lightTheme = lightTheme.copyWith(
+        colorScheme: lightTheme.colorScheme.copyWith(
+          primary: accentColor,
+        ),
+      );
+      darkTheme = darkTheme.copyWith(
+        colorScheme: darkTheme.colorScheme.copyWith(
+          primary: accentColor,
+        ),
+      );
+    }
 
     return MaterialApp(
       title: 'BudgetLite',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.light,
-      darkTheme: AppTheme.dark,
+      theme: lightTheme,
+      darkTheme: darkTheme,
       themeMode: darkMode ? ThemeMode.dark : ThemeMode.light,
       home: const _AppEntry(),
     );
@@ -48,16 +63,46 @@ class _AppEntry extends ConsumerStatefulWidget {
   ConsumerState<_AppEntry> createState() => _AppEntryState();
 }
 
-class _AppEntryState extends ConsumerState<_AppEntry> {
+class _AppEntryState extends ConsumerState<_AppEntry> with WidgetsBindingObserver {
   bool _showOnboarding = true;
   bool _isAuthenticated = false;
   bool _biometricEnabled = false;
   bool _checkingAuth = true;
+  DateTime? _backgroundedAt;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _checkOnboarding();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      _backgroundedAt = DateTime.now();
+    } else if (state == AppLifecycleState.resumed) {
+      if (_backgroundedAt != null && _biometricEnabled && _isAuthenticated) {
+        final duration = ref.read(autoLockDurationProvider).valueOrNull ?? 1;
+        if (duration > 0 && DateTime.now().difference(_backgroundedAt!) >= Duration(minutes: duration)) {
+          setState(() {
+            _isAuthenticated = false;
+          });
+          _authenticate();
+        } else if (duration == 0) {
+          setState(() {
+            _isAuthenticated = false;
+          });
+          _authenticate();
+        }
+      }
+    }
   }
 
   Future<void> _checkOnboarding() async {
@@ -149,14 +194,13 @@ class _MainShell extends ConsumerStatefulWidget {
 }
 
 class _MainShellState extends ConsumerState<_MainShell> {
-  static const _navLabels = ['Home', 'Transactions', 'Budget', 'Goals', 'Debt', 'Insights'];
+  static const _navLabels = ['Home', 'Transactions', 'Budget', 'Goals', 'Insights'];
 
   final _screens = const [
     HomeScreen(),
     TransactionsScreen(),
     BudgetScreen(),
     GoalsScreen(),
-    DebtScreen(),
     InsightsScreen(),
   ];
 
@@ -246,7 +290,7 @@ class _MainShellState extends ConsumerState<_MainShell> {
               ),
             );
           },
-          child: _screens[currentTab],
+          child: _screens[currentTab < _screens.length ? currentTab : 0],
         ),
         bottomNavigationBar: Container(
           decoration: BoxDecoration(
@@ -258,7 +302,7 @@ class _MainShellState extends ConsumerState<_MainShell> {
             ),
           ),
           child: BottomNavigationBar(
-            currentIndex: currentTab,
+            currentIndex: currentTab < _screens.length ? currentTab : 0,
             onTap: (i) {
               HapticFeedback.selectionClick();
               ref.read(currentTabProvider.notifier).state = i;
@@ -269,8 +313,7 @@ class _MainShellState extends ConsumerState<_MainShell> {
               _navItem(LucideIcons.receipt, LucideIcons.receipt, 1),
               _navItem(LucideIcons.wallet, LucideIcons.wallet, 2),
               _navItem(LucideIcons.flag, LucideIcons.flag, 3),
-              _navItem(LucideIcons.creditCard, LucideIcons.creditCard, 4),
-              _navItem(LucideIcons.chartBar, LucideIcons.chartBar, 5),
+              _navItem(LucideIcons.chartBar, LucideIcons.chartBar, 4),
             ],
           ),
         ),
@@ -281,7 +324,7 @@ class _MainShellState extends ConsumerState<_MainShell> {
                   _showAddOptions(context);
                 },
                 icon: const Icon(LucideIcons.plus, size: 20),
-                label: const Text('New'),
+                label: const Text('Add'),
               )
             : null,
       ),
@@ -320,14 +363,14 @@ class _MainShellState extends ConsumerState<_MainShell> {
                 ),
               ),
               const SizedBox(height: 20),
-              Text('New Transaction', style: AppTheme.displayStyle(size: 18, weight: FontWeight.w600, color: colorScheme.onSurface)),
+              Text('Quick Entry', style: AppTheme.displayStyle(size: 18, weight: FontWeight.w600, color: colorScheme.onSurface)),
               const SizedBox(height: 20),
               Row(
                 children: [
                   Expanded(
                     child: _ActionButton(
-                      icon: LucideIcons.plus,
-                      label: 'Expense',
+                      icon: LucideIcons.minusCircle,
+                      label: 'Log Expense',
                       color: colorScheme.primary,
                       onTap: () {
                         Navigator.pop(ctx);
@@ -338,29 +381,16 @@ class _MainShellState extends ConsumerState<_MainShell> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: _ActionButton(
-                      icon: LucideIcons.arrowLeftRight,
-                      label: 'Transfer',
-                      color: AppColors.warning,
+                      icon: LucideIcons.plusCircle,
+                      label: 'Add Pocket Money',
+                      color: AppColors.success,
                       onTap: () {
                         Navigator.pop(ctx);
-                        _showTransfer(context);
+                        _showAddIncome(context);
                       },
                     ),
                   ),
                 ],
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: _ActionButton(
-                  icon: LucideIcons.arrowRightLeft,
-                  label: 'Split Transaction',
-                  color: AppColors.tertiary,
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _showSplitTransaction(context);
-                  },
-                ),
               ),
               const SizedBox(height: 16),
             ],
@@ -382,7 +412,7 @@ class _MainShellState extends ConsumerState<_MainShell> {
     );
   }
 
-  void _showTransfer(BuildContext context) {
+  void _showAddIncome(BuildContext context) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -390,19 +420,7 @@ class _MainShellState extends ConsumerState<_MainShell> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (_) => const TransferSheet(),
-    );
-  }
-
-  void _showSplitTransaction(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (_) => const SplitTransactionSheet(),
+      builder: (_) => const AddTransactionSheet(initialType: 'income'),
     );
   }
 

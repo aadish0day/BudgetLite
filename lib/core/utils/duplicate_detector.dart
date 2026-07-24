@@ -21,17 +21,26 @@ class DuplicateDetector {
   static DuplicateCheckResult findDuplicates({
     required List<Transaction> existingTransactions,
     required double amount,
-    required String categoryId,
+    String? categoryId,
     required DateTime date,
     String? note,
+    bool? isIncome,
     double amountTolerance = 0.01,
     int maxDaysApart = 2,
   }) {
     final matches = <Transaction>[];
 
     for (final t in existingTransactions) {
-      // Skip if different category
-      if (t.categoryId != categoryId) continue;
+      // Check direction if specified
+      if (isIncome != null) {
+        final existingIsIncome = t.amount < 0;
+        if (existingIsIncome != isIncome) continue;
+      }
+
+      // Skip if category specified and doesn't match
+      if (categoryId != null && categoryId.isNotEmpty && t.categoryId != categoryId) {
+        continue;
+      }
 
       // Check amount within tolerance
       if ((t.amount.abs() - amount.abs()).abs() > amountTolerance) continue;

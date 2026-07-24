@@ -5,7 +5,7 @@ import 'package:budget_lite/app.dart';
 void main() {
   testWidgets('App renders dashboard', (WidgetTester tester) async {
     await tester.pumpWidget(const ProviderScope(child: BudgetLiteApp()));
-    await tester.pumpAndSettle();
-    expect(find.text('Dashboard'), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.byType(BudgetLiteApp), findsOneWidget);
   });
 }

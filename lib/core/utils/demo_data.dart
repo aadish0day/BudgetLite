@@ -7,14 +7,14 @@ class DemoDataSeeder {
     final random = Random(42);
     final now = DateTime.now();
 
-    // Sample categories with realistic data
-    final categoryIds = ['food', 'transport', 'rent', 'shopping', 'bills'];
+    // Sample categories with student-friendly data
+    final categoryIds = ['food', 'transport', 'shopping', 'bills', 'entertainment'];
     final merchants = {
       'food': ['Swiggy', 'Zomato', 'Starbucks', 'Domino\'s', 'Dhaba', 'Pizza Hut', 'McDonald\'s', 'Subway'],
-      'transport': ['Uber', 'Ola', 'Petrol Pump', 'Metro Card', 'Bus Pass', 'Parking'],
-      'rent': ['Housing Society', 'Landlord', 'Maintenance', 'Electricity Board'],
+      'transport': ['Uber', 'Ola', 'Metro Card', 'Bus Pass', 'Auto'],
       'shopping': ['Amazon', 'Myntra', 'Flipkart', 'Zara', 'H&M', 'Ajio', 'Nykaa'],
-      'bills': ['Netflix', 'Jio', 'Airtel', 'Electricity Bill', 'Water Bill', 'Internet', 'Spotify'],
+      'bills': ['Netflix', 'Jio', 'Airtel', 'Electricity', 'Internet', 'Spotify'],
+      'entertainment': ['PVR', 'BookMyShow', 'Steam', 'Spotify', 'Zomato'],
     };
 
     // Delete existing transactions to avoid duplicates
@@ -31,9 +31,7 @@ class DemoDataSeeder {
       for (int i = 0; i < txnsToday; i++) {
         final catId = categoryIds[random.nextInt(categoryIds.length)];
         final merchant = merchants[catId]![random.nextInt(merchants[catId]!.length)];
-        final amount = catId == 'rent'
-            ? 12000 + (random.nextDouble() * 500)
-            : _randomAmount(random, catId);
+        final amount = _randomAmount(random, catId);
 
         batch.add(TransactionsCompanion.insert(
           id: 'demo_${daysAgo}_$i',
@@ -43,27 +41,41 @@ class DemoDataSeeder {
           note: Value(merchant),
           date: DateTime(date.year, date.month, date.day, random.nextInt(12) + 8, random.nextInt(60)),
           paymentMethod: Value(['Cash', 'UPI', 'Debit Card', 'Credit Card', 'Net Banking', 'Wallet'][random.nextInt(6)]),
-          isRecurring: Value(catId == 'rent' || catId == 'bills'),
-          recurringInterval: Value(catId == 'rent' ? 'monthly' : null),
+          isRecurring: Value(catId == 'bills'),
+          recurringInterval: Value(catId == 'bills' ? 'monthly' : null),
         ));
       }
     }
 
-    // Add some income entries (salary)
-    for (int monthOffset = 0; monthOffset < 3; monthOffset++) {
-      final salaryDate = DateTime(now.year, now.month - monthOffset, 1);
+    // Add past weekly pocket money entries for history (last 12 weeks)
+    for (int weekOffset = 1; weekOffset < 12; weekOffset++) {
+      final pocketDate = now.subtract(Duration(days: 7 * weekOffset));
       batch.add(TransactionsCompanion.insert(
-        id: 'demo_income_$monthOffset',
-        amount: -45000.0, // negative = income
+        id: 'demo_income_weekly_$weekOffset',
+        amount: -8000.0,
         categoryId: 'income',
         accountId: 'default',
-        note: const Value('Monthly Salary'),
-        date: salaryDate,
-        paymentMethod: const Value('Net Banking'),
+        note: const Value('Weekly Pocket Money'),
+        date: pocketDate,
+        paymentMethod: const Value('UPI'),
       ));
     }
 
-    // Set monthly income for current month
+    // Create a recurring weekly pocket money template (auto-posts each week going forward)
+    batch.add(TransactionsCompanion.insert(
+      id: 'demo_income_recurring',
+      amount: -8000.0,
+      categoryId: 'income',
+      accountId: 'default',
+      note: const Value('Weekly Pocket Money'),
+      date: now,
+      paymentMethod: const Value('UPI'),
+      isRecurring: const Value(true),
+      recurringInterval: const Value('weekly'),
+      isRecurringInstance: const Value(false),
+    ));
+
+    // Set monthly income to 32000 (8000 × 4 weeks)
     final existingIncome = await (db.select(db.monthlyIncome)
           ..where((t) => t.month.equals('${now.year}-${now.month.toString().padLeft(2, '0')}')))
         .get();
@@ -72,12 +84,12 @@ class DemoDataSeeder {
       await db.into(db.monthlyIncome).insert(MonthlyIncomeCompanion.insert(
         id: 'demo_income_setting',
         month: '${now.year}-${now.month.toString().padLeft(2, '0')}',
-        amount: 45000.0,
+        amount: 32000.0,
       ));
     }
 
     // Set budgets for categories
-    final budgetAmounts = <String, double>{'food': 8000, 'transport': 3000, 'rent': 13000, 'shopping': 4000, 'bills': 3000};
+    final budgetAmounts = <String, double>{'food': 3000, 'transport': 1000, 'shopping': 2000, 'bills': 1000, 'entertainment': 1000};
     for (final entry in budgetAmounts.entries) {
       final existing = await (db.select(db.budgets)
             ..where((t) => t.categoryId.equals(entry.key))
@@ -104,15 +116,17 @@ class DemoDataSeeder {
   static double _randomAmount(Random random, String categoryId) {
     switch (categoryId) {
       case 'food':
-        return (random.nextDouble() * 600 + 50); // ₹50-650
+        return (random.nextDouble() * 400 + 30); // ₹30-430
       case 'transport':
-        return (random.nextDouble() * 300 + 20); // ₹20-320
+        return (random.nextDouble() * 200 + 10); // ₹10-210
       case 'shopping':
-        return (random.nextDouble() * 2000 + 200); // ₹200-2200
-      case 'bills':
         return (random.nextDouble() * 1000 + 100); // ₹100-1100
+      case 'bills':
+        return (random.nextDouble() * 500 + 50); // ₹50-550
+      case 'entertainment':
+        return (random.nextDouble() * 300 + 50); // ₹50-350
       default:
-        return (random.nextDouble() * 500 + 100);
+        return (random.nextDouble() * 300 + 50);
     }
   }
 }

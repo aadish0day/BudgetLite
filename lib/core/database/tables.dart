@@ -32,6 +32,7 @@ class Transactions extends Table {
   BoolColumn get isRecurring => boolean().withDefault(const Constant(false))();
   BoolColumn get isRecurringInstance => boolean().withDefault(const Constant(false))();
   TextColumn get recurringInterval => text().nullable()();
+  DateTimeColumn get recurringEndDate => dateTime().nullable()();
   TextColumn get receiptImagePath => text().nullable()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 
@@ -80,4 +81,22 @@ class AppSettings extends Table {
 
   @override
   Set<Column> get primaryKey => {key};
+}
+
+class Tags extends Table {
+  TextColumn get id => text()();
+  TextColumn get name => text()();
+  IntColumn get color => integer().withDefault(const Constant(0xFF9E9E9E))();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+class TransactionTags extends Table {
+  TextColumn get transactionId => text().references(Transactions, #id)();
+  TextColumn get tagId => text().references(Tags, #id)();
+
+  @override
+  Set<Column> get primaryKey => {transactionId, tagId};
 }

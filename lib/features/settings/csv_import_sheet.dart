@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -15,6 +17,7 @@ import '../../core/utils/duplicate_detector.dart';
 import '../../core/database/database.dart';
 import '../../providers/database_provider.dart';
 import '../../providers/transaction_provider.dart';
+import '../../providers/settings_provider.dart';
 
 /// Bottom sheet for importing transactions from a bank statement CSV.
 class CsvImportSheet extends ConsumerStatefulWidget {
@@ -30,14 +33,22 @@ class _CsvImportSheetState extends ConsumerState<CsvImportSheet> {
   bool _importing = false;
   List<int> _selectedRows = [];
   String _categoryName = 'other';
-  String _accountId = 'default';
+
+  // Column mapping state
+  bool _showMapping = false;
+  List<String> _csvHeaders = [];
+  String? _mappedDateColumn;
+  String? _mappedDescColumn;
+  String? _mappedDebitColumn;
+  String? _mappedCreditColumn;
+  String? _mappedAmountColumn;
+  String? _currentFilePath;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = colorScheme.brightness == Brightness.dark;
     final categories = ref.watch(categoriesProvider).valueOrNull ?? [];
-    final accounts = ref.watch(accountsListProvider).valueOrNull ?? [];
 
     return Container(
       constraints: BoxConstraints(
@@ -65,8 +76,8 @@ class _CsvImportSheetState extends ConsumerState<CsvImportSheet> {
                 Icon(LucideIcons.fileSpreadsheet, size: 20, color: colorScheme.primary),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text(
-                    _result != null ? 'Review Import' : 'Import Bank Statement',
+                  child:           Text(
+                    _showMapping ? 'Column Mapping' : _result != null ? 'Review Import' : 'Import Bank Statement',
                     style: AppTheme.displayStyle(
                       size: 18, weight: FontWeight.w600, color: colorScheme.onSurface,
                     ),
@@ -88,10 +99,12 @@ class _CsvImportSheetState extends ConsumerState<CsvImportSheet> {
               padding: EdgeInsets.all(48),
               child: CircularProgressIndicator(),
             )
+          else if (_showMapping)
+            _buildMappingView(colorScheme, isDark)
           else if (_result == null)
             _buildPickFileView(colorScheme, isDark)
           else
-            _buildPreviewView(colorScheme, isDark, categories, accounts),
+            _buildPreviewView(colorScheme, isDark, categories),
 
           const SizedBox(height: 16),
         ],
@@ -180,7 +193,7 @@ class _CsvImportSheetState extends ConsumerState<CsvImportSheet> {
   }
 
   Widget _buildPreviewView(ColorScheme colorScheme, bool isDark,
-      List<Category> categories, List<Account> accounts) {
+      List<Category> categories) {
     if (_result == null) return const SizedBox.shrink();
 
     return Flexible(
@@ -242,18 +255,6 @@ class _CsvImportSheetState extends ConsumerState<CsvImportSheet> {
                     ],
                     hint: 'Category',
                     onChanged: (v) => setState(() => _categoryName = v ?? 'other'),
-                    colorScheme: colorScheme,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _buildDropdown<String>(
-                    value: _accountId,
-                    items: accounts.map((a) =>
-                      DropdownMenuItem(value: a.id, child: Text(a.name, style: AppTheme.bodyStyle(size: 13))),
-                    ).toList(),
-                    hint: 'Account',
-                    onChanged: (v) => setState(() => _accountId = v ?? 'default'),
                     colorScheme: colorScheme,
                   ),
                 ),
@@ -442,6 +443,11 @@ class _CsvImportSheetState extends ConsumerState<CsvImportSheet> {
     );
   }
 
+  /// Generate a stable key for a CSV header row to save/restore mappings.
+  String _mappingKey(List<String> headers) =>
+      const JsonEncoder().convert(headers.map((h) => h.trim().toLowerCase()).toList());
+
+  /// Try to auto-parse a CSV file, falling back to manual mapping if detection fails.
   Future<void> _pickFile() async {
     setState(() => _loading = true);
 
@@ -452,18 +458,67 @@ class _CsvImportSheetState extends ConsumerState<CsvImportSheet> {
       );
 
       if (result != null && result.files.single.path != null) {
-        final importResult = await CsvImporter.importFile(
-          filePath: result.files.single.path!,
-        );
-        if (mounted) {
-          setState(() {
-            _result = importResult;
-            _loading = false;
-            // Pre-select all valid rows
-            _selectedRows = List.generate(
-              importResult.transactions.length, (i) => i,
+        final filePath = result.files.single.path!;
+        _currentFilePath = filePath;
+
+        // Read headers from the CSV file
+        final lines = await File(filePath).readAsLines();
+        if (lines.isEmpty) {
+          if (mounted) {
+            setState(() => _loading = false);
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('File is empty'), behavior: SnackBarBehavior.floating),
             );
-          });
+          }
+          return;
+        }
+
+        final headers = _parseCsvLine(lines.first).map((h) => h.trim()).toList();
+        _csvHeaders = headers;
+
+        // Try to load a saved mapping
+        final settings = ref.read(settingsNotifierProvider.notifier);
+        final savedMappingStr = await settings.getSetting('csv_mapping_${_mappingKey(headers)}');
+        CsvColumnMapping? forcedMapping;
+        if (savedMappingStr != null && savedMappingStr.isNotEmpty) {
+          try {
+            final map = Map<String, dynamic>.from(const JsonDecoder().convert(savedMappingStr) as Map);
+            forcedMapping = CsvColumnMapping(
+              dateColumn: map['date'] as int?,
+              descriptionColumn: map['desc'] as int?,
+              debitColumn: map['debit'] as int?,
+              creditColumn: map['credit'] as int?,
+              amountColumn: map['amount'] as int?,
+            );
+          } catch (_) {}
+        }
+
+        final importResult = await CsvImporter.importFile(
+          filePath: filePath,
+          forcedMapping: forcedMapping,
+        );
+
+        if (mounted) {
+          if (importResult.errors.isNotEmpty && importResult.transactions.isEmpty && forcedMapping == null) {
+            // Auto-detection failed — show manual mapping UI
+            setState(() {
+              _showMapping = true;
+              _loading = false;
+              _mappedDateColumn = null;
+              _mappedDescColumn = null;
+              _mappedDebitColumn = null;
+              _mappedCreditColumn = null;
+              _mappedAmountColumn = null;
+            });
+          } else {
+            setState(() {
+              _result = importResult;
+              _loading = false;
+              _selectedRows = List.generate(
+                importResult.transactions.length, (i) => i,
+              );
+            });
+          }
         }
       } else {
         if (mounted) setState(() => _loading = false);
@@ -478,6 +533,176 @@ class _CsvImportSheetState extends ConsumerState<CsvImportSheet> {
           ),
         );
       }
+    }
+  }
+
+  /// Simple CSV line parser for reading headers.
+  List<String> _parseCsvLine(String line) {
+    final fields = <String>[];
+    StringBuffer current = StringBuffer();
+    bool inQuotes = false;
+    for (int i = 0; i < line.length; i++) {
+      final char = line[i];
+      if (char == '"') {
+        inQuotes = !inQuotes;
+      } else if (char == ',' && !inQuotes) {
+        fields.add(current.toString());
+        current = StringBuffer();
+      } else {
+        current.write(char);
+      }
+    }
+    fields.add(current.toString());
+    return fields;
+  }
+
+  /// Manual column mapping view — shown when auto-detection fails.
+  Widget _buildMappingView(ColorScheme colorScheme, bool isDark) {
+    return Flexible(
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(10),
+                color: AppColors.warning.withValues(alpha: 0.1),
+                border: Border.all(color: AppColors.warning.withValues(alpha: 0.2)),
+              ),
+              child: Row(
+                children: [
+                  Icon(LucideIcons.slidersHorizontal, size: 16, color: AppColors.warning),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text('Column mapping required — select which column matches each field',
+                        style: AppTheme.bodyStyle(size: 12, color: colorScheme.onSurface)),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              children: [
+                _MappingDropdown(
+                  label: '📅 Date column',
+                  value: _mappedDateColumn,
+                  headers: _csvHeaders,
+                  onChanged: (v) => setState(() => _mappedDateColumn = v),
+                  colorScheme: colorScheme,
+                ),
+                const SizedBox(height: 10),
+                _MappingDropdown(
+                  label: '📝 Description column',
+                  value: _mappedDescColumn,
+                  headers: _csvHeaders,
+                  onChanged: (v) => setState(() => _mappedDescColumn = v),
+                  colorScheme: colorScheme,
+                ),
+                const SizedBox(height: 10),
+                _MappingDropdown(
+                  label: '💸 Debit / Withdrawal column',
+                  value: _mappedDebitColumn,
+                  headers: _csvHeaders,
+                  onChanged: (v) => setState(() => _mappedDebitColumn = v),
+                  colorScheme: colorScheme,
+                ),
+                const SizedBox(height: 10),
+                _MappingDropdown(
+                  label: '💰 Credit / Deposit column',
+                  value: _mappedCreditColumn,
+                  headers: _csvHeaders,
+                  onChanged: (v) => setState(() => _mappedCreditColumn = v),
+                  colorScheme: colorScheme,
+                ),
+                const SizedBox(height: 10),
+                _MappingDropdown(
+                  label: '🔢 Amount column (if single)',
+                  value: _mappedAmountColumn,
+                  headers: _csvHeaders,
+                  onChanged: (v) => setState(() => _mappedAmountColumn = v),
+                  colorScheme: colorScheme,
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  'Select Date + Description + (Amount or Debit/Credit)',
+                  style: AppTheme.bodyStyle(size: 11, color: colorScheme.onSurfaceVariant),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 12, 24, 16),
+            child: SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: (_mappedDateColumn != null && _mappedDescColumn != null &&
+                        (_mappedAmountColumn != null || (_mappedDebitColumn != null || _mappedCreditColumn != null)))
+                    ? () => _applyMapping()
+                    : null,
+                icon: const Icon(LucideIcons.check, size: 18),
+                label: const Text('Apply Mapping'),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _applyMapping() async {
+    if (_currentFilePath == null) return;
+    setState(() => _loading = true);
+
+    final dateIdx = _csvHeaders.indexOf(_mappedDateColumn!);
+    final descIdx = _csvHeaders.indexOf(_mappedDescColumn!);
+    final debitIdx = _mappedDebitColumn != null ? _csvHeaders.indexOf(_mappedDebitColumn!) : null;
+    final creditIdx = _mappedCreditColumn != null ? _csvHeaders.indexOf(_mappedCreditColumn!) : null;
+    final amountIdx = _mappedAmountColumn != null ? _csvHeaders.indexOf(_mappedAmountColumn!) : null;
+
+    final mapping = CsvColumnMapping(
+      dateColumn: dateIdx >= 0 ? dateIdx : null,
+      descriptionColumn: descIdx >= 0 ? descIdx : null,
+      debitColumn: debitIdx,
+      creditColumn: creditIdx,
+      amountColumn: amountIdx,
+    );
+
+    // Save this mapping for next import
+    final key = _mappingKey(_csvHeaders);
+    final settings = ref.read(settingsNotifierProvider.notifier);
+    await settings.setSetting(
+      'csv_mapping_$key',
+      const JsonEncoder().convert({
+        'date': dateIdx,
+        'desc': descIdx,
+        // ignore: use_null_aware_elements
+        if (debitIdx != null) 'debit': debitIdx,
+        // ignore: use_null_aware_elements
+        if (creditIdx != null) 'credit': creditIdx,
+        // ignore: use_null_aware_elements
+        if (amountIdx != null) 'amount': amountIdx,
+      }),
+    );
+
+    final importResult = await CsvImporter.importFile(
+      filePath: _currentFilePath!,
+      forcedMapping: mapping,
+    );
+
+    if (mounted) {
+      setState(() {
+        _showMapping = false;
+        _loading = false;
+        _result = importResult;
+        _selectedRows = List.generate(
+          importResult.transactions.length, (i) => i,
+        );
+      });
     }
   }
 
@@ -626,21 +851,11 @@ class _CsvImportSheetState extends ConsumerState<CsvImportSheet> {
           id: uuid,
           amount: finalAmount,
           categoryId: categoryId,
-          accountId: _accountId,
+          accountId: 'default',
           note: Value(row.description),
           date: row.date,
           paymentMethod: const Value('bank'),
         ));
-
-        // Update account balance
-        final account = await (db.select(db.accounts)
-          ..where((a) => a.id.equals(_accountId))).getSingleOrNull();
-        if (account != null) {
-          await (db.update(db.accounts)..where((a) => a.id.equals(_accountId)))
-              .write(AccountsCompanion(
-                balance: Value(account.balance - finalAmount),
-              ));
-        }
 
         imported++;
       } catch (e) {
@@ -653,7 +868,6 @@ class _CsvImportSheetState extends ConsumerState<CsvImportSheet> {
     ref.invalidate(thisMonthTransactionsProvider);
     ref.invalidate(totalSpentThisMonthProvider);
     ref.invalidate(totalIncomeThisMonthProvider);
-    ref.invalidate(accountsListProvider);
 
     setState(() => _importing = false);
 
@@ -670,5 +884,52 @@ class _CsvImportSheetState extends ConsumerState<CsvImportSheet> {
       );
       Navigator.pop(context);
     }
+  }
+}
+
+/// Dropdown for selecting which CSV header maps to a field.
+class _MappingDropdown extends StatelessWidget {
+  final String label;
+  final String? value;
+  final List<String> headers;
+  final ValueChanged<String?> onChanged;
+  final ColorScheme colorScheme;
+
+  const _MappingDropdown({
+    required this.label,
+    required this.value,
+    required this.headers,
+    required this.onChanged,
+    required this.colorScheme,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(10),
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+        border: Border.all(
+          color: value != null
+              ? colorScheme.primary.withValues(alpha: 0.3)
+              : colorScheme.outline.withValues(alpha: 0.1),
+        ),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: value,
+          isExpanded: true,
+          hint: Text(label, style: AppTheme.bodyStyle(size: 13)),
+          style: AppTheme.bodyStyle(size: 13, color: colorScheme.onSurface),
+          dropdownColor: colorScheme.surface,
+          items: [
+            DropdownMenuItem(value: null, child: Text('— Not set —', style: AppTheme.bodyStyle(size: 12, color: colorScheme.onSurfaceVariant))),
+            ...headers.map((h) => DropdownMenuItem(value: h, child: Text(h, style: AppTheme.bodyStyle(size: 12)))),
+          ],
+          onChanged: onChanged,
+        ),
+      ),
+    );
   }
 }

@@ -16,8 +16,13 @@ import '../../core/database/database.dart';
 
 class AddTransactionSheet extends ConsumerStatefulWidget {
   final Transaction? transaction; // null = add mode, non-null = edit mode
+  final String initialType; // 'expense' or 'income'
 
-  const AddTransactionSheet({super.key, this.transaction});
+  const AddTransactionSheet({
+    super.key,
+    this.transaction,
+    this.initialType = 'expense',
+  });
 
   @override
   ConsumerState<AddTransactionSheet> createState() => _AddTransactionSheetState();
@@ -32,10 +37,10 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
   late String _transactionType;
   late String _selectedCategory;
   late String _paymentMethod;
-  late String _selectedAccount;
   late DateTime _selectedDate;
   late bool _isRecurring;
   late String? _recurringInterval;
+  DateTime? _recurringEndDate;
   String? _receiptImagePath;
   int? _pressedCategoryIdx;
   bool get _isEditing => widget.transaction != null;
@@ -55,11 +60,11 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
       _transactionType = isIncome ? 'income' : 'expense';
       _selectedCategory = t.categoryId;
       _paymentMethod = t.paymentMethod;
-      _selectedAccount = t.accountId;
       _selectedDate = t.date;
       _amountCtrl.text = t.amount.abs().toStringAsFixed(t.amount == t.amount.roundToDouble() ? 0 : 2);
       _isRecurring = t.isRecurring;
       _recurringInterval = t.recurringInterval;
+      _recurringEndDate = t.recurringEndDate;
       _receiptImagePath = t.receiptImagePath;
       final extracted = _extractTagsFromNote(t.note ?? '');
       _noteCtrl.text = extracted.cleanNote;
@@ -67,13 +72,13 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
         _tagsCtrl.text = extracted.tags;
       }
     } else {
-      _transactionType = 'expense';
-      _selectedCategory = 'food';
-      _paymentMethod = 'Cash';
-      _selectedAccount = 'default';
+      _transactionType = widget.initialType;
+      _selectedCategory = widget.initialType == 'income' ? 'income' : 'food';
+      _paymentMethod = 'UPI';
       _selectedDate = DateTime.now();
       _isRecurring = false;
       _recurringInterval = null;
+      _recurringEndDate = null;
       _receiptImagePath = null;
     }
   }
@@ -427,36 +432,6 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
                 ),
                 const SizedBox(height: 16),
 
-                // Account selector
-                Text(
-                  'Account',
-                  style: AppTheme.bodyStyle(
-                    size: 13, weight: FontWeight.w500, color: colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Consumer(
-                  builder: (context, ref, _) {
-                    final accounts = ref.watch(accountsListProvider).valueOrNull ?? [];
-                    return DropdownButtonFormField<String>(
-                      initialValue: accounts.any((a) => a.id == _selectedAccount)
-                          ? _selectedAccount
-                          : (accounts.isNotEmpty ? accounts.first.id : 'default'),
-                      decoration: InputDecoration(
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      items: accounts.map((a) => DropdownMenuItem(
-                        value: a.id,
-                        child: Text('${a.name} (₹${a.balance.toStringAsFixed(0)})',
-                            style: AppTheme.bodyStyle(size: 13)),
-                      )).toList(),
-                      onChanged: (v) => setState(() => _selectedAccount = v ?? 'default'),
-                    );
-                  },
-                ),
-                const SizedBox(height: 16),
-
                 // Recurring toggle
                 Container(
                   decoration: BoxDecoration(
@@ -489,9 +464,9 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
                           ),
                         ],
                       ),
-                      if (_isRecurring)
+                      if (_isRecurring) ...[
                         Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
+                          padding: const EdgeInsets.only(bottom: 8),
                           child: DropdownButtonFormField<String>(
                             initialValue: _recurringInterval,
                             decoration: InputDecoration(
@@ -514,6 +489,49 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
                             },
                           ),
                         ),
+                        // Optional end date
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: () async {
+                                  final date = await showDatePicker(
+                                    context: context,
+                                    initialDate: _recurringEndDate ?? _selectedDate.add(const Duration(days: 365)),
+                                    firstDate: _selectedDate,
+                                    lastDate: DateTime(2035),
+                                  );
+                                  if (date != null) setState(() => _recurringEndDate = date);
+                                },
+                                icon: Icon(LucideIcons.calendarX, size: 14,
+                                    color: _recurringEndDate != null
+                                        ? AppColors.error
+                                        : colorScheme.onSurfaceVariant),
+                                label: Text(
+                                  _recurringEndDate != null
+                                      ? 'Ends ${_recurringEndDate!.day}/${_recurringEndDate!.month}/${_recurringEndDate!.year}'
+                                      : 'No end date (optional)',
+                                  style: AppTheme.bodyStyle(size: 12),
+                                ),
+                                style: OutlinedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(vertical: 10),
+                                  side: BorderSide(
+                                    color: _recurringEndDate != null
+                                        ? AppColors.error.withValues(alpha: 0.3)
+                                        : colorScheme.outline.withValues(alpha: 0.2),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            if (_recurringEndDate != null)
+                              IconButton(
+                                icon: Icon(LucideIcons.x, size: 16, color: AppColors.error),
+                                onPressed: () => setState(() => _recurringEndDate = null),
+                                visualDensity: VisualDensity.compact,
+                              ),
+                          ],
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -624,17 +642,18 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
         id: widget.transaction!.id,
         amount: _transactionType == 'income' ? -amount.abs() : amount.abs(),
         categoryId: _selectedCategory,
-        accountId: widget.transaction!.accountId,
+        accountId: 'default',
         note: mergedNote,
         date: _selectedDate,
         paymentMethod: _paymentMethod,
         isRecurring: _isRecurring,
         isRecurringInstance: widget.transaction!.isRecurringInstance,
         recurringInterval: _recurringInterval,
+        recurringEndDate: _recurringEndDate,
         receiptImagePath: _receiptImagePath,
         createdAt: widget.transaction!.createdAt,
       );
-      await notifier.updateTransaction(updated, originalTransaction: widget.transaction);
+      await notifier.updateTransaction(updated);
     } else {
       await notifier.addTransaction(
         amount: amount,
@@ -642,9 +661,9 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
         note: mergedNote,
         date: _selectedDate,
         paymentMethod: _paymentMethod,
-        accountId: _selectedAccount,
         isRecurring: _isRecurring,
         recurringInterval: _recurringInterval,
+        recurringEndDate: _recurringEndDate,
         receiptImagePath: _receiptImagePath,
       );
 

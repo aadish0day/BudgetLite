@@ -24,7 +24,6 @@ class _SplitTransactionSheetState extends ConsumerState<SplitTransactionSheet> {
   final _totalCtrl = TextEditingController();
 
   late String _paymentMethod;
-  late String _selectedAccount;
   late DateTime _selectedDate;
 
   // Split lines: each has a category + amount
@@ -39,7 +38,6 @@ class _SplitTransactionSheetState extends ConsumerState<SplitTransactionSheet> {
   void initState() {
     super.initState();
     _paymentMethod = 'Cash';
-    _selectedAccount = 'default';
     _selectedDate = DateTime.now();
   }
 
@@ -87,7 +85,6 @@ class _SplitTransactionSheetState extends ConsumerState<SplitTransactionSheet> {
     final colorScheme = Theme.of(context).colorScheme;
     final categories = ref.watch(categoriesProvider).valueOrNull ?? [];
     final expenseCats = categories.where((c) => c.type == 'expense').toList();
-    final accounts = ref.watch(accountsListProvider).valueOrNull ?? [];
     final isDark = colorScheme.brightness == Brightness.dark;
 
     return Padding(
@@ -285,25 +282,6 @@ class _SplitTransactionSheetState extends ConsumerState<SplitTransactionSheet> {
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
-
-              // Account selector
-              DropdownButtonFormField<String>(
-                initialValue: accounts.any((a) => a.id == _selectedAccount)
-                    ? _selectedAccount
-                    : (accounts.isNotEmpty ? accounts.first.id : 'default'),
-                decoration: InputDecoration(
-                  labelText: 'Account',
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                items: accounts.map((a) => DropdownMenuItem(
-                  value: a.id,
-                  child: Text('${a.name} (₹${a.balance.toStringAsFixed(0)})',
-                      style: AppTheme.bodyStyle(size: 13)),
-                )).toList(),
-                onChanged: (v) => setState(() => _selectedAccount = v ?? 'default'),
-              ),
               const SizedBox(height: 24),
 
               // Submit button
@@ -381,7 +359,6 @@ class _SplitTransactionSheetState extends ConsumerState<SplitTransactionSheet> {
           note: 'Split: ${split.categoryId}',
           date: _selectedDate,
           paymentMethod: _paymentMethod,
-          accountId: _selectedAccount,
         );
       }
 

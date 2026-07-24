@@ -3,6 +3,7 @@ import 'package:drift/drift.dart';
 import 'package:uuid/uuid.dart';
 import '../core/database/database.dart';
 import 'database_provider.dart';
+import 'transaction_provider.dart';
 
 final goalsProvider = FutureProvider<List<Goal>>((ref) async {
   final db = ref.read(databaseProvider);
@@ -38,10 +39,20 @@ class GoalNotifier extends StateNotifier<AsyncValue<void>> {
   Future<void> updateGoalProgress(String id, double amount) async {
     final db = ref.read(databaseProvider);
     final goal = await (db.select(db.goals)..where((t) => t.id.equals(id))).getSingle();
-    final newAmount = goal.currentAmount + amount;
+    final newAmount = (goal.currentAmount + amount).clamp(0.0, double.infinity);
     await (db.update(db.goals)..where((t) => t.id.equals(id))).write(
       GoalsCompanion(currentAmount: Value(newAmount)),
     );
+
+    if (amount > 0) {
+      final txnNotifier = ref.read(transactionNotifierProvider.notifier);
+      await txnNotifier.addTransaction(
+        amount: amount,
+        categoryId: 'savings',
+        note: 'Contribution to Goal: ${goal.name}',
+        date: DateTime.now(),
+      );
+    }
     ref.invalidate(goalsProvider);
   }
 

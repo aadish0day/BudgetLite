@@ -9,6 +9,7 @@ import '../../core/utils/formatters.dart';
 import '../../core/widgets/arc_progress.dart';
 import '../../providers/goal_provider.dart';
 import '../../core/database/database.dart';
+import 'what_if_simulator_sheet.dart';
 
 class GoalsScreen extends ConsumerWidget {
   const GoalsScreen({super.key});
@@ -27,6 +28,13 @@ class GoalsScreen extends ConsumerWidget {
             weight: FontWeight.w600,
           ),
         ),
+        actions: [
+          IconButton(
+            tooltip: 'What-If Simulator',
+            onPressed: () => _showSimulator(context),
+            icon: Icon(LucideIcons.flaskConical, size: 18),
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _showAddGoalSheet(context, ref),
@@ -61,6 +69,18 @@ class GoalsScreen extends ConsumerWidget {
       context: context,
       isScrollControlled: true,
       builder: (_) => const _AddGoalSheet(),
+    );
+  }
+
+  void _showSimulator(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => const WhatIfSimulatorSheet(),
     );
   }
 }
@@ -185,6 +205,7 @@ class _GoalCard extends StatelessWidget {
     final progress = goal.targetAmount > 0
         ? (goal.currentAmount / goal.targetAmount).clamp(0, 1).toDouble()
         : 0.0;
+    final isGoalExceeded = goal.currentAmount >= goal.targetAmount;
     final remaining = goal.targetAmount - goal.currentAmount;
     final daysLeft = goal.targetDate.difference(DateTime.now()).inDays;
     final goalColor = Color(goal.color);
@@ -239,29 +260,37 @@ class _GoalCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      daysLeft > 0 ? '$daysLeft days left' : 'Overdue',
+                      isGoalExceeded
+                          ? 'Goal exceeded!'
+                          : daysLeft > 0
+                              ? '$daysLeft days left'
+                              : 'Overdue',
                       style: AppTheme.bodyStyle(
                         size: 12,
-                        color: colorScheme.onSurfaceVariant,
+                        color: isGoalExceeded
+                            ? AppColors.success
+                            : colorScheme.onSurfaceVariant,
                       ),
                     ),
                   ],
                 ),
               ),
               ArcProgress(
-                progress: progress,
+                progress: isGoalExceeded ? 1.0 : progress,
                 color: goalColor,
                 size: 56,
                 strokeWidth: 5,
                 center: Center(
-                  child: Text(
-                    '${(progress * 100).toStringAsFixed(0)}%',
-                    style: AppTheme.financialStyle(
-                      size: 14,
-                      weight: FontWeight.w700,
-                      color: goalColor,
-                    ),
-                  ),
+                  child: isGoalExceeded
+                      ? Icon(LucideIcons.award, size: 20, color: goalColor)
+                      : Text(
+                          '${(progress * 100).toStringAsFixed(0)}%',
+                          style: AppTheme.financialStyle(
+                            size: 14,
+                            weight: FontWeight.w700,
+                            color: goalColor,
+                          ),
+                        ),
                 ),
               ),
             ],
@@ -342,7 +371,7 @@ class _GoalCard extends StatelessWidget {
               icon: const Icon(LucideIcons.wallet, size: 16),
               label: Text(
                 goal.currentAmount >= goal.targetAmount
-                    ? 'Goal Completed! 🎉'
+                    ? 'Goal Achieved'
                     : 'Contribute',
                 style: AppTheme.bodyStyle(size: 13, weight: FontWeight.w600),
               ),

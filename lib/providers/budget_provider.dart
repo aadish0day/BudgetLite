@@ -8,6 +8,7 @@ import '../core/utils/formatters.dart';
 import '../core/theme/colors.dart';
 import 'transaction_provider.dart';
 import 'database_provider.dart';
+import 'settings_provider.dart';
 
 final budgetsProvider = FutureProvider<List<Budget>>((ref) async {
   final db = ref.read(databaseProvider);
@@ -25,6 +26,11 @@ final thisMonthBudgetsProvider = FutureProvider<List<Budget>>((ref) async {
 });
 
 final monthlyIncomeProvider = FutureProvider<double>((ref) async {
+  // Sum actual income transactions this month (auto-posted weekly pocket money rolls up)
+  final incomeFromTxns = await ref.read(totalIncomeThisMonthProvider.future);
+  if (incomeFromTxns > 0) return incomeFromTxns;
+
+  // Fall back to monthlyIncome table value (for fresh install before any income posts)
   final db = ref.read(databaseProvider);
   final incomes = await (db.select(db.monthlyIncome)
         ..where((t) => t.month.equals(Formatters.monthKey)))
@@ -43,7 +49,6 @@ final remainingBudgetProvider = FutureProvider<double>((ref) async {
   return income - spent;
 });
 
-// Import from transaction_provider
 class BudgetNotifier extends StateNotifier<AsyncValue<void>> {
   BudgetNotifier(this.ref) : super(const AsyncData(null));
   final Ref ref;
@@ -74,6 +79,8 @@ class BudgetNotifier extends StateNotifier<AsyncValue<void>> {
     required double amount,
     bool rollover = false,
   }) async {
+    // Allocated amount must be >= 0
+    final validAmount = amount < 0 ? 0.0 : amount;
     final db = ref.read(databaseProvider);
     final existing = await (db.select(db.budgets)
           ..where((t) => t.categoryId.equals(categoryId))
@@ -84,7 +91,7 @@ class BudgetNotifier extends StateNotifier<AsyncValue<void>> {
       await (db.update(db.budgets)
             ..where((t) => t.id.equals(existing.first.id)))
           .write(BudgetsCompanion(
-        allocatedAmount: Value(amount),
+        allocatedAmount: Value(validAmount),
         rollover: Value(rollover),
       ));
     } else {
@@ -92,43 +99,40 @@ class BudgetNotifier extends StateNotifier<AsyncValue<void>> {
         id: const Uuid().v4(),
         categoryId: categoryId,
         month: Formatters.monthKey,
-        allocatedAmount: amount,
+        allocatedAmount: validAmount,
         rollover: Value(rollover),
       ));
     }
     ref.invalidate(budgetsProvider);
     ref.invalidate(thisMonthBudgetsProvider);
     ref.invalidate(totalBudgetThisMonthProvider);
+    ref.invalidate(effectiveCategoryBudgetProvider(categoryId));
   }
 
   /// Check budget thresholds after adding a transaction.
-  /// Shows a snackbar if the category budget is at >= 80% or >= 100% usage.
+  /// Fires notification only once per threshold crossing (not on every transaction after).
   Future<void> checkBudgetThresholds({
     required BuildContext context,
     required String categoryId,
   }) async {
-    final budgets = await ref.read(thisMonthBudgetsProvider.future);
-    final budget = budgets.where((b) => b.categoryId == categoryId).firstOrNull;
-    if (budget == null) return;
-
-    final transactions = await ref.read(thisMonthTransactionsProvider.future);
-    final spent = transactions
-        .where((t) => t.categoryId == categoryId)
-        .fold<double>(0, (sum, t) => sum + t.amount);
-
-    if (budget.allocatedAmount <= 0) return;
-    final ratio = spent / budget.allocatedAmount;
+    final messenger = ScaffoldMessenger.of(context);
+    final info = await ref.read(effectiveCategoryBudgetProvider(categoryId).future);
+    if (info.effectiveAllocated <= 0) return;
+    final ratio = info.spent / info.effectiveAllocated;
+    final settings = ref.read(settingsNotifierProvider.notifier);
 
     if (ratio >= 1.0) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+      final alreadyNotified = await settings.wasBudgetNotified(categoryId, 'over');
+      if (!alreadyNotified) {
+        await settings.setBudgetNotified(categoryId, 'over');
+        messenger.showSnackBar(
           SnackBar(
             content: Row(
               children: [
                 Icon(LucideIcons.alertTriangle, size: 18, color: AppColors.error),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text('Over budget! ₹${(spent - budget.allocatedAmount).toStringAsFixed(0)} exceeded'),
+                  child: Text('Over budget! ₹${(info.spent - info.effectiveAllocated).toStringAsFixed(0)} exceeded'),
                 ),
               ],
             ),
@@ -139,8 +143,10 @@ class BudgetNotifier extends StateNotifier<AsyncValue<void>> {
         );
       }
     } else if (ratio >= 0.8) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+      final alreadyNotified = await settings.wasBudgetNotified(categoryId, 'approaching');
+      if (!alreadyNotified) {
+        await settings.setBudgetNotified(categoryId, 'approaching');
+        messenger.showSnackBar(
           SnackBar(
             content: Row(
               children: [
@@ -159,6 +165,8 @@ class BudgetNotifier extends StateNotifier<AsyncValue<void>> {
           ),
         );
       }
+    } else {
+      await settings.resetBudgetNotified(categoryId);
     }
   }
 }
@@ -168,19 +176,55 @@ final budgetNotifierProvider =
   return BudgetNotifier(ref);
 });
 
-/// Provider for the used budget ratio per category
-final categoryBudgetUsageProvider =
-    FutureProvider.family<double, String>((ref, categoryId) async {
-  final budgets = await ref.read(thisMonthBudgetsProvider.future);
-  final budget = budgets.where((b) => b.categoryId == categoryId).firstOrNull;
-  if (budget == null) return 0.0;
+/// Provider for effective budget of a category for this month, including rollover carryover if enabled.
+/// If rollover is ON: effectiveAllocated = baseAllocated + max(0, previousAllocated - previousUsed). Overspend does NOT carry as negative.
+/// If rollover is OFF: effectiveAllocated = baseAllocated.
+final effectiveCategoryBudgetProvider =
+    FutureProvider.family<({double baseAllocated, double effectiveAllocated, double spent, bool rollover}), String>(
+        (ref, categoryId) async {
+  final thisMonthBudgets = await ref.read(thisMonthBudgetsProvider.future);
+  final budget = thisMonthBudgets.where((b) => b.categoryId == categoryId).firstOrNull;
 
-  final transactions = await ref.read(thisMonthTransactionsProvider.future);
-  final spent = transactions
-      .where((t) => t.categoryId == categoryId)
+  final baseAllocated = budget?.allocatedAmount ?? 0.0;
+  final rollover = budget?.rollover ?? false;
+
+  // Derive live used amount from this month's transactions
+  final thisMonthTxns = await ref.read(thisMonthTransactionsProvider.future);
+  final spent = thisMonthTxns
+      .where((t) => t.categoryId == categoryId && t.amount > 0)
       .fold<double>(0, (sum, t) => sum + t.amount);
 
-  return budget.allocatedAmount > 0
-      ? (spent / budget.allocatedAmount).clamp(0, 2).toDouble()
-      : 0.0;
+  double carryover = 0.0;
+  if (rollover) {
+    // Check previous month budget and usage
+    final prevMonthBudgets = await ref.read(budgetsByMonthProvider(Formatters.previousMonthKey).future);
+    final prevBudget = prevMonthBudgets.where((b) => b.categoryId == categoryId).firstOrNull;
+    if (prevBudget != null) {
+      final prevMonthTxns = await ref.read(transactionsByMonthProvider(Formatters.previousMonthKey).future);
+      final prevSpent = prevMonthTxns
+          .where((t) => t.categoryId == categoryId && t.amount > 0)
+          .fold<double>(0, (sum, t) => sum + t.amount);
+      final unspent = prevBudget.allocatedAmount - prevSpent;
+      // Overspend does NOT carry as negative
+      if (unspent > 0) {
+        carryover = unspent;
+      }
+    }
+  }
+
+  final effectiveAllocated = baseAllocated + carryover;
+  return (
+    baseAllocated: baseAllocated,
+    effectiveAllocated: effectiveAllocated,
+    spent: spent,
+    rollover: rollover,
+  );
+});
+
+/// Provider for the used budget ratio per category (using effective budget with rollover)
+final categoryBudgetUsageProvider =
+    FutureProvider.family<double, String>((ref, categoryId) async {
+  final info = await ref.read(effectiveCategoryBudgetProvider(categoryId).future);
+  if (info.effectiveAllocated <= 0) return 0.0;
+  return (info.spent / info.effectiveAllocated).clamp(0, 2).toDouble();
 });

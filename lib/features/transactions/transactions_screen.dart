@@ -10,6 +10,7 @@ import '../../core/utils/constants.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/utils/icon_helper.dart';
 import '../../providers/transaction_provider.dart';
+import '../../providers/navigation_provider.dart';
 import '../../core/database/database.dart';
 import '../../providers/database_provider.dart';
 import 'add_transaction_sheet.dart';
@@ -22,13 +23,45 @@ class TransactionsScreen extends ConsumerStatefulWidget {
 }
 
 class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
-  String? _selectedCategory;
   final _searchCtrl = TextEditingController();
+  Set<String> _selectedCategories = {};
   DateTime? _startDate;
   DateTime? _endDate;
   double? _minAmount;
   double? _maxAmount;
   bool _showFilters = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Seed from cross-tab navigation (e.g. pie chart tap in insights)
+    final crossTabFilter = ref.read(transactionFilterProvider);
+    if (crossTabFilter != null) {
+      _selectedCategories = {crossTabFilter};
+      // Clear the cross-tab filter so it doesn't persist on re-navigation
+      Future.microtask(() => ref.read(transactionFilterProvider.notifier).state = null);
+    }
+  }
+
+  bool _hasActiveFilters() {
+    return _selectedCategories.isNotEmpty ||
+        _searchCtrl.text.isNotEmpty ||
+        _startDate != null ||
+        _endDate != null ||
+        _minAmount != null ||
+        _maxAmount != null;
+  }
+
+  void _clearAllFilters() {
+    setState(() {
+      _searchCtrl.clear();
+      _selectedCategories = {};
+      _startDate = null;
+      _endDate = null;
+      _minAmount = null;
+      _maxAmount = null;
+    });
+  }
 
   @override
   void dispose() {
@@ -49,7 +82,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     );
   }
 
-  Future<void> _deleteWithUndo(Transaction t) async {
+  Future<bool> _deleteWithUndo(Transaction t) async {
     final colorScheme = Theme.of(context).colorScheme;
     final messenger = ScaffoldMessenger.of(context);
 
@@ -88,20 +121,21 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
       ),
     );
 
-    if (confirmed != true) return;
+    if (confirmed != true) return false;
 
     // Store reference before deletion for potential undo
     final notifier = ref.read(transactionNotifierProvider.notifier);
     final deletedTxn = t;
 
-    await notifier.deleteTransaction(t.id);
+    // Perform deletion asynchronously so Dismissible isn't removed before returning true
+    notifier.deleteTransaction(t.id);
 
     // Show undo snackbar
     messenger.showSnackBar(
       SnackBar(
         content: Text('${deletedTxn.note ?? "Transaction"} deleted'),
         behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 4),
+        duration: const Duration(seconds: 5),
         action: SnackBarAction(
           label: 'Undo',
           onPressed: () async {
@@ -119,12 +153,12 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
         ),
       ),
     );
+    return true;
   }
 
   List<Transaction> _applyFilters(List<Transaction> txns) {
     return txns.where((t) {
-      // Category filter
-      if (_selectedCategory != null && t.categoryId != _selectedCategory) return false;
+      if (_selectedCategories.isNotEmpty && !_selectedCategories.contains(t.categoryId)) return false;
 
       // Search by note
       if (_searchCtrl.text.isNotEmpty) {
@@ -155,7 +189,6 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
   Widget build(BuildContext context) {
     final transactions = ref.watch(thisMonthTransactionsProvider);
     final categories = ref.watch(categoriesProvider).valueOrNull ?? [];
-
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -179,9 +212,21 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
         children: [
           // Filter bar (category chips)
           _FilterBar(
-            selectedCategory: _selectedCategory,
-            onCategoryChanged: (v) => setState(() => _selectedCategory = v),
+            selectedCategories: _selectedCategories,
+            onCategoryToggled: (categoryId) {
+              setState(() {
+                if (categoryId == null) {
+                  _selectedCategories = {};
+                } else if (_selectedCategories.contains(categoryId)) {
+                  _selectedCategories = Set.from(_selectedCategories)..remove(categoryId);
+                } else {
+                  _selectedCategories = Set.from(_selectedCategories)..add(categoryId);
+                }
+              });
+            },
             categories: categories,
+            hasActiveFilters: _hasActiveFilters(),
+            onClearAll: _clearAllFilters,
           ),
 
           // Expandable search & advanced filters
@@ -197,14 +242,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
               onEndDateChanged: (d) => setState(() => _endDate = d),
               onMinAmountChanged: (v) => setState(() => _minAmount = v),
               onMaxAmountChanged: (v) => setState(() => _maxAmount = v),
-              onClear: () => setState(() {
-                _searchCtrl.clear();
-                _startDate = null;
-                _endDate = null;
-                _minAmount = null;
-                _maxAmount = null;
-                _selectedCategory = null;
-              }),
+              onClear: _clearAllFilters,
             ).animate().slideY(begin: -0.1, duration: 200.ms).fadeIn(duration: 200.ms),
 
           Expanded(
@@ -213,10 +251,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                 final filtered = _applyFilters(txns);
                 if (filtered.isEmpty) {
                   return _EmptyTransactions(
-                    hasFilters: _selectedCategory != null ||
-                        _searchCtrl.text.isNotEmpty ||
-                        _startDate != null ||
-                        _minAmount != null,
+                    hasFilters: _hasActiveFilters(),
                   );
                 }
                 return ListView.builder(
@@ -228,9 +263,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                       transaction: t,
                       category: categories.where((c) => c.id == t.categoryId).firstOrNull,
                       onTap: () => _editTransaction(t),
-                      onDelete: (transaction) {
-                        _deleteWithUndo(transaction);
-                      },
+                      onDelete: (transaction) => _deleteWithUndo(transaction),
                     ).animate().fadeIn(
                       duration: 300.ms,
                       delay: (index * 50).ms,
@@ -488,14 +521,18 @@ class _FilterChipState extends State<_FilterChip> {
 
 // ── Category filter bar ──
 class _FilterBar extends StatelessWidget {
-  final String? selectedCategory;
-  final void Function(String?) onCategoryChanged;
+  final Set<String> selectedCategories;
+  final void Function(String?) onCategoryToggled;
   final List<Category> categories;
+  final bool hasActiveFilters;
+  final VoidCallback onClearAll;
 
   const _FilterBar({
-    required this.selectedCategory,
-    required this.onCategoryChanged,
+    required this.selectedCategories,
+    required this.onCategoryToggled,
     required this.categories,
+    required this.hasActiveFilters,
+    required this.onClearAll,
   });
 
   @override
@@ -506,21 +543,65 @@ class _FilterBar extends StatelessWidget {
         scrollDirection: Axis.horizontal,
         child: Row(
           children: [
+            if (hasActiveFilters) ...[
+              _ClearFiltersChip(onTap: onClearAll),
+              const SizedBox(width: 8),
+            ],
             _CategoryChip(
               label: 'All',
-              selected: selectedCategory == null,
-              onTap: () => onCategoryChanged(null),
+              selected: selectedCategories.isEmpty,
+              onTap: () => onCategoryToggled(null),
             ),
             const SizedBox(width: 8),
             ...categories.map((c) => Padding(
                   padding: const EdgeInsets.only(right: 8),
                   child: _CategoryChip(
                     label: c.name,
-                    selected: selectedCategory == c.id,
+                    selected: selectedCategories.contains(c.id),
                     color: Color(c.color),
-                    onTap: () => onCategoryChanged(c.id),
+                    onTap: () => onCategoryToggled(c.id),
                   ),
                 )),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ClearFiltersChip extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _ClearFiltersChip({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.lightImpact();
+        onTap();
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          color: colorScheme.error.withValues(alpha: 0.1),
+          border: Border.all(color: colorScheme.error.withValues(alpha: 0.3)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(LucideIcons.x, size: 14, color: colorScheme.error),
+            const SizedBox(width: 4),
+            Text(
+              'Clear',
+              style: AppTheme.bodyStyle(
+                size: 13,
+                weight: FontWeight.w600,
+                color: colorScheme.error,
+              ),
+            ),
           ],
         ),
       ),
@@ -580,7 +661,7 @@ class _TransactionCard extends StatelessWidget {
   final Transaction transaction;
   final Category? category;
   final VoidCallback onTap;
-  final ValueChanged<Transaction> onDelete;
+  final Future<bool> Function(Transaction) onDelete;
 
   const _TransactionCard({
     required this.transaction,
@@ -598,9 +679,10 @@ class _TransactionCard extends StatelessWidget {
     return Dismissible(
       key: Key(transaction.id),
       direction: DismissDirection.endToStart,
-      onDismissed: (_) {
-        onDelete(transaction);
-        HapticFeedback.mediumImpact();
+      confirmDismiss: (direction) async {
+        final deleted = await onDelete(transaction);
+        if (deleted) HapticFeedback.mediumImpact();
+        return deleted;
       },
       background: Container(
         alignment: Alignment.centerRight,

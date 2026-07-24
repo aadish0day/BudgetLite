@@ -91,6 +91,7 @@ class _SubscriptionAuditScreenState extends ConsumerState<SubscriptionAuditScree
     final totalAnnual = filtered.fold<double>(0, (s, p) => s + p.annualCost);
     final overdueCount = filtered.where((p) => p.isOverdue).length;
     final dueSoonCount = filtered.where((p) => p.isDueSoon || p.isDueToday).length;
+    final unusedCount = filtered.where((p) => p.isPossiblyUnused).length;
     final upcoming = filtered.where((p) => p.daysUntil > 3).toList();
 
     if (filtered.isEmpty) {
@@ -128,6 +129,7 @@ class _SubscriptionAuditScreenState extends ConsumerState<SubscriptionAuditScree
           activeCount: filtered.length,
           overdueCount: overdueCount,
           dueSoonCount: dueSoonCount,
+          unusedCount: unusedCount,
           colorScheme: colorScheme,
         ),
         const SizedBox(height: 20),
@@ -297,6 +299,7 @@ class _StatsHeader extends StatelessWidget {
   final int activeCount;
   final int overdueCount;
   final int dueSoonCount;
+  final int unusedCount;
   final ColorScheme colorScheme;
 
   const _StatsHeader({
@@ -305,6 +308,7 @@ class _StatsHeader extends StatelessWidget {
     required this.activeCount,
     required this.overdueCount,
     required this.dueSoonCount,
+    required this.unusedCount,
     required this.colorScheme,
   });
 
@@ -366,6 +370,12 @@ class _StatsHeader extends StatelessWidget {
               if (dueSoonCount > 0)
                 _StatBadge(
                   icon: LucideIcons.bell, label: 'Due soon', value: '$dueSoonCount',
+                  color: AppColors.warning, colorScheme: colorScheme,
+                ),
+              if (dueSoonCount > 0 && unusedCount > 0) const SizedBox(width: 12),
+              if (unusedCount > 0)
+                _StatBadge(
+                  icon: LucideIcons.rotateCw, label: 'Unused', value: '$unusedCount',
                   color: AppColors.warning, colorScheme: colorScheme,
                 ),
             ],
@@ -506,6 +516,7 @@ class _SubscriptionCard extends StatelessWidget {
     final isDark = colorScheme.brightness == Brightness.dark;
     final isOverdue = payment.isOverdue;
     final isDueSoon = payment.isDueSoon || payment.isDueToday;
+    final isUnused = payment.isPossiblyUnused;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -585,6 +596,25 @@ class _SubscriptionCard extends StatelessWidget {
                   ),
                   const Spacer(),
 
+                  if (isUnused)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(6),
+                      color: AppColors.warning.withValues(alpha: 0.12),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(LucideIcons.rotateCw, size: 10, color: AppColors.warning),
+                        const SizedBox(width: 3),
+                        Text('Possibly unused',
+                            style: AppTheme.bodyStyle(
+                              size: 8, weight: FontWeight.w600, color: AppColors.warning)),
+                      ],
+                    ),
+                  ),
+                  if (isUnused) const SizedBox(width: 6),
                   // Monthly cost indicator
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -714,13 +744,14 @@ void markRecurringAsPaid(BuildContext context, WidgetRef ref, RecurringPaymentIn
         id: original.id,
         amount: original.amount,
         categoryId: original.categoryId,
-        accountId: original.accountId,
+        accountId: 'default',
         note: original.note,
         date: DateTime.now(),
         paymentMethod: original.paymentMethod,
         isRecurring: original.isRecurring,
         isRecurringInstance: original.isRecurringInstance,
         recurringInterval: original.recurringInterval,
+        recurringEndDate: original.recurringEndDate,
         receiptImagePath: original.receiptImagePath,
         createdAt: original.createdAt,
       );

@@ -9,7 +9,7 @@ import '../core/utils/sms_parser.dart';
 import '../core/utils/duplicate_detector.dart';
 import '../core/utils/notification_service.dart';
 import 'database_provider.dart';
-import 'settings_provider.dart';
+import 'settings_provider.dart' show settingsNotifierProvider;
 
 final transactionsProvider = FutureProvider.autoDispose<List<Transaction>>((ref) async {
   final db = ref.read(databaseProvider);
@@ -32,68 +32,19 @@ final thisMonthTransactionsProvider = FutureProvider<List<Transaction>>((ref) as
   return ref.read(transactionsByMonthProvider(Formatters.monthKey).future);
 });
 
-/// Provider for all transactions belonging to a specific account, sorted by date DESC.
-final transactionsByAccountIdProvider =
-    FutureProvider.family<List<Transaction>, String>((ref, accountId) async {
-  final db = ref.read(databaseProvider);
-  return (db.select(db.transactions)
-        ..where((t) => t.accountId.equals(accountId))
-        ..orderBy([(t) => OrderingTerm(expression: t.date, mode: OrderingMode.desc)]))
-      .get();
-});
-
-/// Provider for balance history points of an account (for charting).
-/// Returns a list of (date, balance) record pairs from oldest to newest.
-final accountBalanceHistoryProvider =
-    FutureProvider.family<List<({DateTime date, double balance})>, String>(
-        (ref, accountId) async {
-  final db = ref.read(databaseProvider);
-  final account = await (db.select(db.accounts)
-    ..where((a) => a.id.equals(accountId))).getSingleOrNull();
-  if (account == null) return [];
-
-  final transactions = await (db.select(db.transactions)
-    ..where((t) => t.accountId.equals(accountId))
-    ..orderBy([(t) => OrderingTerm(expression: t.date, mode: OrderingMode.asc)]))
-    .get();
-
-  if (transactions.isEmpty) {
-    return [(date: DateTime.now(), balance: account.balance)];
-  }
-
-  // Walk backwards from current balance to reconstruct history
-  final points = <({DateTime date, double balance})>[];
-  double runningBalance = account.balance;
-
-  // Add current day as the latest point
-  points.add((date: DateTime.now(), balance: runningBalance));
-
-  // Walk backwards through transactions, reversing their effect
-  for (int i = transactions.length - 1; i >= 0; i--) {
-    final txn = transactions[i];
-    // Amount > 0 = expense (decreased balance), so add it back
-    // Amount < 0 = income (increased balance), so subtract it back
-    runningBalance += txn.amount;
-    points.add((date: txn.date, balance: runningBalance));
-  }
-
-  // Reverse to chronological order (oldest first)
-  return points.reversed.toList();
-});
-
-/// Total spending this month, excluding internal transfer entries.
+/// Total spending this month.
 final totalSpentThisMonthProvider = FutureProvider<double>((ref) async {
   final transactions = await ref.read(thisMonthTransactionsProvider.future);
   return transactions
-      .where((t) => t.amount > 0 && t.categoryId != 'transfer')
+      .where((t) => t.amount > 0)
       .fold<double>(0, (sum, t) => sum + t.amount);
 });
 
-/// Total income this month, excluding internal transfer entries.
+/// Total income this month.
 final totalIncomeThisMonthProvider = FutureProvider<double>((ref) async {
   final transactions = await ref.read(thisMonthTransactionsProvider.future);
   return transactions
-      .where((t) => t.amount < 0 && t.categoryId != 'transfer')
+      .where((t) => t.amount < 0)
       .fold<double>(0, (sum, t) => sum + t.amount.abs());
 });
 
@@ -107,43 +58,41 @@ class TransactionNotifier extends StateNotifier<AsyncValue<void>> {
     String? note,
     required DateTime date,
     String paymentMethod = 'cash',
-    String accountId = 'default',
     bool isRecurring = false,
     String? recurringInterval,
     String? receiptImagePath,
+    bool? isIncome,
+    DateTime? recurringEndDate,
   }) async {
     final db = ref.read(databaseProvider);
     final uuid = const Uuid().v4();
 
     double finalAmount = amount;
-    final cat = await (db.select(db.categories)..where((c) => c.id.equals(categoryId))).getSingleOrNull();
-    if (cat != null && cat.type == 'income') {
+    if (isIncome == true) {
       finalAmount = -amount.abs();
     } else {
-      finalAmount = amount.abs();
+      final cat = await (db.select(db.categories)..where((c) => c.id.equals(categoryId))).getSingleOrNull();
+      if (cat != null && cat.type == 'income') {
+        finalAmount = -amount.abs();
+      } else {
+        finalAmount = amount.abs();
+      }
     }
 
     await db.into(db.transactions).insert(TransactionsCompanion.insert(
       id: uuid,
       amount: finalAmount,
       categoryId: categoryId,
-      accountId: accountId,
+      accountId: 'default',
       note: Value(note),
       date: date,
       paymentMethod: Value(paymentMethod),
       isRecurring: Value(isRecurring),
       isRecurringInstance: const Value(false),
       recurringInterval: Value(recurringInterval),
+      recurringEndDate: Value(recurringEndDate),
       receiptImagePath: Value(receiptImagePath),
     ));
-
-    // Update account balance
-    final account = await (db.select(db.accounts)..where((a) => a.id.equals(accountId))).getSingleOrNull();
-    if (account != null) {
-      await (db.update(db.accounts)..where((a) => a.id.equals(accountId)))
-          .write(AccountsCompanion(balance: Value(account.balance - finalAmount)));
-    }
-    ref.invalidate(accountsListProvider);
 
     ref.invalidate(transactionsProvider);
     ref.invalidate(thisMonthTransactionsProvider);
@@ -151,107 +100,30 @@ class TransactionNotifier extends StateNotifier<AsyncValue<void>> {
     ref.invalidate(totalIncomeThisMonthProvider);
   }
 
-  Future<void> updateTransaction(Transaction transaction, {Transaction? originalTransaction}) async {
-    final db = ref.read(databaseProvider);      // Reverse original transaction's effect then reapply with new amount
-    if (originalTransaction != null) {
-      final account = await (db.select(db.accounts)
-        ..where((a) => a.id.equals(originalTransaction.accountId))).getSingleOrNull();
-      if (account != null) {
-        // Single write: reverse original (+original.amount) and apply new (-transaction.amount)
-        await (db.update(db.accounts)..where((a) => a.id.equals(originalTransaction.accountId)))
-            .write(AccountsCompanion(
-              balance: Value(account.balance + originalTransaction.amount - transaction.amount),
-            ));
-      }
-    }
-
+  Future<void> updateTransaction(Transaction transaction) async {
+    final db = ref.read(databaseProvider);
     await db.update(db.transactions).replace(transaction);
     ref.invalidate(transactionsProvider);
     ref.invalidate(thisMonthTransactionsProvider);
-    ref.invalidate(accountsListProvider);
   }
 
-  /// Transfer funds between two accounts
-  Future<void> transferFunds({
-    required double amount,
-    required String fromAccountId,
-    required String toAccountId,
-    String? note,
-    required DateTime date,
-  }) async {
-    final db = ref.read(databaseProvider);
-    final fromUuid = const Uuid().v4();
-    final toUuid = const Uuid().v4();
 
-    // All writes in a single transaction for atomicity
-    await db.transaction(() async {
-      // Outgoing transaction from source account
-      await db.into(db.transactions).insert(TransactionsCompanion.insert(
-        id: fromUuid,
-        amount: amount,
-        categoryId: 'transfer',
-        accountId: fromAccountId,
-        note: Value(note ?? 'Transfer'),
-        date: date,
-      ));
-
-      // Incoming transaction to destination account
-      await db.into(db.transactions).insert(TransactionsCompanion.insert(
-        id: toUuid,
-        amount: -amount,
-        categoryId: 'transfer',
-        accountId: toAccountId,
-        note: Value(note ?? 'Transfer'),
-        date: date,
-      ));
-
-      // Update balances: subtract from source, add to destination
-      final fromAccount = await (db.select(db.accounts)..where((a) => a.id.equals(fromAccountId))).getSingleOrNull();
-      final toAccount = await (db.select(db.accounts)..where((a) => a.id.equals(toAccountId))).getSingleOrNull();
-      if (fromAccount != null) {
-        await (db.update(db.accounts)..where((a) => a.id.equals(fromAccountId)))
-            .write(AccountsCompanion(balance: Value(fromAccount.balance - amount)));
-      }
-      if (toAccount != null) {
-        await (db.update(db.accounts)..where((a) => a.id.equals(toAccountId)))
-            .write(AccountsCompanion(balance: Value(toAccount.balance + amount)));
-      }
-    });
-
-    ref.invalidate(transactionsProvider);
-    ref.invalidate(thisMonthTransactionsProvider);
-    ref.invalidate(accountsListProvider);
-  }
 
   Future<void> deleteTransaction(String id) async {
     final db = ref.read(databaseProvider);
 
-    // Reverse the transaction's effect on account balance
     final transaction = await (db.select(db.transactions)
       ..where((t) => t.id.equals(id))).getSingleOrNull();
-    if (transaction != null) {
-      final account = await (db.select(db.accounts)
-        ..where((a) => a.id.equals(transaction.accountId))).getSingleOrNull();
-      if (account != null) {
-        await (db.update(db.accounts)..where((a) => a.id.equals(transaction.accountId)))
-            .write(AccountsCompanion(
-              balance: Value(account.balance + transaction.amount),
-            ));
-      }
-
-      // Delete orphaned receipt photo
-      if (transaction.receiptImagePath != null) {
-        try {
-          final file = File(transaction.receiptImagePath!);
-          if (await file.exists()) await file.delete();
-        } catch (_) {}
-      }
+    if (transaction != null && transaction.receiptImagePath != null) {
+      try {
+        final file = File(transaction.receiptImagePath!);
+        if (await file.exists()) await file.delete();
+      } catch (_) {}
     }
 
     await (db.delete(db.transactions)..where((t) => t.id.equals(id))).go();
     ref.invalidate(transactionsProvider);
     ref.invalidate(thisMonthTransactionsProvider);
-    ref.invalidate(accountsListProvider);
   }
 
   /// Check for duplicate transactions before adding.
@@ -297,16 +169,26 @@ class TransactionNotifier extends StateNotifier<AsyncValue<void>> {
         final interval = template.recurringInterval;
         if (interval == null) continue;
 
+        // Respect end date — skip templates past their end date
+        if (template.recurringEndDate != null && template.recurringEndDate!.isBefore(now)) {
+          continue;
+        }
+
         // Start enumerating from the later of template.date and lastCheck
         final startFrom = lastCheck != null && lastCheck.isAfter(template.date)
             ? lastCheck
             : template.date;
 
-        // Enumerate all due dates from startFrom up to now (cap at 31)
+        // Determine end boundary: now or endDate, whichever is earlier
+        final upTo = template.recurringEndDate != null && template.recurringEndDate!.isBefore(now)
+            ? template.recurringEndDate!
+            : now;
+
+        // Enumerate all due dates from startFrom up to the boundary (cap at 31)
         final dueDates = _enumerateDueDates(
           from: startFrom,
           interval: interval,
-          upTo: now,
+          upTo: upTo,
         );
 
         // Safety cap: at most 31 instances per template
@@ -315,7 +197,7 @@ class TransactionNotifier extends StateNotifier<AsyncValue<void>> {
             id: uuid.v4(),
             amount: template.amount,
             categoryId: template.categoryId,
-            accountId: template.accountId,
+            accountId: 'default',
             note: template.note != null
                 ? Value('${template.note} (auto)')
                 : const Value.absent(),
@@ -326,14 +208,6 @@ class TransactionNotifier extends StateNotifier<AsyncValue<void>> {
             recurringInterval: const Value.absent(),
             receiptImagePath: const Value.absent(),
           ));
-
-          // Update account balance
-          final account = await (db.select(db.accounts)
-            ..where((a) => a.id.equals(template.accountId))).getSingleOrNull();
-          if (account != null) {
-            await (db.update(db.accounts)..where((a) => a.id.equals(template.accountId)))
-                .write(AccountsCompanion(balance: Value(account.balance - template.amount)));
-          }
 
           postedCount++;
         }
@@ -347,7 +221,6 @@ class TransactionNotifier extends StateNotifier<AsyncValue<void>> {
     if (postedCount > 0) {
       ref.invalidate(transactionsProvider);
       ref.invalidate(thisMonthTransactionsProvider);
-      ref.invalidate(accountsListProvider);
     }
 
     return postedCount;
@@ -388,14 +261,25 @@ class TransactionNotifier extends StateNotifier<AsyncValue<void>> {
       case 'biweekly':
         return date.add(const Duration(days: 14));
       case 'monthly':
-        return DateTime(date.year, date.month + 1, date.day);
+        return _addMonths(date, 1);
       case 'quarterly':
-        return DateTime(date.year, date.month + 3, date.day);
+        return _addMonths(date, 3);
       case 'yearly':
-        return DateTime(date.year + 1, date.month, date.day);
+        return _addMonths(date, 12);
       default:
         return date;
     }
+  }
+
+  DateTime _addMonths(DateTime date, int monthsToAdd) {
+    final newMonth = date.month + monthsToAdd;
+    final yearOffset = (newMonth - 1) ~/ 12;
+    final targetYear = date.year + yearOffset;
+    final targetMonth = ((newMonth - 1) % 12) + 1;
+    // Get last day of target month
+    final lastDayOfTargetMonth = DateTime(targetYear, targetMonth + 1, 0).day;
+    final targetDay = date.day > lastDayOfTargetMonth ? lastDayOfTargetMonth : date.day;
+    return DateTime(targetYear, targetMonth, targetDay, date.hour, date.minute, date.second);
   }
 }
 
@@ -455,7 +339,7 @@ class SmsReviewQueueNotifier extends StateNotifier<List<ParsedSmsTxn>> {
   }
 
   /// Confirm (add as transaction) a single item and remove from queue
-  Future<void> confirmItem(String id, {String? overrideCategory}) async {
+  Future<void> confirmItem(String id, {String? overrideCategory, String? overrideNote}) async {
     final txn = state.where((t) => t.id == id).firstOrNull;
     if (txn == null) return;
 
@@ -463,10 +347,55 @@ class SmsReviewQueueNotifier extends StateNotifier<List<ParsedSmsTxn>> {
     await notifier.addTransaction(
       amount: txn.amount,
       categoryId: overrideCategory ?? txn.categoryId,
-      note: txn.note,
+      note: overrideNote ?? txn.note,
       date: txn.date,
       paymentMethod: 'UPI',
+      isIncome: txn.isIncome,
     );
+
+    state = state.where((t) => t.id != id).toList();
+    await _persist();
+  }
+
+  /// Confirm a credit SMS and link it to a recurring pocket money / income template.
+  /// This creates the income transaction and updates the recurring template's date
+  /// to fulfill the entry for that period without creating duplicate entries.
+  Future<void> confirmAndLinkToRecurring(String id, String recurringId, {String? overrideCategory, String? overrideNote}) async {
+    final txn = state.where((t) => t.id == id).firstOrNull;
+    if (txn == null) return;
+
+    final notifier = ref.read(transactionNotifierProvider.notifier);
+    final note = overrideNote ?? txn.note;
+
+    // Add income transaction with note indicating linked recurring entry
+    await notifier.addTransaction(
+      amount: txn.amount,
+      categoryId: overrideCategory ?? txn.categoryId,
+      note: '$note (Linked Pocket Money)',
+      date: txn.date,
+      paymentMethod: 'UPI',
+      isIncome: true,
+    );
+
+    // Update the recurring entry date to current SMS date
+    final db = ref.read(databaseProvider);
+    final recurringTxn = await (db.select(db.transactions)..where((t) => t.id.equals(recurringId))).getSingleOrNull();
+    if (recurringTxn != null) {
+      await notifier.updateTransaction(Transaction(
+        id: recurringTxn.id,
+        amount: recurringTxn.amount,
+        categoryId: recurringTxn.categoryId,
+        accountId: recurringTxn.accountId,
+        note: recurringTxn.note,
+        date: txn.date,
+        paymentMethod: recurringTxn.paymentMethod,
+        isRecurring: true,
+        isRecurringInstance: recurringTxn.isRecurringInstance,
+        recurringInterval: recurringTxn.recurringInterval,
+        receiptImagePath: recurringTxn.receiptImagePath,
+        createdAt: recurringTxn.createdAt,
+      ));
+    }
 
     state = state.where((t) => t.id != id).toList();
     await _persist();
@@ -500,9 +429,11 @@ final recurringTransactionsProvider =
     FutureProvider<List<RecurringPaymentInfo>>((ref) async {
   final transactions = await ref.read(transactionsProvider.future);
   final categories = await ref.read(categoriesProvider.future);
+  final smsEnabled = await ref.read(settingsNotifierProvider.notifier).getSetting('sms_parsing');
 
   final recurring = <RecurringPaymentInfo>[];
   final now = DateTime.now();
+  final isSmsEnabled = smsEnabled == 'true';
 
   for (final t in transactions.where((t) => t.isRecurring)) {
     final nextDate = NotificationService.calculateNextDueDate(
@@ -511,11 +442,23 @@ final recurringTransactionsProvider =
     );
     if (nextDate != null) {
       final category = categories.where((c) => c.id == t.categoryId).firstOrNull;
+
+      // Compute "possibly unused" — opt-in, only when SMS parsing is on
+      bool possiblyUnused = false;
+      if (isSmsEnabled) {
+        final cycleDays = _cycleDaysForInterval(t.recurringInterval);
+        final daysSinceLastConfirmed = now.difference(t.date).inDays;
+        if (cycleDays > 0 && daysSinceLastConfirmed > 2 * cycleDays) {
+          possiblyUnused = true;
+        }
+      }
+
       recurring.add(RecurringPaymentInfo(
         transaction: t,
         category: category,
         nextDate: nextDate,
         daysUntil: nextDate.difference(now).inDays,
+        isPossiblyUnused: possiblyUnused,
       ));
     }
   }
@@ -525,18 +468,32 @@ final recurringTransactionsProvider =
   return recurring;
 });
 
+int _cycleDaysForInterval(String? interval) {
+  switch (interval) {
+    case 'daily': return 1;
+    case 'weekly': return 7;
+    case 'biweekly': return 14;
+    case 'monthly': return 30;
+    case 'quarterly': return 90;
+    case 'yearly': return 365;
+    default: return 0;
+  }
+}
+
 /// Structured info about a recurring payment with computed next due date
 class RecurringPaymentInfo {
   final Transaction transaction;
   final Category? category;
   final DateTime nextDate;
   final int daysUntil;
+  final bool isPossiblyUnused;
 
   const RecurringPaymentInfo({
     required this.transaction,
     this.category,
     required this.nextDate,
     required this.daysUntil,
+    this.isPossiblyUnused = false,
   });
 
   bool get isOverdue => daysUntil < 0;

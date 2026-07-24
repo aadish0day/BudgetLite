@@ -15,12 +15,14 @@ part 'database.g.dart';
   Goals,
   MonthlyIncome,
   AppSettings,
+  Tags,
+  TransactionTags,
 ])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -31,6 +33,13 @@ class AppDatabase extends _$AppDatabase {
     onUpgrade: (Migrator m, int from, int to) async {
       if (from < 2) {
         await m.addColumn(transactions, transactions.isRecurringInstance);
+      }
+      if (from < 3) {
+        await m.addColumn(transactions, transactions.recurringEndDate);
+      }
+      if (from < 4) {
+        await m.createTable(tags);
+        await m.createTable(transactionTags);
       }
     },
   );
@@ -74,6 +83,13 @@ class AppDatabase extends _$AppDatabase {
           type: const Value('expense'),
         ),
         CategoriesCompanion.insert(
+          id: 'entertainment',
+          name: 'Entertainment',
+          icon: const Value('gamepad_2'),
+          color: const Value(0xFF8B5CF6),
+          type: const Value('expense'),
+        ),
+        CategoriesCompanion.insert(
           id: 'other',
           name: 'Other',
           icon: const Value('more_horiz'),
@@ -86,20 +102,6 @@ class AppDatabase extends _$AppDatabase {
           icon: const Value('account_balance'),
           color: const Value(0xFF10B981),
           type: const Value('income'),
-        ),
-        CategoriesCompanion.insert(
-          id: 'transfer',
-          name: 'Transfer',
-          icon: const Value('arrows_left_right'),
-          color: const Value(0xFF6366F1),
-          type: const Value('expense'),
-        ),
-        CategoriesCompanion.insert(
-          id: 'debt',
-          name: 'Debt / EMI',
-          icon: const Value('landmark'),
-          color: const Value(0xFFDC2626),
-          type: const Value('expense'),
         ),
       ]);
     });

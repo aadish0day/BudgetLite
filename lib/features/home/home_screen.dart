@@ -6,7 +6,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../core/theme/app_theme.dart';
-import '../accounts/account_detail_screen.dart';
 import '../../core/theme/colors.dart';
 import '../../core/utils/constants.dart';
 import '../../core/utils/formatters.dart';
@@ -20,10 +19,6 @@ import '../../providers/navigation_provider.dart';
 import '../../core/database/database.dart';
 import '../../providers/database_provider.dart';
 import '../subscriptions/subscriptions_screen.dart';
-
-/// Provider for the currently selected account ID in the account switcher.
-/// null means "All Accounts" (combined view).
-final selectedAccountIdProvider = StateProvider<String?>((ref) => null);
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -41,7 +36,7 @@ class HomeScreen extends ConsumerWidget {
         title: Column(
           children: [
             Text(
-              'Dashboard',
+              'Pocket Money Dashboard',
               style: AppTheme.displayStyle(
                 size: 17,
                 weight: FontWeight.w600,
@@ -49,7 +44,7 @@ class HomeScreen extends ConsumerWidget {
               ),
             ),
             Text(
-              Formatters.formatMonth(DateTime.now()),
+              'This Month • ${Formatters.formatMonth(DateTime.now())}',
               style: AppTheme.bodyStyle(
                 size: 11,
                 color: colorScheme.onSurfaceVariant,
@@ -63,7 +58,7 @@ class HomeScreen extends ConsumerWidget {
         child: ListView(
           padding: AppConstants.screenPadding,
           children: [
-            // ── Open-air balance (signature staggered entrance) ──
+            // ── Student Pocket Money Hero Balance ──
             _Balance(
               spent: totalSpent.valueOrNull ?? 0,
               remaining: (monthlyIncome.valueOrNull ?? 0) - (totalSpent.valueOrNull ?? 0),
@@ -71,11 +66,7 @@ class HomeScreen extends ConsumerWidget {
             ),
             const SizedBox(height: 28),
 
-            // ── Account switcher / balance summary ──
-            const _AccountSwitcher(),
-            const SizedBox(height: 28),
-
-            // ── Budget section ──
+            // ── Budget Overview Section ──
             budgets.when(
               data: (budgetList) => budgetList.isEmpty
                   ? _QuickBudgetSetup()
@@ -86,7 +77,7 @@ class HomeScreen extends ConsumerWidget {
 
             const SizedBox(height: 28),
 
-            // ── Upcoming Payments ──
+            // ── Upcoming Payments / Subscriptions ──
             const _UpcomingPayments(),
             const SizedBox(height: 28),
 
@@ -97,7 +88,7 @@ class HomeScreen extends ConsumerWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    'Recent Transactions',
+                    'Recent Expenses',
                     style: AppTheme.displayStyle(
                       size: 16,
                       weight: FontWeight.w600,
@@ -136,8 +127,7 @@ class HomeScreen extends ConsumerWidget {
   }
 }
 
-/// Balance hero — signature staggered entrance.
-/// Label fades in first, then the big number slides up, then income/spent row.
+/// Balance hero — Student Edition Pocket Money & Daily Safe Spend framing.
 class _Balance extends StatelessWidget {
   final double spent;
   final double remaining;
@@ -152,22 +142,49 @@ class _Balance extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final isDark = colorScheme.brightness == Brightness.dark;
     final spentRatio = monthlyIncome > 0 ? (spent / monthlyIncome).clamp(0, 1).toDouble() : 0.0;
+
+    // Calculate daily safe spend rate for remaining days in current month
+    final now = DateTime.now();
+    final lastDayOfMonth = DateTime(now.year, now.month + 1, 0).day;
+    final remainingDaysInMonth = (lastDayOfMonth - now.day + 1).clamp(1, 31);
+    final dailySafeSpend = remaining > 0 ? (remaining / remainingDaysInMonth) : 0.0;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Staggered label — enters first
-        Text(
-          'Total Balance',
-          style: AppTheme.bodyStyle(
-            size: 12,
-            weight: FontWeight.w500,
-            color: colorScheme.onSurfaceVariant,
-          ),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'Pocket Money Balance',
+              style: AppTheme.bodyStyle(
+                size: 12,
+                weight: FontWeight.w600,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                color: colorScheme.primary.withValues(alpha: 0.12),
+              ),
+              child: Text(
+                'Single Pool',
+                style: AppTheme.bodyStyle(
+                  size: 10,
+                  weight: FontWeight.w600,
+                  color: colorScheme.primary,
+                ),
+              ),
+            ),
+          ],
         ).animate().fadeIn(duration: 300.ms).slideY(begin: 0.08, curve: Curves.easeOutCubic),
 
-        const SizedBox(height: 4),
+        const SizedBox(height: 6),
 
         // Large balance figure — enters second (slight delay)
         Row(
@@ -179,9 +196,9 @@ class _Balance extends StatelessWidget {
               curve: Curves.easeOutCubic,
               builder: (context, animatedValue, child) {
                 return Text(
-                  Formatters.formatCurrency(animatedValue, currency: 'INR'),
+                  Formatters.formatCurrency(animatedValue),
                   style: AppTheme.financialStyle(
-                    size: 40,
+                    size: 38,
                     weight: FontWeight.w700,
                     color: colorScheme.onSurface,
                     letterSpacing: -1.0,
@@ -189,23 +206,63 @@ class _Balance extends StatelessWidget {
                 );
               },
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 10),
             Padding(
               padding: const EdgeInsets.only(bottom: 6),
-              child: Text(
-                remaining >= 0 ? 'On track' : 'Over budget',
-                style: AppTheme.bodyStyle(
-                  size: 11,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8),
                   color: remaining >= 0
-                      ? AppColors.success
-                      : AppColors.error,
+                      ? AppColors.success.withValues(alpha: 0.12)
+                      : AppColors.error.withValues(alpha: 0.12),
+                ),
+                child: Text(
+                  remaining >= 0 ? 'On Track' : 'Over Limit',
+                  style: AppTheme.bodyStyle(
+                    size: 11,
+                    weight: FontWeight.w600,
+                    color: remaining >= 0
+                        ? AppColors.success
+                        : AppColors.error,
+                  ),
                 ),
               ),
             ),
           ],
         ).animate().fadeIn(duration: 400.ms, delay: 150.ms).slideY(begin: 0.05, curve: Curves.easeOutCubic),
 
-        const SizedBox(height: 10),
+        const SizedBox(height: 12),
+
+        // Daily Safe Spend Rate Banner
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            color: isDark ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.4) : AppColors.cardLight,
+            border: Border.all(
+              color: colorScheme.primary.withValues(alpha: 0.2),
+            ),
+          ),
+          child: Row(
+            children: [
+              Icon(LucideIcons.zap, size: 16, color: colorScheme.primary),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Safe to spend ~${Formatters.formatCurrency(dailySafeSpend)} / day (${remainingDaysInMonth}d left)',
+                  style: AppTheme.bodyStyle(
+                    size: 12,
+                    weight: FontWeight.w600,
+                    color: colorScheme.onSurface,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ).animate().fadeIn(duration: 350.ms, delay: 250.ms).slideY(begin: 0.04),
+
+        const SizedBox(height: 14),
 
         // Hairline separator
         Container(
@@ -252,14 +309,12 @@ class _Balance extends StatelessWidget {
             ),
             const SizedBox(width: 20),
 
-            // Income & Spent columns — staggered from the right
-            // (animation moved inside _StatItem to avoid Expanded-in-animation issue)
             Expanded(
               child: Row(
                 children: [
                   _StatItem(
-                    label: 'Income',
-                    value: Formatters.formatCurrency(monthlyIncome, currency: 'INR'),
+                    label: 'Pocket Money',
+                    value: Formatters.formatCurrency(monthlyIncome),
                     color: colorScheme.onSurface,
                     valueColor: AppColors.success,
                     delayMs: 500,
@@ -267,7 +322,7 @@ class _Balance extends StatelessWidget {
                   const SizedBox(width: 24),
                   _StatItem(
                     label: 'Spent',
-                    value: Formatters.formatCurrency(spent, currency: 'INR'),
+                    value: Formatters.formatCurrency(spent),
                     color: colorScheme.onSurface,
                     valueColor: colorScheme.onSurface,
                     delayMs: 600,
@@ -323,190 +378,6 @@ class _StatItem extends StatelessWidget {
           ),
         ],
       ).animate().fadeIn(duration: 350.ms, delay: delayMs.ms).slideX(begin: 0.04, curve: Curves.easeOutCubic),
-    );
-  }
-}
-
-/// ── Account switcher — horizontal scrollable balance cards ──
-class _AccountSwitcher extends ConsumerWidget {
-  const _AccountSwitcher();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final accountsAsync = ref.watch(accountsListProvider);
-    final selectedId = ref.watch(selectedAccountIdProvider);
-
-    return accountsAsync.when(
-      data: (accounts) {
-        if (accounts.isEmpty) return const SizedBox.shrink();
-
-        final totalBalance = accounts.fold<double>(0, (sum, a) => sum + a.balance);
-
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Accounts',
-                  style: AppTheme.displayStyle(
-                    size: 16,
-                    weight: FontWeight.w600,
-                    color: colorScheme.onSurface,
-                  ),
-                ),
-                GestureDetector(
-                  onTap: () => ref.read(currentTabProvider.notifier).state = 4,
-                  child: Text(
-                    'Manage',
-                    style: AppTheme.bodyStyle(
-                      size: 12,
-                      weight: FontWeight.w500,
-                      color: colorScheme.primary,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              height: 80,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                physics: const BouncingScrollPhysics(),
-                itemCount: accounts.length + 1, // +1 for "All Accounts"
-                separatorBuilder: (_, _) => const SizedBox(width: 10),
-                itemBuilder: (context, index) {
-                  if (index == 0) {
-                    return _AccountCard(
-                      name: 'All Accounts',
-                      balance: totalBalance,
-                      isSelected: selectedId == null,
-                      onTap: () => ref.read(selectedAccountIdProvider.notifier).state = null,
-                    );
-                  }
-                  final account = accounts[index - 1];
-                  return _AccountCard(
-                    name: account.name,
-                    balance: account.balance,
-                    isSelected: selectedId == account.id,
-                    onTap: () => ref.read(selectedAccountIdProvider.notifier).state = account.id,
-                    onViewDetail: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => AccountDetailScreen(account: account),
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
-        ).animate().fadeIn(duration: 400.ms, delay: 350.ms).slideY(begin: 0.04, curve: Curves.easeOutCubic);
-      },
-      loading: () => const SizedBox(
-        height: 80,
-        child: Center(child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))),
-      ),
-      error: (_, _) => const SizedBox.shrink(),
-    );
-  }
-}
-
-/// Individual account card in the switcher row.
-class _AccountCard extends StatelessWidget {
-  final String name;
-  final double balance;
-  final bool isSelected;
-  final VoidCallback onTap;
-  final VoidCallback? onViewDetail;
-
-  const _AccountCard({
-    required this.name,
-    required this.balance,
-    required this.isSelected,
-    required this.onTap,
-    this.onViewDetail,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final isDark = colorScheme.brightness == Brightness.dark;
-
-    return GestureDetector(
-      onTap: () {
-        HapticFeedback.selectionClick();
-        onTap();
-      },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeOutCubic,
-        width: 130,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(14),
-          color: isSelected
-              ? (isDark ? colorScheme.primary.withValues(alpha: 0.15) : colorScheme.primary.withValues(alpha: 0.08))
-              : (isDark ? AppColors.cardDark : AppColors.cardLight),
-          border: Border.all(
-            color: isSelected
-                ? colorScheme.primary.withValues(alpha: 0.4)
-                : (isDark ? AppColors.outlineDark : AppColors.outlineLight),
-            width: isSelected ? 1.5 : 1,
-          ),
-          boxShadow: isSelected
-              ? (isDark ? AppColors.cardShadowDarkHover : AppColors.borderShadowLightHover)
-              : (isDark ? AppColors.cardShadowDark : AppColors.borderShadowLight),
-        ),
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    name,
-                    style: AppTheme.bodyStyle(
-                      size: 11,
-                      weight: FontWeight.w500,
-                      color: isSelected ? colorScheme.primary : colorScheme.onSurfaceVariant,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                if (onViewDetail != null)
-                  GestureDetector(
-                    onTap: onViewDetail,
-                    child: Padding(
-                      padding: const EdgeInsets.only(left: 2),
-                      child: Icon(
-                        LucideIcons.arrowUpRight,
-                        size: 10,
-                        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Text(
-              Formatters.formatCurrency(balance),
-              style: AppTheme.financialStyle(
-                size: 16,
-                weight: FontWeight.w700,
-                color: isSelected
-                    ? colorScheme.primary
-                    : colorScheme.onSurface,
-                letterSpacing: -0.3,
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }
@@ -998,13 +869,14 @@ void _markAsPaid(BuildContext context, WidgetRef ref, _UpcomingPayment payment) 
         id: originalTransaction.id,
         amount: originalTransaction.amount,
         categoryId: originalTransaction.categoryId,
-        accountId: originalTransaction.accountId,
+        accountId: 'default',
         note: originalTransaction.note,
         date: DateTime.now(),
         paymentMethod: originalTransaction.paymentMethod,
         isRecurring: originalTransaction.isRecurring,
         isRecurringInstance: originalTransaction.isRecurringInstance,
         recurringInterval: originalTransaction.recurringInterval,
+        recurringEndDate: originalTransaction.recurringEndDate,
         receiptImagePath: originalTransaction.receiptImagePath,
         createdAt: originalTransaction.createdAt,
       );

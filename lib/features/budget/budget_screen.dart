@@ -29,7 +29,8 @@ class _BudgetScreenState extends ConsumerState<BudgetScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(monthlyIncomeProvider.future).then((income) {
-        if (income > 0) _incomeCtrl.text = income.toStringAsFixed(0);
+        // Convert monthly display back to weekly for the input field
+        if (income > 0) _incomeCtrl.text = (income / 4).toStringAsFixed(0);
       });
     });
   }
@@ -51,7 +52,7 @@ class _BudgetScreenState extends ConsumerState<BudgetScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          'Budget Setup',
+          'Pocket Money Setup',
           style: AppTheme.displayStyle(
             size: 17,
             weight: FontWeight.w600,
@@ -72,7 +73,7 @@ class _BudgetScreenState extends ConsumerState<BudgetScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Monthly Income',
+                  'Weekly Pocket Money',
                   style: AppTheme.bodyStyle(
                     size: 12,
                     weight: FontWeight.w500,
@@ -114,6 +115,14 @@ class _BudgetScreenState extends ConsumerState<BudgetScreen> {
                           : const Text('Save'),
                     ),
                   ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Auto-posts each week · monthly total updates automatically',
+                  style: AppTheme.bodyStyle(
+                    size: 11,
+                    color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                  ),
                 ),
               ],
             ),
@@ -179,15 +188,16 @@ class _BudgetScreenState extends ConsumerState<BudgetScreen> {
   bool _isSavingIncome = false;
 
   void _saveIncome() {
-    final amount = double.tryParse(_incomeCtrl.text);
-    if (amount != null && amount > 0 && !_isSavingIncome) {
+    final weeklyAmount = double.tryParse(_incomeCtrl.text);
+    if (weeklyAmount != null && weeklyAmount > 0 && !_isSavingIncome) {
       setState(() => _isSavingIncome = true);
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        ref.read(budgetNotifierProvider.notifier).setMonthlyIncome(amount);
+        // Store monthly equivalent (weekly × 4) for fallback display
+        ref.read(budgetNotifierProvider.notifier).setMonthlyIncome(weeklyAmount * 4);
         setState(() => _isSavingIncome = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Income set to ${Formatters.formatCurrency(amount)}'),
+            content: Text('${Formatters.formatCurrency(weeklyAmount)}/week pocket money set — auto-posts weekly'),
             behavior: SnackBarBehavior.floating,
           ),
         );

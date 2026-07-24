@@ -19,27 +19,27 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   final _pages = [
     _OnboardingPageData(
-      icon: LucideIcons.wallet,
-      title: 'Welcome to BudgetLite',
-      subtitle: 'Take control of your finances with smart, effortless budgeting.',
+      icon: LucideIcons.graduationCap,
+      title: 'BudgetLite Student Edition',
+      subtitle: 'Effortless pocket money tracking designed specifically for college life.',
       color: AppColors.primary,
     ),
     _OnboardingPageData(
-      icon: LucideIcons.chartPie,
-      title: 'Track Every Rupee',
-      subtitle: 'Log expenses, set budgets, and see where your money goes at a glance.',
+      icon: LucideIcons.zap,
+      title: 'Daily Safe Spend Limit',
+      subtitle: 'Know your exact daily budget so your allowance lasts until the end of the week.',
       color: AppColors.secondary,
     ),
     _OnboardingPageData(
-      icon: LucideIcons.trendingUp,
-      title: 'Save for What Matters',
-      subtitle: 'Set savings goals, track progress, and build better money habits.',
+      icon: LucideIcons.target,
+      title: 'Save for Student Goals',
+      subtitle: 'Set savings targets for gadget upgrades, trips, books, or emergency stashes.',
       color: AppColors.accent,
     ),
     _OnboardingPageData(
-      icon: LucideIcons.shield,
-      title: 'Offline & Private',
-      subtitle: 'Your data stays on your device — no cloud, no tracking, full privacy.',
+      icon: LucideIcons.coins,
+      title: 'Weekly Pocket Money',
+      subtitle: 'Track a single pool of money. No accounts to juggle, no debt, no currency conversion — just your weekly allowance.',
       color: AppColors.primaryLight,
     ),
   ];

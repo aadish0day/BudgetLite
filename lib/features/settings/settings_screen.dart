@@ -1,20 +1,17 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/colors.dart';
-import 'package:collection/collection.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:local_auth/local_auth.dart';
-import 'package:uuid/uuid.dart';
-import 'package:drift/drift.dart' show Value;
-import '../../core/database/database.dart';
 import '../../core/utils/constants.dart';
-import '../../core/utils/formatters.dart';
 import '../../core/utils/sms_parser.dart';
 import '../../core/utils/demo_data.dart';
+import '../../services/sms_listener_service.dart';
 import '../../providers/settings_provider.dart';
 import '../../providers/transaction_provider.dart';
 import '../../providers/database_provider.dart';
@@ -22,6 +19,10 @@ import '../../providers/budget_provider.dart';
 import 'csv_import_sheet.dart';
 import 'auto_category_rules_sheet.dart';
 import '../sms/sms_review_queue_screen.dart';
+
+/// Global subscription for real-time SMS events.
+/// Managed at top level because SettingsScreen is a ConsumerWidget (not stateful).
+StreamSubscription<dynamic>? _smsSub;
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -61,6 +62,40 @@ class SettingsScreen extends ConsumerWidget {
                   },
                 ),
               ),
+              const Divider(height: 1, indent: 56),
+              _SettingTile(
+                icon: LucideIcons.eyeOff,
+                title: 'Hide Balances',
+                subtitle: 'Obscure balances on the home screen',
+                trailing: Consumer(builder: (context, ref, _) {
+                  final hidden = ref.watch(balanceHiddenProvider).valueOrNull ?? false;
+                  return Switch.adaptive(
+                    value: hidden,
+                    onChanged: (v) {
+                      ref.read(settingsNotifierProvider.notifier).setBalanceHidden(v);
+                    },
+                  );
+                }),
+              ),
+              const Divider(height: 1, indent: 56),
+              _SettingTile(
+                icon: LucideIcons.palette,
+                title: 'Accent Color',
+                subtitle: 'Change app primary color',
+                trailing: Consumer(builder: (context, ref, _) {
+                  final accentVal = ref.watch(accentColorProvider).valueOrNull;
+                  final color = accentVal != null ? Color(accentVal) : AppColors.primary;
+                  return Container(
+                    width: 24,
+                    height: 24,
+                    decoration: BoxDecoration(
+                      color: color,
+                      shape: BoxShape.circle,
+                    ),
+                  );
+                }),
+                onTap: () => _showAccentColorPicker(context, ref),
+              ),
             ],
           ),
           const SizedBox(height: 24),
@@ -76,6 +111,30 @@ class SettingsScreen extends ConsumerWidget {
                   value: biometricLock,
                   onChanged: (v) => _toggleBiometricLock(context, ref, v),
                 ),
+              ),
+              const Divider(height: 1, indent: 56),
+              _SettingTile(
+                icon: LucideIcons.timer,
+                title: 'Auto-lock timer',
+                subtitle: 'Require auth after being backgrounded',
+                trailing: Consumer(builder: (context, ref, _) {
+                  final duration = ref.watch(autoLockDurationProvider).valueOrNull ?? 1;
+                  return DropdownButton<int>(
+                    value: duration,
+                    underline: const SizedBox(),
+                    items: const [
+                      DropdownMenuItem(value: 0, child: Text('Immediately')),
+                      DropdownMenuItem(value: 1, child: Text('1 min')),
+                      DropdownMenuItem(value: 5, child: Text('5 min')),
+                      DropdownMenuItem(value: 15, child: Text('15 min')),
+                    ],
+                    onChanged: biometricLock ? (val) {
+                      if (val != null) {
+                        ref.read(settingsNotifierProvider.notifier).setAutoLockDuration(val);
+                      }
+                    } : null,
+                  );
+                }),
               ),
             ],
           ),
@@ -125,64 +184,19 @@ class SettingsScreen extends ConsumerWidget {
               ),
               const Divider(height: 1, indent: 56),
               _SettingTile(
+                icon: LucideIcons.search,
+                title: 'Scan SMS Inbox',
+                subtitle: 'Import existing UPI SMS from your messages',
+                trailing: const Icon(LucideIcons.chevronRight),
+                onTap: () => _scanSmsInbox(context, ref),
+              ),
+              const Divider(height: 1, indent: 56),
+              _SettingTile(
                 icon: LucideIcons.creditCard,
                 title: 'Simulate Bank SMS',
                 subtitle: 'Trigger a mock bank SMS notification',
                 trailing: const Icon(LucideIcons.play),
                 onTap: () => _simulateSms(context, ref),
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          _SectionHeader(title: 'Accounts'),
-          const SizedBox(height: 12),
-          Consumer(
-            builder: (context, ref, _) {
-              final accounts = ref.watch(accountsListProvider).valueOrNull ?? [];
-              return _SettingsCard(
-                children: [
-                  ...accounts.map((a) => Column(
-                    children: [
-                      if (accounts.indexOf(a) > 0) const Divider(height: 1, indent: 56),
-                      _SettingTile(
-                        icon: a.id == 'default' ? LucideIcons.wallet : LucideIcons.creditCard,
-                        title: a.name,
-                        subtitle: 'Balance: ${Formatters.formatCurrency(a.balance)}',
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(a.currency, style: AppTheme.bodyStyle(size: 12, color: colorScheme.onSurfaceVariant)),
-                            const SizedBox(width: 4),
-                            const Icon(LucideIcons.chevronRight, size: 16),
-                          ],
-                        ),
-                        onTap: () => _editAccount(context, ref, a),
-                      ),
-                    ],
-                  )),
-                  const Divider(height: 1, indent: 56),
-                  _SettingTile(
-                    icon: LucideIcons.plus,
-                    title: 'Add Account',
-                    subtitle: 'Create a new account',
-                    trailing: const Icon(LucideIcons.chevronRight),
-                    onTap: () => _addAccount(context, ref),
-                  ),
-                ],
-              );
-            },
-          ),
-          const SizedBox(height: 24),
-          _SectionHeader(title: 'Currency'),
-          const SizedBox(height: 12),
-          _SettingsCard(
-            children: [
-              _SettingTile(
-                icon: LucideIcons.coins,
-                title: 'Change Currency',
-                subtitle: 'Select your preferred currency',
-                trailing: const Icon(LucideIcons.chevronRight),
-                onTap: () => _showCurrencyPicker(context, ref),
               ),
             ],
           ),
@@ -250,6 +264,14 @@ class SettingsScreen extends ConsumerWidget {
                 trailing: const Icon(LucideIcons.play),
                 onTap: () => _seedDemoData(context, ref),
               ),
+              const Divider(height: 1, indent: 56),
+              _SettingTile(
+                icon: LucideIcons.trash2,
+                title: 'Reset All Data',
+                subtitle: 'Delete all transactions and settings',
+                trailing: const Icon(LucideIcons.chevronRight, color: Colors.red),
+                onTap: () => _showResetConfirmation(context, ref),
+              ),
             ],
           ),
           const SizedBox(height: 24),
@@ -310,6 +332,25 @@ class SettingsScreen extends ConsumerWidget {
         }
       }
     } else {
+      try {
+        final canCheck = await localAuth.canCheckBiometrics;
+        final isSupported = await localAuth.isDeviceSupported();
+        if (canCheck && isSupported) {
+          final authenticated = await localAuth.authenticate(
+            localizedReason: 'Verify identity to disable lock',
+          );
+          if (!authenticated) {
+            return;
+          }
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to authenticate: $e')),
+          );
+        }
+        return;
+      }
       await ref.read(settingsNotifierProvider.notifier).setBiometricLock(false);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -324,9 +365,15 @@ class SettingsScreen extends ConsumerWidget {
       final status = await Permission.sms.request();
       if (status.isGranted) {
         await ref.read(settingsNotifierProvider.notifier).setSmsParsing(true);
+        // Start real SMS listener
+        final listener = SmsListenerService();
+        final nativeGranted = await listener.isPermissionGranted();
+        if (!nativeGranted) await listener.requestPermission();
+        await listener.startListening();
+        _bindSmsListener(ref);
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('SMS transaction tracking enabled')),
+            const SnackBar(content: Text('SMS transaction tracking enabled — listening for UPI messages')),
           );
         }
       } else {
@@ -338,6 +385,7 @@ class SettingsScreen extends ConsumerWidget {
       }
     } else {
       await ref.read(settingsNotifierProvider.notifier).setSmsParsing(false);
+      await SmsListenerService().stopListening();
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('SMS tracking disabled')),
@@ -346,8 +394,103 @@ class SettingsScreen extends ConsumerWidget {
     }
   }
 
+  void _bindSmsListener(WidgetRef ref) {
+    _smsSub?.cancel();
+    _smsSub = SmsListenerService().onSmsReceived.listen((sms) {
+      _processSmsBody(ref, sms.body, timestamp: sms.timestamp);
+    });
+  }
+
+  Future<void> _scanSmsInbox(BuildContext context, WidgetRef ref) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final listener = SmsListenerService();
+
+    final granted = await listener.isPermissionGranted();
+    if (!granted) {
+      await listener.requestPermission();
+      await Future.delayed(const Duration(milliseconds: 500));
+      final checkAgain = await listener.isPermissionGranted();
+      if (!checkAgain) {
+        if (context.mounted) {
+          messenger.showSnackBar(
+            const SnackBar(content: Text('SMS permission required to scan inbox'),
+                behavior: SnackBarBehavior.floating),
+          );
+        }
+        return;
+      }
+    }
+
+    final messages = await listener.scanInbox();
+    if (!context.mounted) return;
+
+    if (messages.isEmpty) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('No UPI SMS found in inbox'),
+            behavior: SnackBarBehavior.floating),
+      );
+      return;
+    }
+
+    // Build keyword→category map from user's auto-categorization rules
+    final userRules = ref.read(autoCategorizationRulesProvider);
+    final Map<String, String> keywordToCategory = {};
+    for (final rule in userRules) {
+      keywordToCategory[rule.keyword.toLowerCase()] = rule.categoryId;
+    }
+
+    int parsed = 0;
+    final queueNotifier = ref.read(smsReviewQueueProvider.notifier);
+    final pendingBefore = queueNotifier.pendingCount;
+
+    for (final sms in messages) {
+      final parsedTxn = SmsParser.parseMessage(
+        sms.body,
+        keywordToCategory: keywordToCategory.isNotEmpty ? keywordToCategory : null,
+        dateOverride: DateTime.fromMillisecondsSinceEpoch(sms.timestamp, isUtc: true).toLocal(),
+      );
+      if (parsedTxn != null) {
+        queueNotifier.addToQueue(parsedTxn);
+        parsed++;
+      }
+    }
+
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text('Found $parsed UPI transaction${parsed != 1 ? 's' : ''} '
+            '(${queueNotifier.pendingCount - pendingBefore} new in review queue)'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  void _processSmsBody(WidgetRef ref, String body, {int? timestamp}) {
+    final userRules = ref.read(autoCategorizationRulesProvider);
+    final Map<String, String> keywordToCategory = {};
+    for (final rule in userRules) {
+      keywordToCategory[rule.keyword.toLowerCase()] = rule.categoryId;
+    }
+
+    final parsedTxn = SmsParser.parseMessage(
+      body,
+      keywordToCategory: keywordToCategory.isNotEmpty ? keywordToCategory : null,
+      dateOverride: timestamp != null
+          ? DateTime.fromMillisecondsSinceEpoch(timestamp, isUtc: true).toLocal()
+          : null,
+    );
+    if (parsedTxn != null) {
+      ref.read(smsReviewQueueProvider.notifier).addToQueue(parsedTxn);
+    }
+  }
+
   void _simulateSms(BuildContext context, WidgetRef ref) {
     final queueNotifier = ref.read(smsReviewQueueProvider.notifier);
+    // Build keyword→category map from user's auto-categorization rules
+    final userRules = ref.read(autoCategorizationRulesProvider);
+    final Map<String, String> keywordToCategory = {};
+    for (final rule in userRules) {
+      keywordToCategory[rule.keyword.toLowerCase()] = rule.categoryId;
+    }
     final mockSmsList = [
       'Dear SBI Customer, your A/c X1234 has been debited by Rs. 540.00 at SWIGGY on 22-07-2026. Ref: 62234125',
       'Transaction alert: Rs. 12000.00 debited from HDFC Bank Card ending 4321 at HOUSING SOCIETY on 22/07/2026.',
@@ -355,10 +498,15 @@ class SettingsScreen extends ConsumerWidget {
       'Thank you for using Paytm. Rs 1499 spent at ZARA store on 22-07-2026.',
       'Your card was charged Rs 350.00 at STARBUCKS. Remaining balance Rs 45000.',
       'Rs. 4500 spent on Amazon.in. Txn id: 9812471',
+      'Your GPay credit of Rs. 8,000.00 received from PARENTS. UPI Ref: 9247128471',
+      'Dear User, Rs. 8000 credited to your account by PARENTS. UPI: 928471247',
     ];
     
     final randomSms = mockSmsList[DateTime.now().millisecond % mockSmsList.length];
-    final parsed = SmsParser.parseMessage(randomSms);
+    final parsed = SmsParser.parseMessage(
+      randomSms,
+      keywordToCategory: keywordToCategory.isNotEmpty ? keywordToCategory : null,
+    );
     if (parsed != null) {
       queueNotifier.addToQueue(parsed);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -367,37 +515,16 @@ class SettingsScreen extends ConsumerWidget {
           behavior: SnackBarBehavior.floating,
         ),
       );
+    } else {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not parse SMS — unrecognized format'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
     }
-  }
-
-  void _showCurrencyPicker(BuildContext context, WidgetRef ref) {
-    final currencies = ['INR', 'USD', 'EUR', 'GBP'];
-    showModalBottomSheet(
-      context: context,
-      builder: (ctx) => Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(20),
-            child: Text(
-              'Select Currency',
-          style: AppTheme.displayStyle(
-            size: 18,
-            weight: FontWeight.w600,
-          ),
-            ),
-          ),
-          ...currencies.map((c) => ListTile(
-                title: Text(c),
-                onTap: () {
-                  ref.read(settingsNotifierProvider.notifier).setCurrency(c);
-                  Navigator.pop(ctx);
-                },
-              )),
-          const SizedBox(height: 16),
-        ],
-      ),
-    );
   }
 
   void _showThresholdPicker(BuildContext context, WidgetRef ref) {
@@ -480,241 +607,6 @@ class SettingsScreen extends ConsumerWidget {
     }
   }
 
-  void _addAccount(BuildContext context, WidgetRef ref) {
-    final nameCtrl = TextEditingController();
-    final balanceCtrl = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Add Account'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nameCtrl,
-              decoration: const InputDecoration(labelText: 'Account Name'),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: balanceCtrl,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'Initial Balance', prefixText: '₹ '),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              final name = nameCtrl.text.trim();
-              if (name.isEmpty) return;
-              final db = ref.read(databaseProvider);
-              final uuid = const Uuid().v4();
-              await db.into(db.accounts).insert(AccountsCompanion.insert(
-                id: uuid,
-                name: name,
-                balance: Value(double.tryParse(balanceCtrl.text) ?? 0),
-              ));
-              ref.invalidate(accountsListProvider);
-              if (ctx.mounted) Navigator.pop(ctx);
-            },
-            child: const Text('Add'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _editAccount(BuildContext context, WidgetRef ref, Account account) {
-    final nameCtrl = TextEditingController(text: account.name);
-    final balanceCtrl = TextEditingController(text: account.balance.toStringAsFixed(0));
-
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Edit Account'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nameCtrl,
-              decoration: const InputDecoration(labelText: 'Account Name'),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: balanceCtrl,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'Balance', prefixText: '₹ '),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => _deleteAccountWithCheck(context, ref, account),
-            style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
-            child: const Text('Delete'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              final name = nameCtrl.text.trim();
-              if (name.isEmpty) return;
-              final db = ref.read(databaseProvider);
-              await (db.update(db.accounts)..where((a) => a.id.equals(account.id)))
-                  .write(AccountsCompanion(
-                name: Value(name),
-                balance: Value(double.tryParse(balanceCtrl.text) ?? account.balance),
-              ));
-              ref.invalidate(accountsListProvider);
-              if (ctx.mounted) Navigator.pop(ctx);
-            },
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _deleteAccountWithCheck(BuildContext context, WidgetRef ref, Account account) async {
-    final db = ref.read(databaseProvider);
-
-    // Check if the account has linked transactions
-    final txnCount = (await (db.select(db.transactions)
-      ..where((t) => t.accountId.equals(account.id)))
-      .get())
-      .length;
-
-    // Find other accounts for potential reassignment
-    final allAccounts = await db.select(db.accounts).get();
-    final otherAccounts = allAccounts.where((a) => a.id != account.id).toList();
-
-    if (txnCount > 0) {
-      // Account has transactions — block deletion, offer reassignment
-      if (!context.mounted) return;
-      if (otherAccounts.isEmpty) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Cannot delete: no other accounts to reassign transactions to.'),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-        }
-        return;
-      }
-
-      String? selectedTargetId = otherAccounts.first.id;
-      await showDialog(
-        context: context,
-        builder: (ctx) => StatefulBuilder(
-          builder: (ctx, setDialogState) => AlertDialog(
-            title: Row(
-              children: [
-                Icon(LucideIcons.alertTriangle, size: 20, color: AppColors.warning),
-                const SizedBox(width: 8),
-                Text('Cannot delete "${account.name}"',
-                    style: AppTheme.displayStyle(size: 16, weight: FontWeight.w600)),
-              ],
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'This account has $txnCount transaction${txnCount != 1 ? 's' : ''} linked to it. '
-                  'Choose which account to reassign them to:',
-                  style: AppTheme.bodyStyle(size: 14),
-                ),
-                const SizedBox(height: 16),
-                // Account dropdown
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.2)),
-                  ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String>(
-                      value: selectedTargetId,
-                      isExpanded: true,
-                      style: AppTheme.bodyStyle(size: 14, weight: FontWeight.w500),
-                      items: otherAccounts.map((a) => DropdownMenuItem(
-                        value: a.id,
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Text('${a.name} (₹${a.balance.toStringAsFixed(0)})',
-                                  style: AppTheme.bodyStyle(size: 14)),
-                            ),
-                          ],
-                        ),
-                      )).toList(),
-                      onChanged: (v) {
-                        if (v != null) {
-                          setDialogState(() => selectedTargetId = v);
-                        }
-                      },
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Cancel'),
-              ),
-              FilledButton(
-                onPressed: () async {
-                  if (selectedTargetId == null) return;
-                  final target = otherAccounts.firstWhereOrNull((a) => a.id == selectedTargetId);
-                  if (target == null) return;
-                  await (db.update(db.transactions)
-                    ..where((t) => t.accountId.equals(account.id)))
-                    .write(TransactionsCompanion(accountId: Value(target.id)));
-                  await (db.delete(db.accounts)..where((a) => a.id.equals(account.id))).go();
-                  ref.invalidate(accountsListProvider);
-                  ref.invalidate(transactionsProvider);
-                  if (ctx.mounted) Navigator.pop(ctx);   // pop blocking dialog
-                  if (context.mounted) Navigator.pop(context); // pop edit dialog
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('"${account.name}" deleted. $txnCount transactions reassigned to "${target.name}".'),
-                        behavior: SnackBarBehavior.floating,
-                      ),
-                    );
-                  }
-                },
-                child: Text('Reassign'),
-              ),
-            ],
-          ),
-        ),
-      );
-    } else {
-      // No transactions — delete directly
-      await (db.delete(db.accounts)..where((a) => a.id.equals(account.id))).go();
-      ref.invalidate(accountsListProvider);
-      if (context.mounted) Navigator.pop(context);
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('"${account.name}" deleted'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-    }
-  }
-
   void _showSmsReviewQueue(BuildContext context) {
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -785,6 +677,131 @@ class SettingsScreen extends ConsumerWidget {
         ),
       );
     }
+  }
+
+  void _showAccentColorPicker(BuildContext context, WidgetRef ref) {
+    final colors = [
+      AppColors.primary,
+      Colors.teal,
+      Colors.blue,
+      Colors.indigo,
+      Colors.purple,
+      Colors.pink,
+      Colors.orange,
+      Colors.amber,
+      Colors.green,
+      Colors.red,
+    ];
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Select Accent Color'),
+        content: Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: colors.map((color) {
+            return GestureDetector(
+              onTap: () {
+                ref.read(settingsNotifierProvider.notifier).setAccentColor(color.toARGB32());
+                Navigator.pop(ctx);
+              },
+              child: Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: color,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.black12),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              ref.read(settingsNotifierProvider.notifier).setAccentColor(AppColors.primary.toARGB32());
+              Navigator.pop(ctx);
+            },
+            child: const Text('Reset'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showResetConfirmation(BuildContext context, WidgetRef ref) {
+    String typedText = '';
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text('Reset All Data', style: TextStyle(color: Colors.red)),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('Are you sure you want to delete all your data? This cannot be undone. Type "DELETE" to confirm.'),
+                  const SizedBox(height: 16),
+                  TextField(
+                    onChanged: (val) {
+                      setState(() {
+                        typedText = val;
+                      });
+                    },
+                    decoration: const InputDecoration(
+                      hintText: 'DELETE',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: typedText == 'DELETE' || typedText == 'RESET ALL' ? () async {
+                    Navigator.pop(ctx);
+                    final db = ref.read(databaseProvider);
+                    await db.delete(db.transactions).go();
+                    await db.delete(db.categories).go();
+                    await db.delete(db.budgets).go();
+                    await db.delete(db.goals).go();
+                    await db.delete(db.appSettings).go();
+await db.transaction(() async {
+                      await DemoDataSeeder.seed(db);
+                    });
+                    ref.invalidate(transactionsProvider);
+                    ref.invalidate(thisMonthTransactionsProvider);
+                    ref.invalidate(totalSpentThisMonthProvider);
+                    ref.invalidate(totalIncomeThisMonthProvider);
+                    ref.invalidate(thisMonthBudgetsProvider);
+                    ref.invalidate(monthlyIncomeProvider);
+                    ref.invalidate(categoriesProvider);
+                    ref.invalidate(settingsProvider);
+
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('All data has been reset.')),
+                      );
+                    }
+                  } : null,
+                  style: FilledButton.styleFrom(backgroundColor: Colors.red),
+                  child: const Text('Reset'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 }
 
