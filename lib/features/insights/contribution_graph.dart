@@ -92,30 +92,53 @@ class _ContributionGraphState extends ConsumerState<ContributionGraph> {
     _totalYearly = total;
   }
 
-  int _getIntensityLevel(double dailySpend, double avgDaily) {
+  /// Compute intensity level using quartile-based thresholds from the user's
+  /// own historical daily spending data (relative, not fixed amounts).
+  /// Levels: 0=none, 1=low (≤25th percentile), 2=medium (25th-50th),
+  /// 3=high (50th-75th), 4=max (>75th percentile or outlier).
+  int _getIntensityLevel(double dailySpend, double avgDaily,
+      [List<double>? allDailyAmounts]) {
     if (dailySpend == 0) return 0;
-    if (avgDaily == 0) return 4; // any spend = max if no average
-    final ratio = dailySpend / avgDaily;
-    if (ratio <= 0.25) return 1;
-    if (ratio <= 0.5) return 2;
-    if (ratio <= 1.0) return 3;
+    if (allDailyAmounts == null || allDailyAmounts.length < 4) {
+      // Fallback: use avgDaily when we don't have enough data for quartiles
+      if (avgDaily == 0) return 4;
+      final ratio = dailySpend / avgDaily;
+      if (ratio <= 0.25) return 1;
+      if (ratio <= 0.5) return 2;
+      if (ratio <= 1.0) return 3;
+      return 4;
+    }
+
+    // Sort non-zero amounts and compute quartile thresholds
+    final sorted = List<double>.from(allDailyAmounts.where((v) => v > 0))..sort();
+    if (sorted.isEmpty) return 0;
+    
+    final n = sorted.length;
+    final q1 = sorted[(n * 0.25).round().clamp(0, n - 1)];
+    final q2 = sorted[(n * 0.50).round().clamp(0, n - 1)];
+    final q3 = sorted[(n * 0.75).round().clamp(0, n - 1)];
+    
+    if (dailySpend <= q1) return 1;
+    if (dailySpend <= q2) return 2;
+    if (dailySpend <= q3) return 3;
     return 4;
   }
 
-  Color _getCellColor(int level, bool isDark) {
+  Color _getCellColor(int level, bool isDark, [Color? accentColor]) {
+    final base = accentColor ?? AppColors.primary;
     switch (level) {
       case 0:
         return isDark
             ? Colors.white.withValues(alpha: 0.04)
             : Colors.black.withValues(alpha: 0.04);
       case 1:
-        return AppColors.primary.withValues(alpha: 0.15);
+        return base.withValues(alpha: 0.2);
       case 2:
-        return AppColors.primary.withValues(alpha: 0.35);
+        return base.withValues(alpha: 0.45);
       case 3:
-        return AppColors.primary.withValues(alpha: 0.6);
+        return base.withValues(alpha: 0.7);
       case 4:
-        return AppColors.primary;
+        return base;
       default:
         return Colors.transparent;
     }
@@ -369,6 +392,8 @@ class _ContributionGraphState extends ConsumerState<ContributionGraph> {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = colorScheme.brightness == Brightness.dark;
     final categories = ref.watch(categoriesProvider).valueOrNull ?? [];
+    final activeCategory = categories.where((c) => c.id == _filterCategoryId).firstOrNull;
+    final categoryColor = activeCategory != null ? Color(activeCategory.color) : null;
     final allTransactions = ref.watch(transactionsProvider).valueOrNull ?? [];
 
     if (allTransactions.isEmpty) return const SizedBox.shrink();
@@ -387,6 +412,9 @@ class _ContributionGraphState extends ConsumerState<ContributionGraph> {
     final daysWithSpend = daily.values.where((v) => v > 0).length;
     final avgDaily = daysWithSpend > 0 ? _totalYearly / daysWithSpend : 0.0;
 
+    // All daily amounts for quartile-based intensity thresholds
+    final allDailyAmounts = daily.values.toList();
+
     // Arrange days into weekly columns
     // GitHub style: columns = weeks, rows = days (Sun=0, Mon=1, ..., Sat=6)
     // First column starts on Jan 1, which may not be Sunday
@@ -403,7 +431,7 @@ class _ContributionGraphState extends ConsumerState<ContributionGraph> {
         } else {
           final date = firstDay.add(Duration(days: dayOfYear));
           final spent = daily[date] ?? 0.0;
-          final level = _getIntensityLevel(spent, avgDaily);
+          final level = _getIntensityLevel(spent, avgDaily, allDailyAmounts);
           cellData.add(_CellInfo(date: date, spent: spent, level: level));
         }
       }
@@ -593,7 +621,7 @@ class _ContributionGraphState extends ConsumerState<ContributionGraph> {
                                   final idx = col * 7 + row;
                                   final info = idx < cellData.length ? cellData[idx] : _CellInfo.empty;
                                   final cellColor = info.level >= 0
-                                      ? _getCellColor(info.level, isDark)
+                                      ? _getCellColor(info.level, isDark, categoryColor)
                                       : Colors.transparent;
 
                                   Color? borderColor;
@@ -685,7 +713,7 @@ class _ContributionGraphState extends ConsumerState<ContributionGraph> {
                     margin: const EdgeInsets.symmetric(horizontal: 1.5),
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(2),
-                      color: _getCellColor(i, isDark),
+                      color: _getCellColor(i, isDark, categoryColor),
                     ),
                   )),
                   const SizedBox(width: 6),

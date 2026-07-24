@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:intl/intl.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/colors.dart';
@@ -11,6 +12,10 @@ import '../../core/utils/icon_helper.dart';
 import '../../core/database/database.dart';
 import '../../providers/transaction_provider.dart';
 import '../../providers/database_provider.dart';
+
+/// Provider that allows the bar chart to set a target month for the calendar.
+/// When set to a non-null DateTime (month), SpendCalendar will navigate to that month.
+final calendarFocusTargetProvider = StateProvider<DateTime?>((ref) => null);
 
 /// Interactive Spend Calendar with month grid, tap-to-drill-down,
 /// long-press preview, swipe navigation, and category filtering.
@@ -23,7 +28,9 @@ class SpendCalendar extends ConsumerStatefulWidget {
 
 class _SpendCalendarState extends ConsumerState<SpendCalendar> {
   late DateTime _currentMonth;
+  DateTime? _previousMonth;
   String? _filterCategoryId;
+  String? _filterTagId;
 
   @override
   void initState() {
@@ -33,14 +40,23 @@ class _SpendCalendarState extends ConsumerState<SpendCalendar> {
   }
 
   void _goToNextMonth() {
+    _previousMonth = _currentMonth;
     setState(() => _currentMonth = DateTime(_currentMonth.year, _currentMonth.month + 1, 1));
   }
 
   void _goToPrevMonth() {
+    _previousMonth = _currentMonth;
     setState(() => _currentMonth = DateTime(_currentMonth.year, _currentMonth.month - 1, 1));
   }
 
-  void _showDaySheet(BuildContext context, DateTime date, List<Transaction> transactions, List<Category> categories) {
+  void _showDaySheet(
+    BuildContext context,
+    DateTime date,
+    List<Transaction> transactions,
+    List<Category> categories,
+    List<Account> accounts,
+  ) {
+
     final total = transactions.fold<double>(0, (s, t) => s + t.amount);
 
     showModalBottomSheet(
@@ -147,7 +163,9 @@ class _SpendCalendarState extends ConsumerState<SpendCalendar> {
                             itemBuilder: (ctx, index) {
                               final t = transactions[index];
                               final cat = categories.where((c) => c.id == t.categoryId).firstOrNull;
+                              final acc = accounts.where((a) => a.id == t.accountId).firstOrNull;
                               final catColor = Color(cat?.color ?? 0xFF6B7280);
+                              final timeStr = DateFormat('h:mm a').format(t.date);
 
                               return Padding(
                                 padding: const EdgeInsets.symmetric(vertical: 8),
@@ -171,30 +189,63 @@ class _SpendCalendarState extends ConsumerState<SpendCalendar> {
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
                                           Text(
-                                            cat?.name ?? 'Unknown',
+                                            t.note != null && t.note!.isNotEmpty ? t.note! : (cat?.name ?? 'Unknown'),
                                             style: AppTheme.bodyStyle(
                                               size: 14, weight: FontWeight.w500,
                                               color: colorScheme.onSurface,
                                             ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
                                           ),
-                                          if (t.note != null && t.note!.isNotEmpty)
-                                            Text(
-                                              t.note!,
-                                              style: AppTheme.bodyStyle(
-                                                size: 12, color: colorScheme.onSurfaceVariant,
+                                          const SizedBox(height: 2),
+                                          Row(
+                                            children: [
+                                              Text(
+                                                cat?.name ?? 'Unknown',
+                                                style: AppTheme.bodyStyle(
+                                                  size: 11, color: colorScheme.onSurfaceVariant,
+                                                ),
                                               ),
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
+                                              const SizedBox(width: 6),
+                                              Text('•', style: TextStyle(fontSize: 10, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.4))),
+                                              const SizedBox(width: 6),
+                                              Text(
+                                                timeStr,
+                                                style: AppTheme.bodyStyle(
+                                                  size: 11, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
                                         ],
                                       ),
                                     ),
-                                    Text(
-                                      '-${Formatters.formatCurrency(t.amount)}',
-                                      style: AppTheme.financialStyle(
-                                        size: 14, weight: FontWeight.w600,
-                                        color: AppColors.error,
-                                      ),
+                                    Column(
+                                      crossAxisAlignment: CrossAxisAlignment.end,
+                                      children: [
+                                        Text(
+                                          '-${Formatters.formatCurrency(t.amount)}',
+                                          style: AppTheme.financialStyle(
+                                            size: 14, weight: FontWeight.w600,
+                                            color: AppColors.error,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            borderRadius: BorderRadius.circular(4),
+                                            color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
+                                          ),
+                                          child: Text(
+                                            acc?.name ?? t.paymentMethod.toUpperCase(),
+                                            style: AppTheme.bodyStyle(
+                                              size: 9, weight: FontWeight.w600,
+                                              color: colorScheme.onSurfaceVariant,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ],
                                 ),
@@ -313,7 +364,22 @@ class _SpendCalendarState extends ConsumerState<SpendCalendar> {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = colorScheme.brightness == Brightness.dark;
     final categories = ref.watch(categoriesProvider).valueOrNull ?? [];
+    final accounts = ref.watch(accountsProvider).valueOrNull ?? [];
+    final tags = ref.watch(tagsProvider).valueOrNull ?? [];
     final allTransactions = ref.watch(transactionsProvider).valueOrNull ?? [];
+
+    // Listen for calendar focus target from the bar chart (must be inside build)
+    ref.listen<DateTime?>(calendarFocusTargetProvider, (_, next) {
+      if (next != null && mounted) {
+        final targetMonth = DateTime(next.year, next.month, 1);
+        if (targetMonth != _currentMonth) {
+          _previousMonth = _currentMonth;
+          setState(() => _currentMonth = targetMonth);
+        }
+        // Reset the provider so re-tapping the same bar navigates again
+        ref.read(calendarFocusTargetProvider.notifier).state = null;
+      }
+    });
 
     if (allTransactions.isEmpty) return const SizedBox.shrink();
 
@@ -415,17 +481,33 @@ class _SpendCalendarState extends ConsumerState<SpendCalendar> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
-                          Text(
-                            Formatters.formatMonth(_currentMonth),
-                            style: AppTheme.displayStyle(
-                              size: 16, weight: FontWeight.w600, color: colorScheme.onSurface,
+                          AnimatedSwitcher(
+                            duration: 200.ms,
+                            transitionBuilder: (child, animation) => FadeTransition(
+                              opacity: animation,
+                              child: child,
+                            ),
+                            child: Text(
+                              Formatters.formatMonth(_currentMonth),
+                              key: ValueKey('month_${_currentMonth.month}_${_currentMonth.year}'),
+                              style: AppTheme.displayStyle(
+                                size: 16, weight: FontWeight.w600, color: colorScheme.onSurface,
+                              ),
                             ),
                           ),
                           if (monthTotal > 0)
-                            Text(
-                              'Spent ${Formatters.formatCurrency(monthTotal)}',
-                              style: AppTheme.bodyStyle(
-                                size: 11, color: colorScheme.onSurfaceVariant,
+                            AnimatedSwitcher(
+                              duration: 200.ms,
+                              transitionBuilder: (child, animation) => FadeTransition(
+                                opacity: animation,
+                                child: child,
+                              ),
+                              child: Text(
+                                'Spent ${Formatters.formatCurrency(monthTotal)}',
+                                key: ValueKey('total_${_currentMonth.month}_${_currentMonth.year}'),
+                                style: AppTheme.bodyStyle(
+                                  size: 11, color: colorScheme.onSurfaceVariant,
+                                ),
                               ),
                             ),
                         ],
@@ -446,169 +528,213 @@ class _SpendCalendarState extends ConsumerState<SpendCalendar> {
                   ],
                 ),
               ),
-              const SizedBox(height: 16),
-
-              // ── Category filter chips ──
-              SizedBox(
-                height: 32,
-                child: ListView(
-                  scrollDirection: Axis.horizontal,
-                  children: [
-                    _FilterChip(
-                      label: 'All',
-                      selected: _filterCategoryId == null,
-                      color: colorScheme.primary,
-                      onTap: () => setState(() => _filterCategoryId = null),
-                    ),
-                    const SizedBox(width: 6),
-                    ...categories.where((c) => c.type == 'expense').map((cat) => Padding(
-                      padding: const EdgeInsets.only(right: 6),
-                      child: _FilterChip(
-                        label: cat.name,
-                        selected: _filterCategoryId == cat.id,
-                        color: Color(cat.color),
-                        onTap: () => setState(() => _filterCategoryId = cat.id),
-                      ),
+              // ── Animated body: filters + grid + legend ──
+              AnimatedSwitcher(
+                duration: 350.ms,
+                switchInCurve: Curves.easeOutCubic,
+                transitionBuilder: (child, animation) {
+                  final isForward = _previousMonth != null && _currentMonth.isAfter(_previousMonth!);
+                  return SlideTransition(
+                    position: Tween<Offset>(
+                      begin: Offset(isForward ? 0.2 : -0.2, 0.0),
+                      end: Offset.zero,
+                    ).animate(CurvedAnimation(
+                      parent: animation,
+                      curve: Curves.easeOutCubic,
                     )),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
+                    child: FadeTransition(
+                      opacity: animation,
+                      child: child,
+                    ),
+                  );
+                },
+                child: Column(
+                  key: ValueKey('body_${_currentMonth.year}_${_currentMonth.month}'),
+                  children: [
+                    const SizedBox(height: 16),
 
-              // ── Day-of-week header ──
-              Row(
-                children: ['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d) => Expanded(
-                  child: Center(
-                    child: Text(
-                      d,
-                      style: AppTheme.bodyStyle(
-                        size: 10,
-                        weight: FontWeight.w600,
-                        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+                    // ── Category & Tag filter chips ──
+                    SizedBox(
+                      height: 32,
+                      child: ListView(
+                        scrollDirection: Axis.horizontal,
+                        children: [
+                          _FilterChip(
+                            label: 'All',
+                            selected: _filterCategoryId == null && _filterTagId == null,
+                            color: colorScheme.primary,
+                            onTap: () => setState(() {
+                              _filterCategoryId = null;
+                              _filterTagId = null;
+                            }),
+                          ),
+                          const SizedBox(width: 6),
+                          ...categories.where((c) => c.type == 'expense').map((cat) => Padding(
+                            padding: const EdgeInsets.only(right: 6),
+                            child: _FilterChip(
+                              label: cat.name,
+                              selected: _filterCategoryId == cat.id,
+                              color: Color(cat.color),
+                              onTap: () => setState(() {
+                                _filterTagId = null;
+                                _filterCategoryId = _filterCategoryId == cat.id ? null : cat.id;
+                              }),
+                            ),
+                          )),
+                          ...tags.map((tag) => Padding(
+                            padding: const EdgeInsets.only(right: 6),
+                            child: _FilterChip(
+                              label: '#${tag.name}',
+                              selected: _filterTagId == tag.id,
+                              color: Color(tag.color),
+                              onTap: () => setState(() {
+                                _filterCategoryId = null;
+                                _filterTagId = _filterTagId == tag.id ? null : tag.id;
+                              }),
+                            ),
+                          )),
+                        ],
                       ),
                     ),
-                  ),
-                )).toList(),
-              ),
-              const SizedBox(height: 6),
+                    const SizedBox(height: 16),
 
-              // ── Calendar grid ──
-              ...List.generate(numWeeks, (weekIdx) {
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Row(
-                    children: List.generate(7, (dayOfWeek) {
-                      final dayNum = weekIdx * 7 + dayOfWeek - startOffset + 1;
-                      final isValid = dayNum >= 1 && dayNum <= daysInMonth;
-
-                      if (!isValid) {
-                        return Expanded(child: Container(margin: const EdgeInsets.all(2), height: 42));
-                      }
-
-                      final dayTotal = dayTotals[dayNum] ?? 0.0;
-                      final intensity = maxDaily > 0 ? (dayTotal / maxDaily) : 0.0;
-                      final hasSpend = dayTotal > 0;
-                      final isToday = dayNum == DateTime.now().day &&
-                          _currentMonth.year == DateTime.now().year &&
-                          _currentMonth.month == DateTime.now().month;
-
-                      // Determine cell color
-                      Color cellColor;
-                      if (!hasSpend) {
-                        cellColor = Colors.transparent;
-                      } else if (intensity < 0.25) {
-                        cellColor = AppColors.success.withValues(alpha: 0.15);
-                      } else if (intensity < 0.5) {
-                        cellColor = AppColors.warning.withValues(alpha: 0.25);
-                      } else if (intensity < 0.75) {
-                        cellColor = AppColors.warning.withValues(alpha: 0.5);
-                      } else {
-                        cellColor = AppColors.error.withValues(alpha: 0.45);
-                      }
-
-                      final dayTransactions = dailyTxns[dayNum] ?? [];
-
-                      return Expanded(
-                        child: GestureDetector(
-                          onTap: isValid && hasSpend
-                              ? () => _showDaySheet(context,
-                                  DateTime(_currentMonth.year, _currentMonth.month, dayNum),
-                                  dayTransactions, categories)
-                              : null,
-                          onLongPress: isValid && hasSpend
-                              ? () {
-                                  final topCatId = _getTopCategory(dayTransactions);
-                                  final topCat = categories.where((c) => c.id == topCatId).firstOrNull;
-                                  _showDayPreview(context,
-                                      DateTime(_currentMonth.year, _currentMonth.month, dayNum),
-                                      dayTotal, topCat?.name);
-                                }
-                              : null,
-                          child: AnimatedContainer(
-                            duration: 100.ms,
-                            margin: const EdgeInsets.all(2),
-                            height: 42,
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(8),
-                              color: cellColor,
-                              border: isToday
-                                  ? Border.all(color: colorScheme.primary, width: 1.5)
-                                  : null,
-                            ),
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Text(
-                                  isValid ? '$dayNum' : '',
-                                  style: AppTheme.bodyStyle(
-                                    size: 11,
-                                    weight: isToday ? FontWeight.w700 : FontWeight.w500,
-                                    color: hasSpend
-                                        ? (intensity > 0.5 ? Colors.white : colorScheme.onSurface)
-                                        : colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
-                                  ),
-                                ),
-                                if (hasSpend)
-                                  Container(
-                                    width: 5,
-                                    height: 5,
-                                    margin: const EdgeInsets.only(top: 1),
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      color: intensity > 0.5 ? Colors.white : AppColors.warning,
-                                    ),
-                                  ),
-                              ],
+                    // ── Day-of-week header ──
+                    Row(
+                      children: ['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d) => Expanded(
+                        child: Center(
+                          child: Text(
+                            d,
+                            style: AppTheme.bodyStyle(
+                              size: 10,
+                              weight: FontWeight.w600,
+                              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
                             ),
                           ),
                         ),
+                      )).toList(),
+                    ),
+                    const SizedBox(height: 6),
+
+                    // ── Calendar grid ──
+                    ...List.generate(numWeeks, (weekIdx) {
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Row(
+                          children: List.generate(7, (dayOfWeek) {
+                            final dayNum = weekIdx * 7 + dayOfWeek - startOffset + 1;
+                            final isValid = dayNum >= 1 && dayNum <= daysInMonth;
+
+                            if (!isValid) {
+                              return Expanded(child: Container(margin: const EdgeInsets.all(2), height: 42));
+                            }
+
+                            final dayTotal = dayTotals[dayNum] ?? 0.0;
+                            final intensity = maxDaily > 0 ? (dayTotal / maxDaily) : 0.0;
+                            final hasSpend = dayTotal > 0;
+                            final isToday = dayNum == DateTime.now().day &&
+                                _currentMonth.year == DateTime.now().year &&
+                                _currentMonth.month == DateTime.now().month;
+
+                            // Determine cell color
+                            Color cellColor;
+                            if (!hasSpend) {
+                              cellColor = Colors.transparent;
+                            } else if (intensity < 0.25) {
+                              cellColor = AppColors.success.withValues(alpha: 0.15);
+                            } else if (intensity < 0.5) {
+                              cellColor = AppColors.warning.withValues(alpha: 0.25);
+                            } else if (intensity < 0.75) {
+                              cellColor = AppColors.warning.withValues(alpha: 0.5);
+                            } else {
+                              cellColor = AppColors.error.withValues(alpha: 0.45);
+                            }
+
+                            final dayTransactions = dailyTxns[dayNum] ?? [];
+
+                            return Expanded(
+                              child: GestureDetector(
+                                onTap: isValid && hasSpend
+                                    ? () => _showDaySheet(context,
+                                        DateTime(_currentMonth.year, _currentMonth.month, dayNum),
+                                        dayTransactions, categories, accounts)
+                                    : null,
+                                onLongPress: isValid && hasSpend
+                                    ? () {
+                                        final topCatId = _getTopCategory(dayTransactions);
+                                        final topCat = categories.where((c) => c.id == topCatId).firstOrNull;
+                                        _showDayPreview(context,
+                                            DateTime(_currentMonth.year, _currentMonth.month, dayNum),
+                                            dayTotal, topCat?.name);
+                                      }
+                                    : null,
+                                child: AnimatedContainer(
+                                  duration: 100.ms,
+                                  margin: const EdgeInsets.all(2),
+                                  height: 42,
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(8),
+                                    color: cellColor,
+                                    border: isToday
+                                        ? Border.all(color: colorScheme.primary, width: 1.5)
+                                        : null,
+                                  ),
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text(
+                                        isValid ? '$dayNum' : '',
+                                        style: AppTheme.bodyStyle(
+                                          size: 11,
+                                          weight: isToday ? FontWeight.w700 : FontWeight.w500,
+                                          color: hasSpend
+                                              ? (intensity > 0.5 ? Colors.white : colorScheme.onSurface)
+                                              : colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+                                        ),
+                                      ),
+                                      if (hasSpend)
+                                        Container(
+                                          width: 5,
+                                          height: 5,
+                                          margin: const EdgeInsets.only(top: 1),
+                                          decoration: BoxDecoration(
+                                            shape: BoxShape.circle,
+                                            color: intensity > 0.5 ? Colors.white : AppColors.warning,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            );
+                          }),
+                        ),
                       );
                     }),
-                  ),
-                );
-              }),
 
-              const SizedBox(height: 12),
+                    const SizedBox(height: 12),
 
-              // ── Legend ──
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  _LegendItem(color: AppColors.success.withValues(alpha: 0.2), label: 'Light'),
-                  const SizedBox(width: 16),
-                  _LegendItem(color: AppColors.warning.withValues(alpha: 0.3), label: 'Medium'),
-                  const SizedBox(width: 16),
-                  _LegendItem(color: AppColors.error.withValues(alpha: 0.45), label: 'Heavy'),
-                  const SizedBox(width: 16),
-                  _LegendItem(color: colorScheme.primary.withValues(alpha: 0.15), label: 'Today'),
-                ],
+                    // ── Legend ──
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        _LegendItem(color: AppColors.success.withValues(alpha: 0.2), label: 'Light'),
+                        const SizedBox(width: 16),
+                        _LegendItem(color: AppColors.warning.withValues(alpha: 0.3), label: 'Medium'),
+                        const SizedBox(width: 16),
+                        _LegendItem(color: AppColors.error.withValues(alpha: 0.45), label: 'Heavy'),
+                        const SizedBox(width: 16),
+                        _LegendItem(color: colorScheme.primary.withValues(alpha: 0.15), label: 'Today'),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
         ),
       ),
       ],
-    ).animate().fadeIn(duration: 500.ms);
+    );
   }
 
   String? _getTopCategory(List<Transaction> txns) {

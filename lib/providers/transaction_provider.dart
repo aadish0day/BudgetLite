@@ -9,7 +9,7 @@ import '../core/utils/sms_parser.dart';
 import '../core/utils/duplicate_detector.dart';
 import '../core/utils/notification_service.dart';
 import 'database_provider.dart';
-import 'settings_provider.dart' show settingsNotifierProvider;
+import 'settings_provider.dart';
 
 final transactionsProvider = FutureProvider.autoDispose<List<Transaction>>((ref) async {
   final db = ref.read(databaseProvider);
@@ -147,6 +147,8 @@ class TransactionNotifier extends StateNotifier<AsyncValue<void>> {
   /// Post due recurring transactions as instances since the last check.
   /// Uses `last_recurring_check` in AppSettings to avoid duplicates.
   /// Each posted instance is flagged with `isRecurringInstance = true`.
+  /// ⚠️ Income-type recurring templates are intentionally skipped — income
+  /// is never auto-posted; it must be added manually or confirmed from SMS.
   Future<int> postDueRecurringTransactions() async {
     final settings = ref.read(settingsNotifierProvider.notifier);
     final lastCheckStr = await settings.getSetting('last_recurring_check');
@@ -154,6 +156,14 @@ class TransactionNotifier extends StateNotifier<AsyncValue<void>> {
     final now = DateTime.now();
 
     final db = ref.read(databaseProvider);
+
+    // Load categories to skip income-type recurring templates
+    final categories = await db.select(db.categories).get();
+    final incomeCategoryIds = categories
+        .where((c) => c.type == 'income')
+        .map((c) => c.id)
+        .toSet();
+
     final templates = await (db.select(db.transactions)
       ..where((t) => t.isRecurring.equals(true))
       ..where((t) => t.isRecurringInstance.equals(false)))
@@ -166,6 +176,9 @@ class TransactionNotifier extends StateNotifier<AsyncValue<void>> {
     // Wrap all writes + check update in a single transaction for batch atomicity
     await db.transaction(() async {
       for (final template in templates) {
+        // Skip income-category recurring templates — never auto-post income
+        if (incomeCategoryIds.contains(template.categoryId)) continue;
+
         final interval = template.recurringInterval;
         if (interval == null) continue;
 
@@ -221,6 +234,8 @@ class TransactionNotifier extends StateNotifier<AsyncValue<void>> {
     if (postedCount > 0) {
       ref.invalidate(transactionsProvider);
       ref.invalidate(thisMonthTransactionsProvider);
+      ref.invalidate(totalIncomeThisMonthProvider);
+      ref.invalidate(totalSpentThisMonthProvider);
     }
 
     return postedCount;
@@ -357,50 +372,6 @@ class SmsReviewQueueNotifier extends StateNotifier<List<ParsedSmsTxn>> {
     await _persist();
   }
 
-  /// Confirm a credit SMS and link it to a recurring pocket money / income template.
-  /// This creates the income transaction and updates the recurring template's date
-  /// to fulfill the entry for that period without creating duplicate entries.
-  Future<void> confirmAndLinkToRecurring(String id, String recurringId, {String? overrideCategory, String? overrideNote}) async {
-    final txn = state.where((t) => t.id == id).firstOrNull;
-    if (txn == null) return;
-
-    final notifier = ref.read(transactionNotifierProvider.notifier);
-    final note = overrideNote ?? txn.note;
-
-    // Add income transaction with note indicating linked recurring entry
-    await notifier.addTransaction(
-      amount: txn.amount,
-      categoryId: overrideCategory ?? txn.categoryId,
-      note: '$note (Linked Pocket Money)',
-      date: txn.date,
-      paymentMethod: 'UPI',
-      isIncome: true,
-    );
-
-    // Update the recurring entry date to current SMS date
-    final db = ref.read(databaseProvider);
-    final recurringTxn = await (db.select(db.transactions)..where((t) => t.id.equals(recurringId))).getSingleOrNull();
-    if (recurringTxn != null) {
-      await notifier.updateTransaction(Transaction(
-        id: recurringTxn.id,
-        amount: recurringTxn.amount,
-        categoryId: recurringTxn.categoryId,
-        accountId: recurringTxn.accountId,
-        note: recurringTxn.note,
-        date: txn.date,
-        paymentMethod: recurringTxn.paymentMethod,
-        isRecurring: true,
-        isRecurringInstance: recurringTxn.isRecurringInstance,
-        recurringInterval: recurringTxn.recurringInterval,
-        receiptImagePath: recurringTxn.receiptImagePath,
-        createdAt: recurringTxn.createdAt,
-      ));
-    }
-
-    state = state.where((t) => t.id != id).toList();
-    await _persist();
-  }
-
   /// Discard (remove without adding) a single item
   Future<void> discardItem(String id) async {
     state = state.where((t) => t.id != id).toList();
@@ -429,11 +400,10 @@ final recurringTransactionsProvider =
     FutureProvider<List<RecurringPaymentInfo>>((ref) async {
   final transactions = await ref.read(transactionsProvider.future);
   final categories = await ref.read(categoriesProvider.future);
-  final smsEnabled = await ref.read(settingsNotifierProvider.notifier).getSetting('sms_parsing');
+  final settingsNotifier = ref.read(settingsNotifierProvider.notifier);
 
   final recurring = <RecurringPaymentInfo>[];
   final now = DateTime.now();
-  final isSmsEnabled = smsEnabled == 'true';
 
   for (final t in transactions.where((t) => t.isRecurring)) {
     final nextDate = NotificationService.calculateNextDueDate(
@@ -443,15 +413,14 @@ final recurringTransactionsProvider =
     if (nextDate != null) {
       final category = categories.where((c) => c.id == t.categoryId).firstOrNull;
 
-      // Compute "possibly unused" — opt-in, only when SMS parsing is on
-      bool possiblyUnused = false;
-      if (isSmsEnabled) {
-        final cycleDays = _cycleDaysForInterval(t.recurringInterval);
-        final daysSinceLastConfirmed = now.difference(t.date).inDays;
-        if (cycleDays > 0 && daysSinceLastConfirmed > 2 * cycleDays) {
-          possiblyUnused = true;
-        }
-      }
+      // "Possibly unused" is an opt-in signal based on whether the user
+      // has manually marked this subscription as reviewed/used.
+      // A subscription that has NOT been reviewed yet is flagged.
+      // This is persisted in AppSettings (not SMS-based or time-based).
+      // All subscriptions start as "potentially unused" until the user
+      // explicitly marks them as reviewed.
+      final isReviewed = await settingsNotifier.isSubscriptionReviewed(t.id);
+      final possiblyUnused = !isReviewed;
 
       recurring.add(RecurringPaymentInfo(
         transaction: t,
@@ -467,18 +436,6 @@ final recurringTransactionsProvider =
   recurring.sort((a, b) => a.daysUntil.compareTo(b.daysUntil));
   return recurring;
 });
-
-int _cycleDaysForInterval(String? interval) {
-  switch (interval) {
-    case 'daily': return 1;
-    case 'weekly': return 7;
-    case 'biweekly': return 14;
-    case 'monthly': return 30;
-    case 'quarterly': return 90;
-    case 'yearly': return 365;
-    default: return 0;
-  }
-}
 
 /// Structured info about a recurring payment with computed next due date
 class RecurringPaymentInfo {

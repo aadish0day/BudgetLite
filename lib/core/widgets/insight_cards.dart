@@ -172,7 +172,8 @@ class _LegendDot extends StatelessWidget {
 }
 
 /// ── Year in Review ──
-/// Shows spending summary for the past 12 months with fun stats.
+/// Shows spending summary for a completed calendar year.
+/// If the current year hasn't completed yet, shows data labeled "so far".
 class YearInReview extends ConsumerWidget {
   const YearInReview({super.key});
 
@@ -190,10 +191,14 @@ class YearInReview extends ConsumerWidget {
 
     if (yearTxns.isEmpty) return const SizedBox.shrink();
 
+    final isYearComplete = now.month == 12 && now.day >= 31;
+    final monthsElapsed = isYearComplete ? 12 : now.month;
+    final label = isYearComplete ? '${now.year}' : '${now.year} (so far)';
+
     // Stats
     final totalSpent = yearTxns.where((t) => t.amount > 0).fold<double>(0, (s, t) => s + t.amount);
     final totalIncome = yearTxns.where((t) => t.amount < 0).fold<double>(0, (s, t) => s + t.amount.abs());
-    final avgMonthlySpend = totalSpent / max(1, (now.month));
+    final avgMonthlySpend = monthsElapsed > 0 ? totalSpent / monthsElapsed : 0.0;
     final totalTxns = yearTxns.length;
     final biggestSpend = yearTxns.where((t) => t.amount > 0).fold<double>(0, (s, t) => s > t.amount ? s : t.amount);
     final savingsRate = totalIncome > 0 ? ((totalIncome - totalSpent) / totalIncome * 100).clamp(0, 100) : 0.0;
@@ -203,10 +208,10 @@ class YearInReview extends ConsumerWidget {
       children: [
         Row(
           children: [
-            Icon(LucideIcons.award, size: 16, color: AppColors.warning),
+            Icon(LucideIcons.award, size: 16, color: isYearComplete ? AppColors.warning : colorScheme.primary),
             const SizedBox(width: 6),
             Text(
-              'Year in Review — ${now.year}',
+              'Year in Review — $label',
               style: AppTheme.displayStyle(size: 16, weight: FontWeight.w600, color: colorScheme.onSurface),
             ),
           ],
@@ -225,6 +230,32 @@ class YearInReview extends ConsumerWidget {
           padding: AppConstants.cardPadding,
           child: Column(
             children: [
+              // Partial year banner
+              if (!isYearComplete)
+                Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    color: AppColors.primary.withValues(alpha: 0.08),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(LucideIcons.info, size: 12, color: colorScheme.primary),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Partial year data — $monthsElapsed month${monthsElapsed != 1 ? 's' : ''} so far',
+                        style: AppTheme.bodyStyle(
+                          size: 11,
+                          color: colorScheme.primary,
+                          weight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               // Top row: big numbers
               Row(
                 children: [

@@ -113,6 +113,23 @@ class AppDatabase extends _$AppDatabase {
       currency: const Value('INR'),
     ));
   }
+  /// Watch the default account as a stream (for live balance updates).
+  Stream<Account> watchDefaultAccount() {
+    return (select(accounts)..where((a) => a.id.equals('default')))
+        .watchSingle();
+  }
+
+  /// Get the default account.
+  Future<Account> getDefaultAccount() {
+    return (select(accounts)..where((a) => a.id.equals('default')))
+        .getSingle();
+  }
+
+  /// Update the balance of an account.
+  Future<void> updateAccountBalance(String accountId, double newBalance) async {
+    await (update(accounts)..where((a) => a.id.equals(accountId)))
+        .write(AccountsCompanion(balance: Value(newBalance)));
+  }
 }
 
 LazyDatabase _openConnection() {

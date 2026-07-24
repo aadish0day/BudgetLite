@@ -30,6 +30,7 @@ class HomeScreen extends ConsumerWidget {
     final monthlyIncome = ref.watch(monthlyIncomeProvider);
     final budgets = ref.watch(thisMonthBudgetsProvider);
     final transactions = ref.watch(thisMonthTransactionsProvider);
+    final initialBalance = ref.watch(initialBalanceProvider).valueOrNull ?? 0.0;
 
     return Scaffold(
       appBar: AppBar(
@@ -61,8 +62,10 @@ class HomeScreen extends ConsumerWidget {
             // ── Student Pocket Money Hero Balance ──
             _Balance(
               spent: totalSpent.valueOrNull ?? 0,
-              remaining: (monthlyIncome.valueOrNull ?? 0) - (totalSpent.valueOrNull ?? 0),
+              remaining: initialBalance + (monthlyIncome.valueOrNull ?? 0) - (totalSpent.valueOrNull ?? 0),
               monthlyIncome: monthlyIncome.valueOrNull ?? 0,
+              initialBalance: initialBalance,
+              onEditBalance: () => _showEditBalanceDialog(context, ref, initialBalance),
             ),
             const SizedBox(height: 28),
 
@@ -125,6 +128,112 @@ class HomeScreen extends ConsumerWidget {
       ),
     );
   }
+
+  void _showEditBalanceDialog(BuildContext context, WidgetRef ref, double currentBalance) {
+    final controller = TextEditingController(
+      text: currentBalance > 0 ? currentBalance.toStringAsFixed(0) : '',
+    );
+    final colorScheme = Theme.of(context).colorScheme;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(10),
+                color: colorScheme.primary.withValues(alpha: 0.12),
+              ),
+              child: Icon(LucideIcons.wallet, size: 20, color: colorScheme.primary),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Set Initial Balance',
+                style: AppTheme.displayStyle(
+                  size: 16,
+                  weight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Enter the amount you currently have. This is your starting balance before any income or expenses this month.',
+              style: AppTheme.bodyStyle(
+                size: 12,
+                color: colorScheme.onSurfaceVariant,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: controller,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              autofocus: true,
+              style: AppTheme.financialStyle(
+                size: 24,
+                weight: FontWeight.w700,
+                color: colorScheme.onSurface,
+              ),
+              decoration: InputDecoration(
+                prefixText: '₹ ',
+                prefixStyle: AppTheme.financialStyle(
+                  size: 24,
+                  weight: FontWeight.w700,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+                hintText: '0',
+                hintStyle: AppTheme.financialStyle(
+                  size: 24,
+                  weight: FontWeight.w700,
+                  color: colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: BorderSide(color: colorScheme.outline.withValues(alpha: 0.3)),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: BorderSide(color: colorScheme.primary, width: 2),
+                ),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text(
+              'Cancel',
+              style: AppTheme.bodyStyle(
+                size: 14,
+                weight: FontWeight.w500,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          FilledButton(
+            onPressed: () {
+              final value = double.tryParse(controller.text.trim()) ?? 0;
+              final db = ref.read(databaseProvider);
+              updateInitialBalance(db, value);
+              Navigator.of(ctx).pop();
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 /// Balance hero — Student Edition Pocket Money & Daily Safe Spend framing.
@@ -132,11 +241,15 @@ class _Balance extends StatelessWidget {
   final double spent;
   final double remaining;
   final double monthlyIncome;
+  final double initialBalance;
+  final VoidCallback? onEditBalance;
 
   const _Balance({
     required this.spent,
     required this.remaining,
     required this.monthlyIncome,
+    this.initialBalance = 0,
+    this.onEditBalance,
   });
 
   @override
@@ -158,26 +271,53 @@ class _Balance extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-              'Pocket Money Balance',
-              style: AppTheme.bodyStyle(
-                size: 12,
-                weight: FontWeight.w600,
-                color: colorScheme.onSurfaceVariant,
-              ),
+            Row(
+              children: [
+                Text(
+                  'Pocket Money Balance',
+                  style: AppTheme.bodyStyle(
+                    size: 12,
+                    weight: FontWeight.w600,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                if (onEditBalance != null) ...[
+                  const SizedBox(width: 6),
+                  GestureDetector(
+                    onTap: onEditBalance,
+                    child: Container(
+                      padding: const EdgeInsets.all(3),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: colorScheme.primary.withValues(alpha: 0.08),
+                      ),
+                      child: Icon(LucideIcons.pencil, size: 12, color: colorScheme.primary),
+                    ),
+                  ),
+                ],
+              ],
             ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                color: colorScheme.primary.withValues(alpha: 0.12),
-              ),
-              child: Text(
-                'Single Pool',
-                style: AppTheme.bodyStyle(
-                  size: 10,
-                  weight: FontWeight.w600,
-                  color: colorScheme.primary,
+            GestureDetector(
+              onTap: onEditBalance,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  color: initialBalance > 0
+                      ? AppColors.success.withValues(alpha: 0.12)
+                      : colorScheme.primary.withValues(alpha: 0.12),
+                ),
+                child: Text(
+                  initialBalance > 0
+                      ? 'Starting: ${Formatters.formatCurrency(initialBalance)}'
+                      : 'Set Balance',
+                  style: AppTheme.bodyStyle(
+                    size: 10,
+                    weight: FontWeight.w600,
+                    color: initialBalance > 0
+                        ? AppColors.success
+                        : colorScheme.primary,
+                  ),
                 ),
               ),
             ),

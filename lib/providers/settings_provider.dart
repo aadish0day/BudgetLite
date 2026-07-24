@@ -160,6 +160,41 @@ class SettingsNotifier extends StateNotifier<AsyncValue<void>> {
     await setSetting('accent_color', colorValue.toString());
     ref.invalidate(accentColorProvider);
   }
+
+  // ── Subscription Review Tracking ──
+  /// Mark a subscription transaction as reviewed/used by the user.
+  /// Stores a set of reviewed transaction IDs in AppSettings.
+  Future<void> markSubscriptionReviewed(String transactionId) async {
+    final stored = await getSetting('subscription_reviewed');
+    final set = stored != null && stored.isNotEmpty
+        ? Set<String>.from(const JsonDecoder().convert(stored) as List)
+        : <String>{};
+    set.add(transactionId);
+    await setSetting('subscription_reviewed', const JsonEncoder().convert(set.toList()));
+  }
+
+  /// Check if a subscription transaction has been reviewed/used by the user.
+  Future<bool> isSubscriptionReviewed(String transactionId) async {
+    final stored = await getSetting('subscription_reviewed');
+    if (stored == null || stored.isEmpty) return false;
+    try {
+      final set = Set<String>.from(const JsonDecoder().convert(stored) as List);
+      return set.contains(transactionId);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Reset a subscription's review status (mark as not reviewed).
+  Future<void> resetSubscriptionReview(String transactionId) async {
+    final stored = await getSetting('subscription_reviewed');
+    if (stored == null || stored.isEmpty) return;
+    try {
+      final set = Set<String>.from(const JsonDecoder().convert(stored) as List);
+      set.remove(transactionId);
+      await setSetting('subscription_reviewed', const JsonEncoder().convert(set.toList()));
+    } catch (_) {}
+  }
 }
 
 final settingsNotifierProvider =

@@ -339,18 +339,6 @@ class _QueueItemCardState extends ConsumerState<_QueueItemCard> {
     final hasDuplicate = dupResult.hasDuplicates;
     final matchedDup = hasDuplicate ? dupResult.potentialDuplicates.first : null;
 
-    // 2. Recurring pocket money matching (credit SMS / income)
-    final recurringList = ref.watch(recurringTransactionsProvider).valueOrNull ?? [];
-    RecurringPaymentInfo? matchedPocketMoney;
-    if (widget.txn.isIncome) {
-      matchedPocketMoney = recurringList.where((r) {
-        return r.transaction.amount < 0 ||
-            r.transaction.categoryId == 'income' ||
-            (r.category?.name.toLowerCase().contains('income') ?? false) ||
-            (r.transaction.note?.toLowerCase().contains('pocket money') ?? false);
-      }).firstOrNull;
-    }
-
     return Dismissible(
       key: Key('sms_${widget.txn.id}'),
       direction: DismissDirection.endToStart,
@@ -407,34 +395,6 @@ class _QueueItemCardState extends ConsumerState<_QueueItemCard> {
                           size: 11,
                           weight: FontWeight.w600,
                           color: AppColors.error,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-            // Pocket Money Recurring match banner
-            if (matchedPocketMoney != null)
-              Container(
-                margin: const EdgeInsets.only(bottom: 8),
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(8),
-                  color: AppColors.success.withValues(alpha: 0.1),
-                  border: Border.all(color: AppColors.success.withValues(alpha: 0.3)),
-                ),
-                child: Row(
-                  children: [
-                    Icon(LucideIcons.target, size: 14, color: AppColors.success),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        'Matches Recurring Pocket Money (${matchedPocketMoney.intervalLabel})',
-                        style: AppTheme.bodyStyle(
-                          size: 11,
-                          weight: FontWeight.w600,
-                          color: AppColors.success,
                         ),
                       ),
                     ),
@@ -611,37 +571,7 @@ class _QueueItemCardState extends ConsumerState<_QueueItemCard> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                if (matchedPocketMoney != null)
-                  GestureDetector(
-                    onTap: () async {
-                      await ref.read(smsReviewQueueProvider.notifier).confirmAndLinkToRecurring(
-                        widget.txn.id,
-                        matchedPocketMoney!.transaction.id,
-                        overrideCategory: _editingCategory ?? widget.txn.categoryId,
-                        overrideNote: _noteCtrl.text.trim(),
-                      );
-                      ref.invalidate(transactionsProvider);
-                      ref.invalidate(recurringTransactionsProvider);
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(8),
-                        color: widget.colorScheme.primary.withValues(alpha: 0.15),
-                        border: Border.all(color: widget.colorScheme.primary.withValues(alpha: 0.3)),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(LucideIcons.link, size: 13, color: widget.colorScheme.primary),
-                          const SizedBox(width: 4),
-                          Text('Link Pocket Money', style: AppTheme.bodyStyle(
-                            size: 11, color: widget.colorScheme.primary, weight: FontWeight.w600)),
-                        ],
-                      ),
-                    ),
-                  ),
-                if (matchedPocketMoney != null) const SizedBox(width: 8),
+
                 GestureDetector(
                   onTap: () => widget.onConfirmWithCategory(
                     _editingCategory ?? widget.txn.categoryId,

@@ -9,6 +9,7 @@ import '../../core/utils/constants.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/utils/icon_helper.dart';
 import '../../providers/transaction_provider.dart';
+import '../../providers/settings_provider.dart';
 import 'dart:async';
 import '../../core/database/database.dart';
 import '../transactions/add_transaction_sheet.dart';
@@ -52,13 +53,13 @@ class _SubscriptionAuditScreenState extends ConsumerState<SubscriptionAuditScree
       body: recurring.when(
         data: (payments) => _buildContent(context, colorScheme, payments),
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (_, _) => Center(
+        error: (_, _) => const Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(LucideIcons.alertCircle, size: 48, color: AppColors.error.withValues(alpha: 0.5)),
-              const SizedBox(height: 12),
-              const Text('Could not load subscriptions'),
+              Icon(LucideIcons.alertCircle, size: 48, color: AppColors.error),
+              SizedBox(height: 12),
+              Text('Could not load subscriptions'),
             ],
           ),
         ),
@@ -169,6 +170,7 @@ class _SubscriptionAuditScreenState extends ConsumerState<SubscriptionAuditScree
           ...filtered.where((p) => p.isOverdue).map((p) => _SubscriptionCard(
             payment: p, colorScheme: colorScheme,
             onMarkPaid: () => markRecurringAsPaid(context, ref, p),
+            onMarkReviewed: () => _markReviewed(p.transaction.id),
             onEdit: () => _editTransaction(p.transaction),
             onDelete: () => _deleteSubscription(p),
           )),
@@ -199,6 +201,7 @@ class _SubscriptionAuditScreenState extends ConsumerState<SubscriptionAuditScree
           ...filtered.where((p) => p.isDueSoon || p.isDueToday).map((p) => _SubscriptionCard(
             payment: p, colorScheme: colorScheme,
             onMarkPaid: () => markRecurringAsPaid(context, ref, p),
+            onMarkReviewed: () => _markReviewed(p.transaction.id),
             onEdit: () => _editTransaction(p.transaction),
             onDelete: () => _deleteSubscription(p),
           )),
@@ -221,6 +224,7 @@ class _SubscriptionAuditScreenState extends ConsumerState<SubscriptionAuditScree
           ...upcoming.map((p) => _SubscriptionCard(
             payment: p, colorScheme: colorScheme,
             onMarkPaid: () => markRecurringAsPaid(context, ref, p),
+            onMarkReviewed: () => _markReviewed(p.transaction.id),
             onEdit: () => _editTransaction(p.transaction),
             onDelete: () => _deleteSubscription(p),
           )),
@@ -290,6 +294,20 @@ class _SubscriptionAuditScreenState extends ConsumerState<SubscriptionAuditScree
       }
     }
   }
+
+  Future<void> _markReviewed(String transactionId) async {
+    await ref.read(settingsNotifierProvider.notifier).markSubscriptionReviewed(transactionId);
+    ref.invalidate(recurringTransactionsProvider);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Marked as reviewed ✓'),
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+  }
 }
 
 /// ── Stats header: summary cards ──
@@ -324,11 +342,11 @@ class _StatsHeader extends StatelessWidget {
       padding: AppConstants.cardPadding,
       child: Column(
         children: [
-          // Annual total — hero number
+          // Annual total — hero number (forecast, not actual spend)
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Text('Annual cost', style: AppTheme.bodyStyle(
+              Text('Expected annual cost', style: AppTheme.bodyStyle(
                 size: 11, weight: FontWeight.w500, color: colorScheme.onSurfaceVariant)),
               const SizedBox(width: 6),
               Container(
@@ -348,7 +366,7 @@ class _StatsHeader extends StatelessWidget {
           ),
           const SizedBox(height: 2),
           Text(
-            '${Formatters.formatCurrency(totalMonthly)} / month',
+            '${Formatters.formatCurrency(totalMonthly)} / month (expected)',
             style: AppTheme.bodyStyle(size: 13, color: colorScheme.onSurfaceVariant),
           ),
           const SizedBox(height: 14),
@@ -499,6 +517,7 @@ class _SubscriptionCard extends StatelessWidget {
   final RecurringPaymentInfo payment;
   final ColorScheme colorScheme;
   final VoidCallback onMarkPaid;
+  final VoidCallback? onMarkReviewed;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
@@ -506,6 +525,7 @@ class _SubscriptionCard extends StatelessWidget {
     required this.payment,
     required this.colorScheme,
     required this.onMarkPaid,
+    this.onMarkReviewed,
     required this.onEdit,
     required this.onDelete,
   });
@@ -597,23 +617,26 @@ class _SubscriptionCard extends StatelessWidget {
                   const Spacer(),
 
                   if (isUnused)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(6),
-                      color: AppColors.warning.withValues(alpha: 0.12),
+                    GestureDetector(
+                      onTap: onMarkReviewed,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(6),
+                          color: AppColors.warning.withValues(alpha: 0.12),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(LucideIcons.eye, size: 10, color: AppColors.warning),
+                            const SizedBox(width: 3),
+                            Text('Needs review',
+                                style: AppTheme.bodyStyle(
+                                  size: 8, weight: FontWeight.w600, color: AppColors.warning)),
+                          ],
+                        ),
+                      ),
                     ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(LucideIcons.rotateCw, size: 10, color: AppColors.warning),
-                        const SizedBox(width: 3),
-                        Text('Possibly unused',
-                            style: AppTheme.bodyStyle(
-                              size: 8, weight: FontWeight.w600, color: AppColors.warning)),
-                      ],
-                    ),
-                  ),
                   if (isUnused) const SizedBox(width: 6),
                   // Monthly cost indicator
                   Container(

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,6 +12,7 @@ import '../../core/utils/formatters.dart';
 import '../../core/utils/icon_helper.dart';
 import '../../providers/budget_provider.dart';
 import '../../providers/transaction_provider.dart';
+import '../../providers/navigation_provider.dart';
 import '../../core/database/database.dart';
 import '../../providers/database_provider.dart';
 
@@ -22,22 +24,12 @@ class BudgetScreen extends ConsumerStatefulWidget {
 }
 
 class _BudgetScreenState extends ConsumerState<BudgetScreen> {
-  final _incomeCtrl = TextEditingController();
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(monthlyIncomeProvider.future).then((income) {
-        // Convert monthly display back to weekly for the input field
-        if (income > 0) _incomeCtrl.text = (income / 4).toStringAsFixed(0);
-      });
-    });
-  }
+  String? _highlightTarget;
+  Timer? _highlightTimer;
 
   @override
   void dispose() {
-    _incomeCtrl.dispose();
+    _highlightTimer?.cancel();
     super.dispose();
   }
 
@@ -48,11 +40,26 @@ class _BudgetScreenState extends ConsumerState<BudgetScreen> {
     final categories = ref.watch(expenseCategoriesProvider).valueOrNull ?? [];
     final budgets = ref.watch(thisMonthBudgetsProvider).valueOrNull ?? [];
     final spent = ref.watch(totalSpentThisMonthProvider).valueOrNull ?? 0;
+    final income = ref.watch(totalIncomeThisMonthProvider).valueOrNull ?? 0;
+
+    // Listen for budget highlight navigation (must be inside build)
+    ref.listen<String?>(budgetHighlightProvider, (_, next) {
+      if (next != null && mounted) {
+        setState(() => _highlightTarget = next);
+        _highlightTimer?.cancel();
+        _highlightTimer = Timer(const Duration(milliseconds: 2500), () {
+          if (mounted) {
+            setState(() => _highlightTarget = null);
+            ref.read(budgetHighlightProvider.notifier).state = null;
+          }
+        });
+      }
+    });
 
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          'Pocket Money Setup',
+          'Budget Setup',
           style: AppTheme.displayStyle(
             size: 17,
             weight: FontWeight.w600,
@@ -62,66 +69,82 @@ class _BudgetScreenState extends ConsumerState<BudgetScreen> {
       body: ListView(
         padding: AppConstants.screenPadding,
         children: [
-          Container(
+          // ── Income Summary (read-only) ──
+          AnimatedContainer(
+            duration: 400.ms,
+            curve: Curves.easeInOut,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(AppConstants.cardRadius),
               color: isDark ? AppColors.cardDark : AppColors.cardLight,
               boxShadow: isDark ? AppColors.cardShadowDark : AppColors.cardShadowLight,
+              border: Border.all(
+                color: _highlightTarget == 'income'
+                    ? AppColors.primary.withValues(alpha: 0.5)
+                    : Colors.transparent,
+                width: 2,
+              ),
             ),
             padding: AppConstants.cardPadding,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Weekly Pocket Money',
-                  style: AppTheme.bodyStyle(
-                    size: 12,
-                    weight: FontWeight.w500,
-                    color: colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(height: 4),
                 Row(
                   children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _incomeCtrl,
-                        keyboardType: TextInputType.number,
-                        style: AppTheme.financialStyle(
-                          size: 32,
-                          weight: FontWeight.w700,
-                          color: colorScheme.onSurface,
-                        ),
-                        decoration: InputDecoration(
-                          prefixText: '₹ ',
-                          prefixStyle: AppTheme.financialStyle(
-                            size: 32,
-                            weight: FontWeight.w700,
-                            color: colorScheme.onSurface.withValues(alpha: 0.5),
-                          ),
-                          border: InputBorder.none,
-                          filled: false,
-                          contentPadding: EdgeInsets.zero,
-                        ),
+                    Container(
+                      width: 36, height: 36,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(10),
+                        color: AppColors.success.withValues(alpha: 0.12),
                       ),
+                      child: const Icon(LucideIcons.plusCircle, size: 18, color: AppColors.success),
                     ),
-                    FilledButton.tonal(
-                      onPressed: _isSavingIncome ? null : _saveIncome,
-                      child: _isSavingIncome
-                          ? const SizedBox(
-                              width: 18, height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Text('Save'),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Income This Month',
+                            style: AppTheme.bodyStyle(
+                              size: 12,
+                              weight: FontWeight.w600,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                          Text(
+                            Formatters.formatCurrency(income),
+                            style: AppTheme.financialStyle(
+                              size: 28,
+                              weight: FontWeight.w700,
+                              color: colorScheme.onSurface,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 6),
-                Text(
-                  'Auto-posts each week · monthly total updates automatically',
-                  style: AppTheme.bodyStyle(
-                    size: 11,
-                    color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(LucideIcons.info, size: 14, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          'Add income manually via the + button or confirm SMS credits. No auto-posting.',
+                          style: AppTheme.bodyStyle(
+                            size: 11,
+                            color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -183,26 +206,6 @@ class _BudgetScreenState extends ConsumerState<BudgetScreen> {
         ],
       ),
     );
-  }
-
-  bool _isSavingIncome = false;
-
-  void _saveIncome() {
-    final weeklyAmount = double.tryParse(_incomeCtrl.text);
-    if (weeklyAmount != null && weeklyAmount > 0 && !_isSavingIncome) {
-      setState(() => _isSavingIncome = true);
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        // Store monthly equivalent (weekly × 4) for fallback display
-        ref.read(budgetNotifierProvider.notifier).setMonthlyIncome(weeklyAmount * 4);
-        setState(() => _isSavingIncome = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('${Formatters.formatCurrency(weeklyAmount)}/week pocket money set — auto-posts weekly'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      });
-    }
   }
 
   void _showAddCategorySheet(BuildContext context, WidgetRef ref) {

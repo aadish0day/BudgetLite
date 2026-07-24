@@ -10,7 +10,7 @@ class DemoDataSeeder {
     // Sample categories with student-friendly data
     final categoryIds = ['food', 'transport', 'shopping', 'bills', 'entertainment'];
     final merchants = {
-      'food': ['Swiggy', 'Zomato', 'Starbucks', 'Domino\'s', 'Dhaba', 'Pizza Hut', 'McDonald\'s', 'Subway'],
+      'food': ['Swiggy', 'Zomato', 'Starbucks', "Domino's", 'Dhaba', 'Pizza Hut', "McDonald's", 'Subway'],
       'transport': ['Uber', 'Ola', 'Metro Card', 'Bus Pass', 'Auto'],
       'shopping': ['Amazon', 'Myntra', 'Flipkart', 'Zara', 'H&M', 'Ajio', 'Nykaa'],
       'bills': ['Netflix', 'Jio', 'Airtel', 'Electricity', 'Internet', 'Spotify'],
@@ -47,44 +47,17 @@ class DemoDataSeeder {
       }
     }
 
-    // Add past weekly pocket money entries for history (last 12 weeks)
+    // Add past income entries for history (last 12 weeks) — one-off transactions only
     for (int weekOffset = 1; weekOffset < 12; weekOffset++) {
       final pocketDate = now.subtract(Duration(days: 7 * weekOffset));
       batch.add(TransactionsCompanion.insert(
         id: 'demo_income_weekly_$weekOffset',
-        amount: -8000.0,
+        amount: -3000.0,
         categoryId: 'income',
         accountId: 'default',
-        note: const Value('Weekly Pocket Money'),
+        note: const Value('Pocket Money'),
         date: pocketDate,
         paymentMethod: const Value('UPI'),
-      ));
-    }
-
-    // Create a recurring weekly pocket money template (auto-posts each week going forward)
-    batch.add(TransactionsCompanion.insert(
-      id: 'demo_income_recurring',
-      amount: -8000.0,
-      categoryId: 'income',
-      accountId: 'default',
-      note: const Value('Weekly Pocket Money'),
-      date: now,
-      paymentMethod: const Value('UPI'),
-      isRecurring: const Value(true),
-      recurringInterval: const Value('weekly'),
-      isRecurringInstance: const Value(false),
-    ));
-
-    // Set monthly income to 32000 (8000 × 4 weeks)
-    final existingIncome = await (db.select(db.monthlyIncome)
-          ..where((t) => t.month.equals('${now.year}-${now.month.toString().padLeft(2, '0')}')))
-        .get();
-
-    if (existingIncome.isEmpty) {
-      await db.into(db.monthlyIncome).insert(MonthlyIncomeCompanion.insert(
-        id: 'demo_income_setting',
-        month: '${now.year}-${now.month.toString().padLeft(2, '0')}',
-        amount: 32000.0,
       ));
     }
 

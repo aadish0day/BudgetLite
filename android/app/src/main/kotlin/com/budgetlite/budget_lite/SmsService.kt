@@ -32,7 +32,7 @@ class SmsService(private val activity: Activity, private val engine: FlutterEngi
         private const val READ_SMS_PERMISSION = Manifest.permission.READ_SMS
         private const val RECEIVE_SMS_PERMISSION = Manifest.permission.RECEIVE_SMS
         private const val REQUEST_CODE = 9001
-        private const val SMS_CONSENT_REQUEST = 9002
+        const val SMS_CONSENT_REQUEST = 9002
     }
 
     private var methodChannel: MethodChannel
@@ -239,6 +239,10 @@ class SmsService(private val activity: Activity, private val engine: FlutterEngi
         result.success(messages)
     }
 
+    fun emitSmsReceived(body: String, timestamp: Long) {
+        eventSink?.success(mapOf("type" to "sms_received", "body" to body, "timestamp" to timestamp))
+    }
+
     fun destroy() {
         stopListening(object : Result {
             override fun success(result: Any?) {}
@@ -268,41 +272,34 @@ class SmsBroadcastReceiver(private val onSmsReceived: (String, Long) -> Unit) : 
 
 /** Broadcast receiver for SMS User Consent (Android 13+) */
 class SmsUserConsentReceiver(private val activity: Activity, private val service: SmsService) : BroadcastReceiver() {
-    private var consentIntent: Intent? = null
-
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action == SmsRetriever.SMS_RETRIEVED_ACTION) {
-            consentIntent = intent
-            // Show consent dialog to user
-            val consentIntent = SmsRetriever.getConsentIntent(intent)
-            if (consentIntent != null) {
-                try {
-                    activity.startActivityForResult(consentIntent, SmsService.SMS_CONSENT_REQUEST)
-                } catch (e: Exception) {
-                    Log.e("SmsUserConsent", "Failed to start consent activity", e)
+            val extras = intent.extras
+            val status = extras?.get(SmsRetriever.EXTRA_STATUS) as? com.google.android.gms.common.api.Status
+            if (status?.statusCode == com.google.android.gms.common.api.CommonStatusCodes.SUCCESS) {
+                @Suppress("DEPRECATION")
+                val consentIntent = extras.getParcelable<Intent>(SmsRetriever.EXTRA_CONSENT_INTENT)
+                if (consentIntent != null) {
+                    try {
+                        activity.startActivityForResult(consentIntent, SmsService.SMS_CONSENT_REQUEST)
+                    } catch (e: Exception) {
+                        Log.e("SmsUserConsent", "Failed to start consent activity", e)
+                    }
                 }
             }
         }
     }
 
     fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        if (requestCode == SmsService.SMS_CONSENT_REQUEST && consentIntent != null) {
+        if (requestCode == SmsService.SMS_CONSENT_REQUEST && data != null) {
             if (resultCode == Activity.RESULT_OK) {
-                // User consented - extract SMS
-                val message = SmsRetriever.getSmsMessage(consentIntent!!, data)
-                message?.let {
-                    service.emitSmsReceived(it.messageBody ?: "", it.timestampMillis)
+                val message = data.getStringExtra(SmsRetriever.EXTRA_SMS_MESSAGE)
+                if (!message.isNullOrEmpty()) {
+                    service.emitSmsReceived(message, System.currentTimeMillis())
                 }
             } else {
-                // User denied or timed out
                 Log.d("SmsUserConsent", "User denied consent or timed out")
             }
-            consentIntent = null
         }
     }
-}
-
-/** Extension to emit SMS from SmsUserConsentReceiver */
-private fun SmsService.emitSmsReceived(body: String, timestamp: Long) {
-    eventSink?.success(mapOf("type" to "sms_received", "body" to body, "timestamp" to timestamp))
 }

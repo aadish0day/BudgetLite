@@ -117,12 +117,10 @@ class SmsParser {
     var merchantMatch = primaryRegex.firstMatch(body);
 
     // Fallback if primary preposition wasn't found
-    if (merchantMatch == null) {
-      merchantMatch = RegExp(
-        r"(?:towards|to|from|at|in|info)\s+([a-zA-Z0-9\s\.'&,\-@]+?)(?:\s+on\s+\d|\s+at\s+\d|\s+(?:ref|txn|upi|not|refer|regards)[\s:]|(?:\s+\.\s+)|(?:\.\s*$)|$)",
-        caseSensitive: false,
-      ).firstMatch(body);
-    }
+    merchantMatch ??= RegExp(
+      r"(?:towards|to|from|at|in|info)\s+([a-zA-Z0-9\s\.'&,\-@]+?)(?:\s+on\s+\d|\s+at\s+\d|\s+(?:ref|txn|upi|not|refer|regards)[\s:]|(?:\s+\.\s+)|(?:\.\s*$)|$)",
+      caseSensitive: false,
+    ).firstMatch(body);
 
     if (merchantMatch != null) {
       final rawNote = merchantMatch.group(1)!.trim();

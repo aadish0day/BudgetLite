@@ -26,16 +26,9 @@ final thisMonthBudgetsProvider = FutureProvider<List<Budget>>((ref) async {
 });
 
 final monthlyIncomeProvider = FutureProvider<double>((ref) async {
-  // Sum actual income transactions this month (auto-posted weekly pocket money rolls up)
-  final incomeFromTxns = await ref.read(totalIncomeThisMonthProvider.future);
-  if (incomeFromTxns > 0) return incomeFromTxns;
-
-  // Fall back to monthlyIncome table value (for fresh install before any income posts)
-  final db = ref.read(databaseProvider);
-  final incomes = await (db.select(db.monthlyIncome)
-        ..where((t) => t.month.equals(Formatters.monthKey)))
-      .get();
-  return incomes.isNotEmpty ? incomes.first.amount : 0;
+  // Pure running total of actual income transactions logged this month.
+  // No projections, no auto-posting — only real transactions count.
+  return ref.read(totalIncomeThisMonthProvider.future);
 });
 
 final totalBudgetThisMonthProvider = FutureProvider<double>((ref) async {
@@ -52,27 +45,6 @@ final remainingBudgetProvider = FutureProvider<double>((ref) async {
 class BudgetNotifier extends StateNotifier<AsyncValue<void>> {
   BudgetNotifier(this.ref) : super(const AsyncData(null));
   final Ref ref;
-
-  Future<void> setMonthlyIncome(double amount) async {
-    final db = ref.read(databaseProvider);
-    final existing = await (db.select(db.monthlyIncome)
-          ..where((t) => t.month.equals(Formatters.monthKey)))
-        .get();
-
-    if (existing.isNotEmpty) {
-      await (db.update(db.monthlyIncome)
-            ..where((t) => t.month.equals(Formatters.monthKey)))
-          .write(MonthlyIncomeCompanion(amount: Value(amount)));
-    } else {
-      await db.into(db.monthlyIncome).insert(MonthlyIncomeCompanion.insert(
-        id: const Uuid().v4(),
-        month: Formatters.monthKey,
-        amount: amount,
-      ));
-    }
-    ref.invalidate(monthlyIncomeProvider);
-    ref.invalidate(remainingBudgetProvider);
-  }
 
   Future<void> setBudget({
     required String categoryId,
