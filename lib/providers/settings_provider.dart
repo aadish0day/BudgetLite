@@ -14,6 +14,8 @@ final settingsProvider = FutureProvider.family<String?, String>((ref, key) async
   return rows.isNotEmpty ? rows.first.value : null;
 });
 
+enum ThemeModeOption { system, light, dark }
+
 class SettingsNotifier extends StateNotifier<AsyncValue<void>> {
   SettingsNotifier(this.ref) : super(const AsyncData(null));
   final Ref ref;
@@ -38,6 +40,22 @@ class SettingsNotifier extends StateNotifier<AsyncValue<void>> {
     final db = ref.read(databaseProvider);
     final rows = await (db.select(db.appSettings)..where((t) => t.key.equals(key))).get();
     return rows.isNotEmpty ? rows.first.value : null;
+  }
+
+  Future<ThemeModeOption> getThemeMode() async {
+    final val = await getSetting('theme_mode');
+    if (val == 'light') return ThemeModeOption.light;
+    if (val == 'dark') return ThemeModeOption.dark;
+    if (val == 'system') return ThemeModeOption.system;
+    final isDark = await getDarkMode();
+    return isDark ? ThemeModeOption.dark : ThemeModeOption.light;
+  }
+
+  Future<void> setThemeMode(ThemeModeOption mode) async {
+    await setSetting('theme_mode', mode.name);
+    await setDarkMode(mode == ThemeModeOption.dark);
+    ref.invalidate(themeModeProvider);
+    ref.invalidate(darkModeProvider);
   }
 
   Future<bool> getDarkMode() async {
@@ -205,6 +223,11 @@ final settingsNotifierProvider =
 final darkModeProvider = FutureProvider<bool>((ref) async {
   final settings = ref.read(settingsNotifierProvider.notifier);
   return settings.getDarkMode();
+});
+
+final themeModeProvider = FutureProvider<ThemeModeOption>((ref) async {
+  final settings = ref.read(settingsNotifierProvider.notifier);
+  return settings.getThemeMode();
 });
 
 final biometricLockEnabledProvider = FutureProvider<bool>((ref) async {

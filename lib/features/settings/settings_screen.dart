@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:drift/drift.dart' show Value;
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/colors.dart';
 import 'package:file_picker/file_picker.dart';
@@ -11,6 +12,8 @@ import 'package:local_auth/local_auth.dart';
 import '../../core/utils/constants.dart';
 import '../../core/utils/sms_parser.dart';
 import '../../core/utils/demo_data.dart';
+import '../../core/utils/icon_helper.dart';
+import '../../core/database/database.dart';
 import '../../services/sms_listener_service.dart';
 import '../../providers/settings_provider.dart';
 import '../../providers/transaction_provider.dart';
@@ -30,7 +33,6 @@ class SettingsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colorScheme = Theme.of(context).colorScheme;
-    final darkMode = ref.watch(darkModeProvider).valueOrNull ?? false;
     final biometricLock = ref.watch(biometricLockEnabledProvider).valueOrNull ?? false;
     final smsParsing = ref.watch(smsParsingEnabledProvider).valueOrNull ?? false;
 
@@ -51,15 +53,72 @@ class SettingsScreen extends ConsumerWidget {
           const SizedBox(height: 12),
           _SettingsCard(
             children: [
-              _SettingTile(
-                icon: LucideIcons.moon,
-                title: 'Dark Mode',
-                subtitle: 'Switch to dark theme',
-                trailing: Switch.adaptive(
-                  value: darkMode,
-                  onChanged: (v) {
-                    ref.read(settingsNotifierProvider.notifier).setDarkMode(v);
-                  },
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(12),
+                            color: colorScheme.primary.withValues(alpha: 0.1),
+                          ),
+                          child: Icon(LucideIcons.sunMedium, size: 20, color: colorScheme.primary),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Theme Mode',
+                                style: AppTheme.bodyStyle(
+                                  size: 15,
+                                  weight: FontWeight.w500,
+                                  color: colorScheme.onSurface,
+                                ),
+                              ),
+                              Text(
+                                'Choose light, dark, or system theme',
+                                style: AppTheme.bodyStyle(
+                                  size: 12,
+                                  color: colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Consumer(builder: (context, ref, _) {
+                      final themeOption = ref.watch(themeModeProvider).valueOrNull ?? ThemeModeOption.light;
+                      return SizedBox(
+                        width: double.infinity,
+                        child: SegmentedButton<ThemeModeOption>(
+                          segments: const [
+                            ButtonSegment(value: ThemeModeOption.light, icon: Icon(LucideIcons.sun, size: 14), label: Text('Light')),
+                            ButtonSegment(value: ThemeModeOption.dark, icon: Icon(LucideIcons.moon, size: 14), label: Text('Dark')),
+                            ButtonSegment(value: ThemeModeOption.system, icon: Icon(LucideIcons.monitor, size: 14), label: Text('System')),
+                          ],
+                          selected: {themeOption},
+                          onSelectionChanged: (selected) {
+                            if (selected.isNotEmpty) {
+                              ref.read(settingsNotifierProvider.notifier).setThemeMode(selected.first);
+                            }
+                          },
+                          style: const ButtonStyle(
+                            visualDensity: VisualDensity.compact,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                        ),
+                      );
+                    }),
+                  ],
                 ),
               ),
               const Divider(height: 1, indent: 56),
@@ -81,7 +140,7 @@ class SettingsScreen extends ConsumerWidget {
               _SettingTile(
                 icon: LucideIcons.palette,
                 title: 'Accent Color',
-                subtitle: 'Change app primary color',
+                subtitle: 'Change app primary color with live preview',
                 trailing: Consumer(builder: (context, ref, _) {
                   final accentVal = ref.watch(accentColorProvider).valueOrNull;
                   final color = accentVal != null ? Color(accentVal) : AppColors.primary;
@@ -95,6 +154,14 @@ class SettingsScreen extends ConsumerWidget {
                   );
                 }),
                 onTap: () => _showAccentColorPicker(context, ref),
+              ),
+              const Divider(height: 1, indent: 56),
+              _SettingTile(
+                icon: LucideIcons.tags,
+                title: 'Manage Categories',
+                subtitle: 'Add, edit, or delete categories safely',
+                trailing: const Icon(LucideIcons.chevronRight),
+                onTap: () => _showManageCategoriesSheet(context, ref),
               ),
             ],
           ),
@@ -113,28 +180,33 @@ class SettingsScreen extends ConsumerWidget {
                 ),
               ),
               const Divider(height: 1, indent: 56),
-              _SettingTile(
-                icon: LucideIcons.timer,
-                title: 'Auto-lock timer',
-                subtitle: 'Require auth after being backgrounded',
-                trailing: Consumer(builder: (context, ref, _) {
-                  final duration = ref.watch(autoLockDurationProvider).valueOrNull ?? 1;
-                  return DropdownButton<int>(
-                    value: duration,
-                    underline: const SizedBox(),
-                    items: const [
-                      DropdownMenuItem(value: 0, child: Text('Immediately')),
-                      DropdownMenuItem(value: 1, child: Text('1 min')),
-                      DropdownMenuItem(value: 5, child: Text('5 min')),
-                      DropdownMenuItem(value: 15, child: Text('15 min')),
-                    ],
-                    onChanged: biometricLock ? (val) {
-                      if (val != null) {
-                        ref.read(settingsNotifierProvider.notifier).setAutoLockDuration(val);
-                      }
-                    } : null,
-                  );
-                }),
+              Opacity(
+                opacity: biometricLock ? 1.0 : 0.4,
+                child: _SettingTile(
+                  icon: LucideIcons.timer,
+                  title: 'Auto-lock timer',
+                  subtitle: biometricLock
+                      ? 'Require auth after being backgrounded'
+                      : 'Inert (Biometric lock is OFF)',
+                  trailing: Consumer(builder: (context, ref, _) {
+                    final duration = ref.watch(autoLockDurationProvider).valueOrNull ?? 1;
+                    return DropdownButton<int>(
+                      value: duration,
+                      underline: const SizedBox(),
+                      items: const [
+                        DropdownMenuItem(value: 0, child: Text('Immediately')),
+                        DropdownMenuItem(value: 1, child: Text('1 min')),
+                        DropdownMenuItem(value: 5, child: Text('5 min')),
+                        DropdownMenuItem(value: 15, child: Text('15 min')),
+                      ],
+                      onChanged: biometricLock ? (val) {
+                        if (val != null) {
+                          ref.read(settingsNotifierProvider.notifier).setAutoLockDuration(val);
+                        }
+                      } : null,
+                    );
+                  }),
+                ),
               ),
             ],
           ),
@@ -303,9 +375,9 @@ class SettingsScreen extends ConsumerWidget {
     final localAuth = LocalAuthentication();
     if (enable) {
       try {
-        final canCheck = await localAuth.canCheckBiometrics;
         final isSupported = await localAuth.isDeviceSupported();
-        if (canCheck && isSupported) {
+        final canCheck = await localAuth.canCheckBiometrics;
+        if (isSupported || canCheck) {
           final authenticated = await localAuth.authenticate(
             localizedReason: 'Verify identity to enable lock',
           );
@@ -320,22 +392,22 @@ class SettingsScreen extends ConsumerWidget {
         } else {
           if (context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Biometrics not supported on this device')),
+              const SnackBar(content: Text('No biometrics or device PIN enrolled on this device')),
             );
           }
         }
       } catch (e) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Failed to enable biometrics: $e')),
+            SnackBar(content: Text('Biometric auth: ${e.toString().split('\n').first}')),
           );
         }
       }
     } else {
       try {
-        final canCheck = await localAuth.canCheckBiometrics;
         final isSupported = await localAuth.isDeviceSupported();
-        if (canCheck && isSupported) {
+        final canCheck = await localAuth.canCheckBiometrics;
+        if (isSupported || canCheck) {
           final authenticated = await localAuth.authenticate(
             localizedReason: 'Verify identity to disable lock',
           );
@@ -346,7 +418,7 @@ class SettingsScreen extends ConsumerWidget {
       } catch (e) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Failed to authenticate: $e')),
+            SnackBar(content: Text('Authentication failed: ${e.toString().split('\n').first}')),
           );
         }
         return;
@@ -679,57 +751,139 @@ class SettingsScreen extends ConsumerWidget {
     }
   }
 
+  void _showManageCategoriesSheet(BuildContext context, WidgetRef ref) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => const _ManageCategoriesSheet(),
+    );
+  }
+
   void _showAccentColorPicker(BuildContext context, WidgetRef ref) {
     final colors = [
       AppColors.primary,
-      Colors.teal,
-      Colors.blue,
-      Colors.indigo,
-      Colors.purple,
-      Colors.pink,
-      Colors.orange,
-      Colors.amber,
-      Colors.green,
-      Colors.red,
+      const Color(0xFF10B981), // Emerald
+      const Color(0xFF0D7377), // Teal
+      const Color(0xFF3B82F6), // Blue
+      const Color(0xFF6366F1), // Indigo
+      const Color(0xFF8B5CF6), // Purple
+      const Color(0xFFEC4899), // Pink
+      const Color(0xFFF59E0B), // Amber
+      const Color(0xFFEF4444), // Crimson
     ];
+
+    Color selectedColor = Color(ref.read(accentColorProvider).valueOrNull ?? AppColors.primary.toARGB32());
+
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Select Accent Color'),
-        content: Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          children: colors.map((color) {
-            return GestureDetector(
-              onTap: () {
-                ref.read(settingsNotifierProvider.notifier).setAccentColor(color.toARGB32());
-                Navigator.pop(ctx);
-              },
-              child: Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: color,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.black12),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setState) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: Text(
+              'Select Accent Color',
+              style: AppTheme.displayStyle(size: 16, weight: FontWeight.w600),
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Live Preview',
+                  style: AppTheme.bodyStyle(size: 11, weight: FontWeight.w600, color: Theme.of(context).colorScheme.onSurfaceVariant),
                 ),
+                const SizedBox(height: 8),
+                // ── Live Preview Sample Card ──
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(14),
+                    color: selectedColor.withValues(alpha: 0.1),
+                    border: Border.all(color: selectedColor.withValues(alpha: 0.3)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(LucideIcons.wallet, size: 18, color: selectedColor),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Sample Balance',
+                            style: AppTheme.bodyStyle(size: 12, weight: FontWeight.w600, color: selectedColor),
+                          ),
+                          const Spacer(),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(10),
+                              color: selectedColor,
+                            ),
+                            child: const Text(
+                              'Active',
+                              style: TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '₹12,450',
+                        style: AppTheme.financialStyle(size: 22, weight: FontWeight.w700, color: Theme.of(context).colorScheme.onSurface),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Pick Color Swatch',
+                  style: AppTheme.bodyStyle(size: 11, weight: FontWeight.w600, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: colors.map((color) {
+                    final isSelected = selectedColor.toARGB32() == color.toARGB32();
+                    return GestureDetector(
+                      onTap: () => setState(() => selectedColor = color),
+                      child: Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: color,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: isSelected ? Theme.of(context).colorScheme.onSurface : Colors.transparent,
+                            width: 3,
+                          ),
+                        ),
+                        child: isSelected ? const Icon(Icons.check, size: 20, color: Colors.white) : null,
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel'),
               ),
-            );
-          }).toList(),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              ref.read(settingsNotifierProvider.notifier).setAccentColor(AppColors.primary.toARGB32());
-              Navigator.pop(ctx);
-            },
-            child: const Text('Reset'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Close'),
-          ),
-        ],
+              FilledButton(
+                onPressed: () async {
+                  await ref.read(settingsNotifierProvider.notifier).setAccentColor(selectedColor.toARGB32());
+                  if (ctx.mounted) Navigator.pop(ctx);
+                },
+                child: const Text('Confirm'),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -742,21 +896,37 @@ class SettingsScreen extends ConsumerWidget {
         return StatefulBuilder(
           builder: (context, setState) {
             return AlertDialog(
-              title: const Text('Reset All Data', style: TextStyle(color: Colors.red)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              title: Row(
+                children: [
+                  const Icon(LucideIcons.triangleAlert, color: AppColors.error, size: 22),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Reset All Data',
+                    style: AppTheme.displayStyle(size: 16, weight: FontWeight.w700, color: AppColors.error),
+                  ),
+                ],
+              ),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Are you sure you want to delete all your data? This cannot be undone. Type "DELETE" to confirm.'),
+                  Text(
+                    'This action is irreversible! It will delete ALL transactions, budgets, goals, tags, settings, AND recurring transaction rules.',
+                    style: AppTheme.bodyStyle(size: 13, color: Theme.of(context).colorScheme.onSurfaceVariant, height: 1.4),
+                  ),
                   const SizedBox(height: 16),
+                  Text(
+                    'Type "RESET" to confirm deletion:',
+                    style: AppTheme.bodyStyle(size: 12, weight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 8),
                   TextField(
-                    onChanged: (val) {
-                      setState(() {
-                        typedText = val;
-                      });
-                    },
-                    decoration: const InputDecoration(
-                      hintText: 'DELETE',
-                      border: OutlineInputBorder(),
+                    onChanged: (val) => setState(() => typedText = val),
+                    decoration: InputDecoration(
+                      hintText: 'RESET',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                     ),
                   ),
                 ],
@@ -767,34 +937,36 @@ class SettingsScreen extends ConsumerWidget {
                   child: const Text('Cancel'),
                 ),
                 FilledButton(
-                  onPressed: typedText == 'DELETE' || typedText == 'RESET ALL' ? () async {
-                    Navigator.pop(ctx);
-                    final db = ref.read(databaseProvider);
-                    await db.delete(db.transactions).go();
-                    await db.delete(db.categories).go();
-                    await db.delete(db.budgets).go();
-                    await db.delete(db.goals).go();
-                    await db.delete(db.appSettings).go();
-await db.transaction(() async {
-                      await DemoDataSeeder.seed(db);
-                    });
-                    ref.invalidate(transactionsProvider);
-                    ref.invalidate(thisMonthTransactionsProvider);
-                    ref.invalidate(totalSpentThisMonthProvider);
-                    ref.invalidate(totalIncomeThisMonthProvider);
-                    ref.invalidate(thisMonthBudgetsProvider);
-                    ref.invalidate(monthlyIncomeProvider);
-                    ref.invalidate(categoriesProvider);
-                    ref.invalidate(settingsProvider);
+                  style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+                  onPressed: typedText.trim() == 'RESET'
+                      ? () async {
+                          Navigator.pop(ctx);
+                          final db = ref.read(databaseProvider);
+                          await db.clearAllData();
+                          ref.read(smsReviewQueueProvider.notifier).clear();
 
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('All data has been reset.')),
-                      );
-                    }
-                  } : null,
-                  style: FilledButton.styleFrom(backgroundColor: Colors.red),
-                  child: const Text('Reset'),
+                          ref.invalidate(transactionsProvider);
+                          ref.invalidate(thisMonthTransactionsProvider);
+                          ref.invalidate(totalSpentThisMonthProvider);
+                          ref.invalidate(totalIncomeThisMonthProvider);
+                          ref.invalidate(thisMonthBudgetsProvider);
+                          ref.invalidate(monthlyIncomeProvider);
+                          ref.invalidate(categoriesProvider);
+                          ref.invalidate(expenseCategoriesProvider);
+                          ref.invalidate(settingsProvider);
+                          ref.invalidate(initialBalanceProvider);
+
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('All data and settings have been completely reset.'),
+                                behavior: SnackBarBehavior.floating,
+                              ),
+                            );
+                          }
+                        }
+                      : null,
+                  child: const Text('Delete Everything'),
                 ),
               ],
             );
@@ -802,6 +974,281 @@ await db.transaction(() async {
         );
       },
     );
+  }
+}
+
+class _ManageCategoriesSheet extends ConsumerWidget {
+  const _ManageCategoriesSheet();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final categories = ref.watch(categoriesProvider).valueOrNull ?? [];
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Manage Categories',
+                style: AppTheme.displayStyle(size: 18, weight: FontWeight.w600),
+              ),
+              IconButton(
+                icon: const Icon(LucideIcons.x),
+                onPressed: () => Navigator.pop(context),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Flexible(
+            child: ListView.separated(
+              shrinkWrap: true,
+              itemCount: categories.length,
+              separatorBuilder: (_, index) => const Divider(height: 1),
+              itemBuilder: (ctx, idx) {
+                final cat = categories[idx];
+                final color = Color(cat.color);
+                return Material(
+                  color: Colors.transparent,
+                  child: ListTile(
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: color.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(getCategoryIcon(cat.icon), color: color, size: 20),
+                    ),
+                    title: Text(cat.name, style: AppTheme.bodyStyle(size: 14, weight: FontWeight.w600)),
+                    subtitle: Text(cat.type.toUpperCase(), style: AppTheme.bodyStyle(size: 11, color: colorScheme.onSurfaceVariant)),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          constraints: const BoxConstraints(),
+                          padding: const EdgeInsets.all(8),
+                          icon: const Icon(LucideIcons.pencil, size: 18),
+                          onPressed: () => _showEditCategoryDialog(context, ref, cat),
+                        ),
+                        const SizedBox(width: 4),
+                        IconButton(
+                          constraints: const BoxConstraints(),
+                          padding: const EdgeInsets.all(8),
+                          icon: const Icon(LucideIcons.trash2, size: 18, color: AppColors.error),
+                          onPressed: () => _deleteCategorySafely(context, ref, cat, categories),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 16),
+          FilledButton.icon(
+            style: FilledButton.styleFrom(
+              minimumSize: const Size(double.infinity, 48),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            icon: const Icon(LucideIcons.plus),
+            label: const Text('Add New Category'),
+            onPressed: () => _showAddCategoryDialog(context, ref),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAddCategoryDialog(BuildContext context, WidgetRef ref) {
+    final nameCtrl = TextEditingController();
+    String selectedType = 'expense';
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (dialogCtx, setState) => AlertDialog(
+          title: const Text('Add Category'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameCtrl,
+                decoration: const InputDecoration(labelText: 'Category Name'),
+              ),
+              const SizedBox(height: 12),
+              DropdownButton<String>(
+                value: selectedType,
+                isExpanded: true,
+                items: const [
+                  DropdownMenuItem(value: 'expense', child: Text('Expense')),
+                  DropdownMenuItem(value: 'income', child: Text('Income')),
+                ],
+                onChanged: (val) {
+                  if (val != null) setState(() => selectedType = val);
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            FilledButton(
+              onPressed: () async {
+                final name = nameCtrl.text.trim();
+                if (name.isEmpty) return;
+                final db = ref.read(databaseProvider);
+                final id = 'cat_${DateTime.now().millisecondsSinceEpoch}';
+                await db.into(db.categories).insert(
+                  CategoriesCompanion.insert(
+                    id: id,
+                    name: name,
+                    type: Value(selectedType),
+                    color: const Value(0xFF3B82F6),
+                    icon: const Value('tag'),
+                  ),
+                );
+                ref.invalidate(categoriesProvider);
+                ref.invalidate(expenseCategoriesProvider);
+                if (ctx.mounted) Navigator.pop(ctx);
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showEditCategoryDialog(BuildContext context, WidgetRef ref, Category category) {
+    final nameCtrl = TextEditingController(text: category.name);
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Edit Category'),
+        content: TextField(
+          controller: nameCtrl,
+          decoration: const InputDecoration(labelText: 'Category Name'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () async {
+              final newName = nameCtrl.text.trim();
+              if (newName.isEmpty) return;
+              final db = ref.read(databaseProvider);
+              await (db.update(db.categories)..where((c) => c.id.equals(category.id)))
+                  .write(CategoriesCompanion(name: Value(newName)));
+              ref.invalidate(categoriesProvider);
+              ref.invalidate(expenseCategoriesProvider);
+              if (ctx.mounted) Navigator.pop(ctx);
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _deleteCategorySafely(BuildContext context, WidgetRef ref, Category category, List<Category> allCategories) async {
+    final db = ref.read(databaseProvider);
+    final txnCount = await db.getTransactionCountForCategory(category.id);
+    final remaining = allCategories.where((c) => c.id != category.id).toList();
+
+    if (remaining.isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Cannot delete the only category in the app.')),
+        );
+      }
+      return;
+    }
+
+    if (txnCount > 0) {
+      String targetCategoryId = remaining.first.id;
+      if (!context.mounted) return;
+
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => StatefulBuilder(
+          builder: (dialogCtx, setState) => AlertDialog(
+            title: Text('Reassign Transactions ($txnCount)'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Category "${category.name}" has $txnCount existing transaction(s). Select a category to reassign them to before deleting:',
+                  style: AppTheme.bodyStyle(size: 13),
+                ),
+                const SizedBox(height: 14),
+                DropdownButton<String>(
+                  value: targetCategoryId,
+                  isExpanded: true,
+                  items: remaining.map((c) => DropdownMenuItem(value: c.id, child: Text(c.name))).toList(),
+                  onChanged: (val) {
+                    if (val != null) setState(() => targetCategoryId = val);
+                  },
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+              FilledButton(
+                style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Reassign & Delete'),
+              ),
+            ],
+          ),
+        ),
+      );
+
+      if (confirmed == true) {
+        await db.deleteCategoryWithReassignment(category.id, targetCategoryId);
+        ref.invalidate(categoriesProvider);
+        ref.invalidate(expenseCategoriesProvider);
+        ref.invalidate(transactionsProvider);
+        ref.invalidate(thisMonthTransactionsProvider);
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Category "${category.name}" deleted and $txnCount transactions reassigned.')),
+          );
+        }
+      }
+    } else {
+      if (!context.mounted) return;
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text('Delete "${category.name}"?'),
+          content: const Text('This category has no transactions. Are you sure you want to delete it?'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Delete'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirmed == true) {
+        await db.deleteCategoryWithReassignment(category.id, remaining.first.id);
+        ref.invalidate(categoriesProvider);
+        ref.invalidate(expenseCategoriesProvider);
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Category "${category.name}" deleted.')),
+          );
+        }
+      }
+    }
   }
 }
 
@@ -863,34 +1310,37 @@ class _SettingTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    return ListTile(
-      leading: Container(
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          color: colorScheme.primary.withValues(alpha: 0.1),
+    return Material(
+      color: Colors.transparent,
+      child: ListTile(
+        leading: Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            color: colorScheme.primary.withValues(alpha: 0.1),
+          ),
+          child: Icon(icon, size: 20, color: colorScheme.primary),
         ),
-        child: Icon(icon, size: 20, color: colorScheme.primary),
-      ),
-      title: Text(
-        title,
-        style: AppTheme.bodyStyle(
-          size: 15,
-          weight: FontWeight.w500,
-          color: colorScheme.onSurface,
+        title: Text(
+          title,
+          style: AppTheme.bodyStyle(
+            size: 15,
+            weight: FontWeight.w500,
+            color: colorScheme.onSurface,
+          ),
         ),
-      ),
-      subtitle: Text(
-        subtitle,
-        style: AppTheme.bodyStyle(
-          size: 12,
-          color: colorScheme.onSurfaceVariant,
+        subtitle: Text(
+          subtitle,
+          style: AppTheme.bodyStyle(
+            size: 12,
+            color: colorScheme.onSurfaceVariant,
+          ),
         ),
+        trailing: trailing,
+        onTap: onTap,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
       ),
-      trailing: trailing,
-      onTap: onTap,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
     );
   }
 }

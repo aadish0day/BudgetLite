@@ -130,6 +130,42 @@ class AppDatabase extends _$AppDatabase {
     await (update(accounts)..where((a) => a.id.equals(accountId)))
         .write(AccountsCompanion(balance: Value(newBalance)));
   }
+
+  /// Get number of transactions tied to a category.
+  Future<int> getTransactionCountForCategory(String categoryId) async {
+    final query = select(transactions)..where((t) => t.categoryId.equals(categoryId));
+    final list = await query.get();
+    return list.length;
+  }
+
+  /// Delete a category after reassigning existing transactions and budgets to targetCategoryId.
+  Future<void> deleteCategoryWithReassignment(String categoryId, String targetCategoryId) async {
+    await transaction(() async {
+      await (update(transactions)..where((t) => t.categoryId.equals(categoryId)))
+          .write(TransactionsCompanion(categoryId: Value(targetCategoryId)));
+      await (update(budgets)..where((b) => b.categoryId.equals(categoryId)))
+          .write(BudgetsCompanion(categoryId: Value(targetCategoryId)));
+      await (delete(categories)..where((c) => c.id.equals(categoryId))).go();
+    });
+  }
+
+  /// Delete ALL stored data (transactions, budgets, goals, recurring definitions, settings, tags)
+  /// and re-seed default account and categories.
+  Future<void> clearAllData() async {
+    await transaction(() async {
+      await delete(transactionTags).go();
+      await delete(tags).go();
+      await delete(transactions).go();
+      await delete(budgets).go();
+      await delete(goals).go();
+      await delete(monthlyIncome).go();
+      await delete(appSettings).go();
+      await delete(categories).go();
+      await delete(accounts).go();
+
+      await _seedCategories();
+    });
+  }
 }
 
 LazyDatabase _openConnection() {

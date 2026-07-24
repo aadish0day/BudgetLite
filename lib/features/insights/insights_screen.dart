@@ -18,7 +18,6 @@ import '../../core/database/database.dart';
 import '../../providers/database_provider.dart';
 import '../../core/widgets/insight_cards.dart';
 import 'spend_calendar.dart';
-import 'contribution_graph.dart';
 import 'pdf_report_generator.dart';
 import 'package:printing/printing.dart';
 import 'package:intl/intl.dart';
@@ -368,12 +367,6 @@ class InsightsScreen extends ConsumerWidget {
           // ── Interactive Spend Calendar ──
           const SizedBox(height: 24),
           const SpendCalendar(),
-          const SizedBox(height: 12),
-
-          // ── Contribution Graph ──
-          const SizedBox(height: 24),
-          const ContributionGraph(),
-
           // ── Year in Review ──
           const YearInReview(),
           const SizedBox(height: 100),
@@ -1645,147 +1638,145 @@ void _showCustomReportSheet(BuildContext context, WidgetRef ref) {
             minChildSize: 0.5,
             expand: false,
             builder: (ctx, scrollController) {
-              return Padding(
-                padding: const EdgeInsets.fromLTRB(24, 16, 24, 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Drag handle
-                    Center(
-                      child: Container(
-                        width: 40, height: 4,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(2),
-                          color: colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
-                        ),
+              return ListView(
+                controller: scrollController,
+                padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+                children: [
+                  // Drag handle
+                  Center(
+                    child: Container(
+                      width: 40, height: 4,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(2),
+                        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
                       ),
                     ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Custom Report',
-                      style: AppTheme.displayStyle(
-                        size: 18, weight: FontWeight.w600, color: colorScheme.onSurface,
-                      ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Custom Report',
+                    style: AppTheme.displayStyle(
+                      size: 18, weight: FontWeight.w600, color: colorScheme.onSurface,
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Select date range and filters, then export as PDF',
-                      style: AppTheme.bodyStyle(size: 13, color: colorScheme.onSurfaceVariant),
-                    ),
-                    const SizedBox(height: 20),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Select date range and filters, then export as PDF',
+                    style: AppTheme.bodyStyle(size: 13, color: colorScheme.onSurfaceVariant),
+                  ),
+                  const SizedBox(height: 20),
 
-                    // Date range picker
-                    _ReportSectionTitle('Date Range'),
-                    const SizedBox(height: 12),
-                    InkWell(
-                      onTap: () async {
-                        final now = DateTime.now();
-                        final range = await showDateRangePicker(
-                          context: context,
-                          firstDate: DateTime(now.year - 5),
-                          lastDate: now,
-                          initialDateRange: selectedRange ?? DateTimeRange(
-                            start: DateTime(now.year, now.month, 1),
-                            end: now,
-                          ),
-                        );
-                        if (range != null) setState(() => selectedRange = range);
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(14),
-                          color: isDark ? AppColors.raisedDark : AppColors.raisedLight,
-                          border: Border.all(color: colorScheme.outline.withValues(alpha: 0.1)),
+                  // Date range picker
+                  _ReportSectionTitle('Date Range'),
+                  const SizedBox(height: 12),
+                  InkWell(
+                    onTap: () async {
+                      final now = DateTime.now();
+                      final range = await showDateRangePicker(
+                        context: context,
+                        firstDate: DateTime(now.year - 5),
+                        lastDate: now,
+                        initialDateRange: selectedRange ?? DateTimeRange(
+                          start: DateTime(now.year, now.month, 1),
+                          end: now,
                         ),
-                        child: Row(
-                          children: [
-                            Icon(LucideIcons.calendar, size: 20, color: colorScheme.primary),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                selectedRange != null
-                                    ? '${Formatters.formatDateShort(selectedRange!.start)} — ${Formatters.formatDateShort(selectedRange!.end)}'
-                                    : 'Select date range',
-                                style: AppTheme.bodyStyle(
-                                  size: 14,
-                                  color: selectedRange != null ? colorScheme.onSurface : colorScheme.onSurfaceVariant,
-                                ),
+                      );
+                      if (range != null) setState(() => selectedRange = range);
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(14),
+                        color: isDark ? AppColors.raisedDark : AppColors.raisedLight,
+                        border: Border.all(color: colorScheme.outline.withValues(alpha: 0.1)),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(LucideIcons.calendar, size: 20, color: colorScheme.primary),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              selectedRange != null
+                                  ? '${Formatters.formatDateShort(selectedRange!.start)} — ${Formatters.formatDateShort(selectedRange!.end)}'
+                                  : 'Select date range',
+                              style: AppTheme.bodyStyle(
+                                size: 14,
+                                color: selectedRange != null ? colorScheme.onSurface : colorScheme.onSurfaceVariant,
                               ),
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 20),
+                  ),
+                  const SizedBox(height: 20),
 
-                    // Category filter
-                    _ReportSectionTitle('Categories'),
-                    const SizedBox(height: 12),
-                    FutureBuilder<List<Category>>(
-                      future: ref.read(categoriesProvider.future),
-                      builder: (ctx, snap) {
-                        if (!snap.hasData) return const SizedBox.shrink();
-                        final cats = snap.data!.where((c) => c.type == 'expense').toList();
-                        return Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            FilterChip(
-                              label: const Text('All'),
-                              selected: selectedCategories.isEmpty,
-                              onSelected: (_) => setState(() => selectedCategories.clear()),
-                              selectedColor: colorScheme.primary.withValues(alpha: 0.15),
-                              checkmarkColor: colorScheme.primary,
-                            ),
-                            ...cats.map((c) => FilterChip(
-                              label: Text(c.name),
-                              selected: selectedCategories.contains(c.id),
-                              onSelected: (sel) => setState(() {
-                                if (sel) {
-                                  selectedCategories.add(c.id);
-                                } else {
-                                  selectedCategories.remove(c.id);
-                                }
-                              }),
-                              selectedColor: Color(c.color).withValues(alpha: 0.15),
-                              checkmarkColor: Color(c.color),
-                              avatar: Icon(getCategoryIcon(c.icon), size: 14, color: Color(c.color)),
-                            )),
-                          ],
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 20),
-
-                    // Export button
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton.icon(
-                        onPressed: selectedRange != null
-                            ? () async {
-                                Navigator.pop(ctx);
-                                final params = (
-                                  start: selectedRange!.start,
-                                  end: selectedRange!.end,
-                                  categoryIds: selectedCategories.isEmpty ? <String>{} : selectedCategories,
-                                );
-                                final report = await ref.read(customReportProvider(params).future);
-                                if (context.mounted) {
-                                  await _generateAndSharePDF(context, report);
-                                }
+                  // Category filter
+                  _ReportSectionTitle('Categories'),
+                  const SizedBox(height: 12),
+                  FutureBuilder<List<Category>>(
+                    future: ref.read(categoriesProvider.future),
+                    builder: (ctx, snap) {
+                      if (!snap.hasData) return const SizedBox.shrink();
+                      final cats = snap.data!.where((c) => c.type == 'expense').toList();
+                      return Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          FilterChip(
+                            label: const Text('All'),
+                            selected: selectedCategories.isEmpty,
+                            onSelected: (_) => setState(() => selectedCategories.clear()),
+                            selectedColor: colorScheme.primary.withValues(alpha: 0.15),
+                            checkmarkColor: colorScheme.primary,
+                          ),
+                          ...cats.map((c) => FilterChip(
+                            label: Text(c.name),
+                            selected: selectedCategories.contains(c.id),
+                            onSelected: (sel) => setState(() {
+                              if (sel) {
+                                selectedCategories.add(c.id);
+                              } else {
+                                selectedCategories.remove(c.id);
                               }
-                            : null,
-                        icon: const Icon(LucideIcons.download, size: 20),
-                        label: const Text('Generate & Export PDF'),
-                        style: FilledButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                        ),
+                            }),
+                            selectedColor: Color(c.color).withValues(alpha: 0.15),
+                            checkmarkColor: Color(c.color),
+                            avatar: Icon(getCategoryIcon(c.icon), size: 14, color: Color(c.color)),
+                          )),
+                        ],
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 24),
+
+                  // Export button
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: selectedRange != null
+                          ? () async {
+                              Navigator.pop(ctx);
+                              final params = (
+                                start: selectedRange!.start,
+                                end: selectedRange!.end,
+                                categoryIds: selectedCategories.isEmpty ? <String>{} : selectedCategories,
+                              );
+                              final report = await ref.read(customReportProvider(params).future);
+                              if (context.mounted) {
+                                await _generateAndSharePDF(context, report);
+                              }
+                            }
+                          : null,
+                      icon: const Icon(LucideIcons.download, size: 20),
+                      label: const Text('Generate & Export PDF'),
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               );
             },
           );

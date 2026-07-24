@@ -18,7 +18,9 @@ import '../../providers/budget_provider.dart';
 import '../../providers/navigation_provider.dart';
 import '../../core/database/database.dart';
 import '../../providers/database_provider.dart';
+import '../../providers/settings_provider.dart';
 import '../subscriptions/subscriptions_screen.dart';
+import '../settings/settings_screen.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -53,6 +55,40 @@ class HomeScreen extends ConsumerWidget {
             ),
           ],
         ),
+        actions: [
+          Consumer(
+            builder: (context, ref, _) {
+              final hidden = ref.watch(balanceHiddenProvider).valueOrNull ?? false;
+              return IconButton(
+                icon: Icon(
+                  hidden ? LucideIcons.eyeOff : LucideIcons.eye,
+                  size: 20,
+                  color: hidden ? colorScheme.primary : colorScheme.onSurfaceVariant,
+                ),
+                tooltip: hidden ? 'Show Balances' : 'Hide Balances',
+                onPressed: () {
+                  ref.read(settingsNotifierProvider.notifier).setBalanceHidden(!hidden);
+                },
+              );
+            },
+          ),
+          IconButton(
+            icon: Icon(
+              LucideIcons.settings,
+              size: 20,
+              color: colorScheme.onSurfaceVariant,
+            ),
+            tooltip: 'Settings',
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const SettingsScreen(),
+                ),
+              );
+            },
+          ),
+          const SizedBox(width: 4),
+        ],
       ),
       body: RefreshIndicator(
         onRefresh: () async => ref.refresh(thisMonthTransactionsProvider.future),
@@ -237,7 +273,7 @@ class HomeScreen extends ConsumerWidget {
 }
 
 /// Balance hero — Student Edition Pocket Money & Daily Safe Spend framing.
-class _Balance extends StatelessWidget {
+class _Balance extends ConsumerWidget {
   final double spent;
   final double remaining;
   final double monthlyIncome;
@@ -253,16 +289,12 @@ class _Balance extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final colorScheme = Theme.of(context).colorScheme;
-    final isDark = colorScheme.brightness == Brightness.dark;
+    final isBalanceHidden = ref.watch(balanceHiddenProvider).valueOrNull ?? false;
     final spentRatio = monthlyIncome > 0 ? (spent / monthlyIncome).clamp(0, 1).toDouble() : 0.0;
 
-    // Calculate daily safe spend rate for remaining days in current month
-    final now = DateTime.now();
-    final lastDayOfMonth = DateTime(now.year, now.month + 1, 0).day;
-    final remainingDaysInMonth = (lastDayOfMonth - now.day + 1).clamp(1, 31);
-    final dailySafeSpend = remaining > 0 ? (remaining / remainingDaysInMonth) : 0.0;
+
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -309,7 +341,7 @@ class _Balance extends StatelessWidget {
                 ),
                 child: Text(
                   initialBalance > 0
-                      ? 'Starting: ${Formatters.formatCurrency(initialBalance)}'
+                      ? 'Starting: ${Formatters.formatCurrency(initialBalance, hide: isBalanceHidden)}'
                       : 'Set Balance',
                   style: AppTheme.bodyStyle(
                     size: 10,
@@ -322,11 +354,11 @@ class _Balance extends StatelessWidget {
               ),
             ),
           ],
-        ).animate().fadeIn(duration: 300.ms).slideY(begin: 0.08, curve: Curves.easeOutCubic),
+        ),
 
         const SizedBox(height: 6),
 
-        // Large balance figure — enters second (slight delay)
+        // Large balance figure
         Row(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
@@ -336,7 +368,7 @@ class _Balance extends StatelessWidget {
               curve: Curves.easeOutCubic,
               builder: (context, animatedValue, child) {
                 return Text(
-                  Formatters.formatCurrency(animatedValue),
+                  Formatters.formatCurrency(animatedValue, hide: isBalanceHidden),
                   style: AppTheme.financialStyle(
                     size: 38,
                     weight: FontWeight.w700,
@@ -370,47 +402,9 @@ class _Balance extends StatelessWidget {
               ),
             ),
           ],
-        ).animate().fadeIn(duration: 400.ms, delay: 150.ms).slideY(begin: 0.05, curve: Curves.easeOutCubic),
+        ),
 
-        const SizedBox(height: 12),
-
-        // Daily Safe Spend Rate Banner
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            color: isDark ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.4) : AppColors.cardLight,
-            border: Border.all(
-              color: colorScheme.primary.withValues(alpha: 0.2),
-            ),
-          ),
-          child: Row(
-            children: [
-              Icon(LucideIcons.zap, size: 16, color: colorScheme.primary),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Safe to spend ~${Formatters.formatCurrency(dailySafeSpend)} / day (${remainingDaysInMonth}d left)',
-                  style: AppTheme.bodyStyle(
-                    size: 12,
-                    weight: FontWeight.w600,
-                    color: colorScheme.onSurface,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ).animate().fadeIn(duration: 350.ms, delay: 250.ms).slideY(begin: 0.04),
-
-        const SizedBox(height: 14),
-
-        // Hairline separator
-        Container(
-          height: 1,
-          color: colorScheme.outline.withValues(alpha: 0.15),
-        ).animate().fadeIn(duration: 300.ms, delay: 300.ms),
-
-        const SizedBox(height: 14),
+        const SizedBox(height: 16),
 
         // Income / Spent / Arc — enters third
         Row(
@@ -454,7 +448,7 @@ class _Balance extends StatelessWidget {
                 children: [
                   _StatItem(
                     label: 'Pocket Money',
-                    value: Formatters.formatCurrency(monthlyIncome),
+                    value: Formatters.formatCurrency(monthlyIncome, hide: isBalanceHidden),
                     color: colorScheme.onSurface,
                     valueColor: AppColors.success,
                     delayMs: 500,
@@ -462,7 +456,7 @@ class _Balance extends StatelessWidget {
                   const SizedBox(width: 24),
                   _StatItem(
                     label: 'Spent',
-                    value: Formatters.formatCurrency(spent),
+                    value: Formatters.formatCurrency(spent, hide: isBalanceHidden),
                     color: colorScheme.onSurface,
                     valueColor: colorScheme.onSurface,
                     delayMs: 600,
@@ -557,6 +551,8 @@ class _BudgetSkeleton extends StatelessWidget {
   }
 }
 
+
+
 /// Quick budget setup CTA — shown when no budgets exist.
 class _QuickBudgetSetup extends ConsumerWidget {
   @override
@@ -603,7 +599,7 @@ class _QuickBudgetSetup extends ConsumerWidget {
           ),
         ],
       ),
-    ).animate().fadeIn(duration: 400.ms).slideY(begin: 0.05);
+    );
   }
 }
 
@@ -619,6 +615,7 @@ class _BudgetOverview extends ConsumerWidget {
     final categories = ref.watch(categoriesProvider).valueOrNull ?? [];
     final transactions = ref.watch(thisMonthTransactionsProvider).valueOrNull ?? [];
     final isDark = colorScheme.brightness == Brightness.dark;
+    final isBalanceHidden = ref.watch(balanceHiddenProvider).valueOrNull ?? false;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -705,7 +702,7 @@ class _BudgetOverview extends ConsumerWidget {
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          'of ${Formatters.formatCurrency(budget.allocatedAmount)}',
+                          'of ${Formatters.formatCurrency(budget.allocatedAmount, hide: isBalanceHidden)}',
                           style: AppTheme.bodyStyle(
                             size: 11,
                             color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
@@ -718,7 +715,7 @@ class _BudgetOverview extends ConsumerWidget {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Text(
-                        Formatters.formatCurrency(spent),
+                        Formatters.formatCurrency(spent, hide: isBalanceHidden),
                         style: AppTheme.financialStyle(
                           size: 14,
                           weight: FontWeight.w700,
@@ -759,6 +756,7 @@ class _UpcomingPayments extends ConsumerWidget {
     final isDark = colorScheme.brightness == Brightness.dark;
     final allTransactions = ref.watch(transactionsProvider).valueOrNull ?? [];
     final categories = ref.watch(categoriesProvider).valueOrNull ?? [];
+    final isBalanceHidden = ref.watch(balanceHiddenProvider).valueOrNull ?? false;
 
     // Find recurring transactions and calculate next due date
     final upcoming = <_UpcomingPayment>[];
@@ -919,7 +917,7 @@ class _UpcomingPayments extends ConsumerWidget {
                             ),
                             const SizedBox(width: 8),
                             Text(
-                              Formatters.formatCurrency(payment.transaction.amount.abs()),
+                              Formatters.formatCurrency(payment.transaction.amount.abs(), hide: isBalanceHidden),
                               style: AppTheme.financialStyle(
                                 size: 14,
                                 weight: FontWeight.w700,
@@ -1045,6 +1043,7 @@ class _TransactionRow extends ConsumerWidget {
     final categories = ref.watch(categoriesProvider).valueOrNull ?? [];
     final category = categories.where((c) => c.id == transaction.categoryId).firstOrNull;
     final catColor = Color(category?.color ?? 0xFF6B7280);
+    final isBalanceHidden = ref.watch(balanceHiddenProvider).valueOrNull ?? false;
 
     return Container(
       decoration: BoxDecoration(
@@ -1117,8 +1116,8 @@ class _TransactionRow extends ConsumerWidget {
           ),
           Text(
             transaction.amount < 0
-                ? '+${Formatters.formatCurrency(transaction.amount.abs())}'
-                : '-${Formatters.formatCurrency(transaction.amount)}',
+                ? '+${Formatters.formatCurrency(transaction.amount.abs(), hide: isBalanceHidden)}'
+                : '-${Formatters.formatCurrency(transaction.amount, hide: isBalanceHidden)}',
             style: AppTheme.financialStyle(
               size: 14,
               weight: FontWeight.w600,

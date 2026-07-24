@@ -835,7 +835,7 @@ class _CsvImportSheetState extends ConsumerState<CsvImportSheet> {
         note: row.description,
       );
 
-      if (dupCheck.hasDuplicates) {
+      if (dupCheck.isNotEmpty) {
         skipped++;
         continue;
       }

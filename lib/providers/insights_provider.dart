@@ -105,7 +105,7 @@ final dailyIncomeProvider = FutureProvider.family<
 final budgetHealthProvider = FutureProvider<BudgetHealth>((ref) async {
   final budgets = await ref.read(thisMonthBudgetsProvider.future);
   final transactions = await ref.read(thisMonthTransactionsProvider.future);
-  
+
   final categorySpending = <String, double>{};
   for (final t in transactions.where((t) => t.amount > 0 && t.categoryId != 'transfer')) {
     categorySpending[t.categoryId] = (categorySpending[t.categoryId] ?? 0.0) + t.amount;
@@ -120,7 +120,7 @@ final budgetHealthProvider = FutureProvider<BudgetHealth>((ref) async {
     final allocated = budget.allocatedAmount;
     totalBudget += allocated;
     totalSpent += spent;
-    
+
     final pct = allocated > 0 ? (spent / allocated * 100) : 0.0;
     categoryHealth[budget.categoryId] = CategoryBudgetHealth(
       categoryId: budget.categoryId,
@@ -132,7 +132,7 @@ final budgetHealthProvider = FutureProvider<BudgetHealth>((ref) async {
   }
 
   final overallPct = totalBudget > 0 ? (totalSpent / totalBudget * 100) : 0.0;
-  
+
   return BudgetHealth(
     totalBudget: totalBudget,
     totalSpent: totalSpent,
@@ -152,33 +152,33 @@ BudgetStatus _budgetStatus(double percent) {
 /// Spending velocity & pacing insights
 final spendingVelocityProvider = FutureProvider<SpendingVelocity>((ref) async {
   final now = DateTime.now();
-  
+
   final thisMonthTxns = await ref.read(thisMonthTransactionsProvider.future);
   final lastMonthKey = Formatters.monthKeyFor(DateTime(now.year, now.month - 1, 1));
   final lastMonthTxns = await ref.read(transactionsByMonthProvider(lastMonthKey).future);
-  
+
   final thisMonthSpent = thisMonthTxns
       .where((t) => t.amount > 0 && t.categoryId != 'transfer')
       .fold<double>(0.0, (s, t) => s + t.amount);
   final lastMonthSpent = lastMonthTxns
       .where((t) => t.amount > 0 && t.categoryId != 'transfer')
       .fold<double>(0.0, (s, t) => s + t.amount);
-  
+
   final daysInMonth = DateTime(now.year, now.month + 1, 0).day;
   final daysElapsed = now.day;
   final dailyAvg = daysElapsed > 0 ? thisMonthSpent / daysElapsed : 0.0;
   final projectedMonthEnd = dailyAvg * daysInMonth;
-  
+
   final budgets = await ref.read(thisMonthBudgetsProvider.future);
   final totalBudget = budgets.fold<double>(0.0, (s, b) => s + b.allocatedAmount);
   final budgetDailyTarget = totalBudget > 0 ? totalBudget / daysInMonth : 0.0;
   final pacingVsBudgetPercent = budgetDailyTarget > 0 ? (dailyAvg / budgetDailyTarget * 100) : 0.0;
-  
+
   final lastMonthDailyAvg = lastMonthSpent / DateTime(now.year, now.month, 0).day;
-  final velocityVsLastMonthPercent = lastMonthDailyAvg > 0 
-      ? ((dailyAvg - lastMonthDailyAvg) / lastMonthDailyAvg * 100) 
+  final velocityVsLastMonthPercent = lastMonthDailyAvg > 0
+      ? ((dailyAvg - lastMonthDailyAvg) / lastMonthDailyAvg * 100)
       : 0.0;
-  
+
   return SpendingVelocity(
     dailyAverage: dailyAvg,
     projectedMonthEnd: projectedMonthEnd,
@@ -194,10 +194,10 @@ final spendingVelocityProvider = FutureProvider<SpendingVelocity>((ref) async {
 final spendingInsightsProvider = FutureProvider<List<SpendingInsight>>((ref) async {
   final insights = <SpendingInsight>[];
   final now = DateTime.now();
-  
+
   // Get velocity data
   final velocity = await ref.read(spendingVelocityProvider.future);
-  
+
   // 1. Pacing insight
   if (velocity.totalBudget > 0) {
     final expectedPct = (velocity.daysElapsed / velocity.daysInMonth * 100);
@@ -220,7 +220,7 @@ final spendingInsightsProvider = FutureProvider<List<SpendingInsight>>((ref) asy
       ));
     }
   }
-  
+
   // 2. Velocity vs last month
   if (velocity.velocityVsLastMonthPercent.abs() > 15) {
     final isFaster = velocity.velocityVsLastMonthPercent > 0;
@@ -231,7 +231,7 @@ final spendingInsightsProvider = FutureProvider<List<SpendingInsight>>((ref) asy
       severity: isFaster ? InsightSeverity.warning : InsightSeverity.success,
     ));
   }
-  
+
   // 3. No-spend streak (from contribution graph data)
   final dailySpending = await ref.read(dailySpendingProvider((year: now.year, categoryId: null)).future);
   final streak = _calculateCurrentStreak(dailySpending, now);
@@ -245,7 +245,7 @@ final spendingInsightsProvider = FutureProvider<List<SpendingInsight>>((ref) asy
       actionTarget: 'calendar',
     ));
   }
-  
+
   // 4. Category delta vs last month
   final categoryDeltas = await _calculateCategoryDeltas(ref, now);
   for (final delta in categoryDeltas.where((d) => d.percentChange.abs() > 25).take(2)) {
@@ -258,7 +258,7 @@ final spendingInsightsProvider = FutureProvider<List<SpendingInsight>>((ref) asy
       actionTarget: 'transactions:${delta.categoryId}',
     ));
   }
-  
+
   // 5. Savings rate
   final incomeThisMonth = await ref.read(totalIncomeThisMonthProvider.future);
   final spentThisMonth = await ref.read(totalSpentThisMonthProvider.future);
@@ -271,7 +271,7 @@ final spendingInsightsProvider = FutureProvider<List<SpendingInsight>>((ref) asy
       severity: savingsRate >= 20 ? InsightSeverity.success : InsightSeverity.info,
     ));
   }
-  
+
   // 6. Biggest spending day this month
   final thisMonthDaily = dailySpending.entries
       .where((e) => e.key.month == now.month && e.key.year == now.year)
@@ -287,14 +287,14 @@ final spendingInsightsProvider = FutureProvider<List<SpendingInsight>>((ref) asy
       ));
     }
   }
-  
+
   return insights;
 });
 
 int _calculateCurrentStreak(Map<DateTime, double> dailySpending, DateTime now) {
   int streak = 0;
   final today = DateTime(now.year, now.month, now.day);
-  
+
   for (int i = 0; i < 365; i++) {
     final checkDay = today.subtract(Duration(days: i));
     final spent = dailySpending[checkDay] ?? 0;
@@ -310,13 +310,13 @@ int _calculateCurrentStreak(Map<DateTime, double> dailySpending, DateTime now) {
 Future<List<CategoryDelta>> _calculateCategoryDeltas(Ref ref, DateTime now) async {
   final thisMonthTxns = await ref.read(thisMonthTransactionsProvider.future);
   final categories = await ref.read(categoriesProvider.future);
-  
+
   // Build trailing 3-month average (months: now-3, now-2, now-1)
   final trailingMonths = List.generate(3, (i) {
     final date = DateTime(now.year, now.month - 3 + i, 1);
     return Formatters.monthKeyFor(date);
   });
-  
+
   // Aggregate spending across trailing 3 months by category
   final trailingByCat = <String, List<double>>{};
   for (final monthKey in trailingMonths) {
@@ -330,24 +330,24 @@ Future<List<CategoryDelta>> _calculateCategoryDeltas(Ref ref, DateTime now) asyn
       trailingByCat[entry.key]!.add(entry.value);
     }
   }
-  
+
   final thisMonthByCat = <String, double>{};
   for (final t in thisMonthTxns.where((t) => t.amount > 0 && t.categoryId != 'transfer')) {
     thisMonthByCat[t.categoryId] = (thisMonthByCat[t.categoryId] ?? 0) + t.amount;
   }
-  
+
   final deltas = <CategoryDelta>[];
   for (final entry in thisMonthByCat.entries) {
     final catId = entry.key;
     final current = entry.value;
     final cat = categories.where((c) => c.id == catId).firstOrNull;
-    
+
     // Compute trailing 3-month average: sum of all months with data / 3
     final trailingAmounts = trailingByCat[catId] ?? [];
     final trailingAvg = trailingAmounts.isNotEmpty
         ? trailingAmounts.fold<double>(0, (s, a) => s + a) / 3.0
         : 0.0;
-    
+
     if (trailingAvg > 0) {
       final pctChange = ((current - trailingAvg) / trailingAvg * 100);
       deltas.add(CategoryDelta(
@@ -367,20 +367,20 @@ Future<List<CategoryDelta>> _calculateCategoryDeltas(Ref ref, DateTime now) asyn
       ));
     }
   }
-  
+
   deltas.sort((a, b) => b.percentChange.abs().compareTo(a.percentChange.abs()));
   return deltas;
 }
 
 /// Custom report data for date range + categories
-final customReportProvider = FutureProvider.family<CustomReportData, 
+final customReportProvider = FutureProvider.family<CustomReportData,
     ({DateTime start, DateTime end, Set<String> categoryIds})>((ref, params) async {
   final transactions = await ref.read(transactionsByDateRangeProvider(params).future);
   final categories = await ref.read(categoriesProvider.future);
-  
+
   final income = transactions.where((t) => t.amount < 0).fold<double>(0.0, (s, t) => s + t.amount.abs());
   final spent = transactions.where((t) => t.amount > 0 && t.categoryId != 'transfer').fold<double>(0.0, (s, t) => s + t.amount);
-  
+
   // By category
   final byCategory = <String, CategoryReportData>{};
   for (final t in transactions.where((t) => t.amount > 0 && t.categoryId != 'transfer')) {
@@ -397,7 +397,7 @@ final customReportProvider = FutureProvider.family<CustomReportData,
       ),
     );
   }
-  
+
   // By month
   final byMonth = <String, MonthReportData>{};
   for (final t in transactions) {
@@ -419,17 +419,17 @@ final customReportProvider = FutureProvider.family<CustomReportData,
       ),
     );
   }
-  
+
   // Daily for streak calculation
   final dailySpending = <DateTime, double>{};
   for (final t in transactions.where((t) => t.amount > 0 && t.categoryId != 'transfer')) {
     final dayKey = DateTime(t.date.year, t.date.month, t.date.day);
     dailySpending[dayKey] = (dailySpending[dayKey] ?? 0) + t.amount;
   }
-  
+
   final streak = _calculateCurrentStreak(dailySpending, params.end);
   final longestStreak = _calculateLongestStreak(dailySpending, params.start, params.end);
-  
+
   return CustomReportData(
     startDate: params.start,
     endDate: params.end,
@@ -448,7 +448,7 @@ final customReportProvider = FutureProvider.family<CustomReportData,
 int _calculateLongestStreak(Map<DateTime, double> dailySpending, DateTime start, DateTime end) {
   int longest = 0;
   int current = 0;
-  
+
   for (int i = 0; i <= end.difference(start).inDays; i++) {
     final day = start.add(Duration(days: i));
     final spent = dailySpending[day] ?? 0;

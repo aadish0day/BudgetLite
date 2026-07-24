@@ -467,7 +467,7 @@ class _AddCategorySheetState extends ConsumerState<_AddCategorySheet> {
               ),
             ),
               const SizedBox(height: 20),
-              
+
               Row(
                 children: [
                   Expanded(
@@ -643,12 +643,12 @@ class _AddCategorySheetState extends ConsumerState<_AddCategorySheet> {
   void _submit() async {
     if (!_formKey.currentState!.validate()) return;
     if (_isSaving) return;
-    
+
     setState(() => _isSaving = true);
     try {
       final db = ref.read(databaseProvider);
       final uuid = const Uuid().v4();
-      
+
       await db.into(db.categories).insert(CategoriesCompanion.insert(
         id: uuid,
         name: _nameCtrl.text.trim(),
@@ -659,7 +659,7 @@ class _AddCategorySheetState extends ConsumerState<_AddCategorySheet> {
 
       ref.invalidate(categoriesProvider);
       ref.invalidate(expenseCategoriesProvider);
-      
+
       if (mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(

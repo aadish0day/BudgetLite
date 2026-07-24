@@ -98,6 +98,8 @@ class TransactionNotifier extends StateNotifier<AsyncValue<void>> {
     ref.invalidate(thisMonthTransactionsProvider);
     ref.invalidate(totalSpentThisMonthProvider);
     ref.invalidate(totalIncomeThisMonthProvider);
+
+    _checkBudgetAlerts(categoryId, date);
   }
 
   Future<void> updateTransaction(Transaction transaction) async {
@@ -105,9 +107,9 @@ class TransactionNotifier extends StateNotifier<AsyncValue<void>> {
     await db.update(db.transactions).replace(transaction);
     ref.invalidate(transactionsProvider);
     ref.invalidate(thisMonthTransactionsProvider);
+
+    _checkBudgetAlerts(transaction.categoryId, transaction.date);
   }
-
-
 
   Future<void> deleteTransaction(String id) async {
     final db = ref.read(databaseProvider);
@@ -121,14 +123,53 @@ class TransactionNotifier extends StateNotifier<AsyncValue<void>> {
       } catch (_) {}
     }
 
-    await (db.delete(db.transactions)..where((t) => t.id.equals(id))).go();
-    ref.invalidate(transactionsProvider);
-    ref.invalidate(thisMonthTransactionsProvider);
+    if (transaction != null) {
+      await (db.delete(db.transactions)..where((t) => t.id.equals(id))).go();
+      ref.invalidate(transactionsProvider);
+      ref.invalidate(thisMonthTransactionsProvider);
+
+      _checkBudgetAlerts(transaction.categoryId, transaction.date);
+    }
+  }
+
+  Future<void> _checkBudgetAlerts(String categoryId, DateTime date) async {
+    try {
+      final db = ref.read(databaseProvider);
+      final monthStr = Formatters.formatMonthKey(date);
+
+      final budget = await (db.select(db.budgets)
+            ..where((b) => b.categoryId.equals(categoryId))
+            ..where((b) => b.month.equals(monthStr)))
+          .getSingleOrNull();
+
+      if (budget == null || budget.allocatedAmount <= 0) return;
+
+      final category = await (db.select(db.categories)
+            ..where((c) => c.id.equals(categoryId)))
+          .getSingleOrNull();
+      if (category == null || category.type == 'income') return;
+
+      final txns = await (db.select(db.transactions)
+            ..where((t) => t.categoryId.equals(categoryId))
+            ..where((t) => t.date.year.equals(date.year))
+            ..where((t) => t.date.month.equals(date.month)))
+          .get();
+
+      final spent = txns.where((t) => t.amount > 0).fold<double>(0, (sum, t) => sum + t.amount);
+
+      await NotificationService.instance.checkBudgetThreshold(
+        categoryId: categoryId,
+        categoryName: category.name,
+        month: monthStr,
+        spent: spent,
+        allocatedAmount: budget.allocatedAmount,
+      );
+    } catch (_) {}
   }
 
   /// Check for duplicate transactions before adding.
-  /// Returns matching duplicates if found, or null if none.
-  Future<DuplicateCheckResult?> checkForDuplicates({
+  /// Returns matching duplicates if found.
+  Future<List<Transaction>> checkForDuplicates({
     required double amount,
     required String categoryId,
     required DateTime date,
@@ -345,6 +386,12 @@ class SmsReviewQueueNotifier extends StateNotifier<List<ParsedSmsTxn>> {
     final settings = ref.read(settingsNotifierProvider.notifier);
     final jsonStr = state.map((t) => const JsonEncoder().convert(t.toJson())).join('|||');
     await settings.setSetting('pending_sms_queue', jsonStr);
+  }
+
+  /// Clear all items from the queue.
+  Future<void> clear() async {
+    state = [];
+    await _persist();
   }
 
   /// Add a parsed SMS to the review queue

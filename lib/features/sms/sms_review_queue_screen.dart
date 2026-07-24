@@ -336,8 +336,8 @@ class _QueueItemCardState extends ConsumerState<_QueueItemCard> {
       note: widget.txn.note,
       isIncome: widget.txn.isIncome,
     );
-    final hasDuplicate = dupResult.hasDuplicates;
-    final matchedDup = hasDuplicate ? dupResult.potentialDuplicates.first : null;
+    final hasDuplicate = dupResult.isNotEmpty;
+    final matchedDup = hasDuplicate ? dupResult.first : null;
 
     return Dismissible(
       key: Key('sms_${widget.txn.id}'),

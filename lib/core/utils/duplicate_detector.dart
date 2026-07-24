@@ -1,14 +1,5 @@
 import '../database/database.dart';
 
-/// Result of a duplicate check.
-class DuplicateCheckResult {
-  final List<Transaction> potentialDuplicates;
-
-  const DuplicateCheckResult({required this.potentialDuplicates});
-
-  bool get hasDuplicates => potentialDuplicates.isNotEmpty;
-}
-
 /// Detects potential duplicate transactions before they are saved.
 ///
 /// Matches on:
@@ -18,7 +9,7 @@ class DuplicateCheckResult {
 /// - Similar note text (optional, boosts confidence)
 class DuplicateDetector {
   /// Check if a new transaction would be a duplicate of existing ones.
-  static DuplicateCheckResult findDuplicates({
+  static List<Transaction> findDuplicates({
     required List<Transaction> existingTransactions,
     required double amount,
     String? categoryId,
@@ -57,7 +48,7 @@ class DuplicateDetector {
       matches.add(t);
     }
 
-    return DuplicateCheckResult(potentialDuplicates: matches);
+    return matches;
   }
 
   /// Simple note similarity check — case-insensitive partial word match.

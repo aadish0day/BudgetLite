@@ -13,7 +13,9 @@ class NotificationService {
   bool _initialized = false;
   bool _timezoneInitialized = false;
 
-  Future<void> initialize() async {
+  final Set<String> _firedAlerts = {};
+
+  Future<void> initialize({void Function(String? payload)? onNotificationTap}) async {
     if (_initialized) return;
 
     _initTimezones();
@@ -29,8 +31,61 @@ class NotificationService {
       iOS: iosSettings,
     );
 
-    await _plugin.initialize(initSettings);
+    await _plugin.initialize(
+      initSettings,
+      onDidReceiveNotificationResponse: (response) {
+        onNotificationTap?.call(response.payload);
+      },
+    );
     _initialized = true;
+  }
+
+  /// Check budget thresholds (80% and 100%) for a category in a given month.
+  /// Fires notification once per threshold when crossed, and RESETS flag if spending drops back below threshold.
+  Future<void> checkBudgetThreshold({
+    required String categoryId,
+    required String categoryName,
+    required String month,
+    required double spent,
+    required double allocatedAmount,
+  }) async {
+    if (allocatedAmount <= 0) return;
+
+    final ratio = spent / allocatedAmount;
+    final flag80 = 'budget_alert_${categoryId}_${month}_80';
+    final flag100 = 'budget_alert_${categoryId}_${month}_100';
+
+    // 80% Threshold Alert & Reset Logic
+    if (ratio >= 0.8) {
+      if (!_firedAlerts.contains(flag80)) {
+        _firedAlerts.add(flag80);
+        await showNotification(
+          id: ('80_${categoryId}_$month'.hashCode).abs() % 100000,
+          title: 'Budget Alert: $categoryName',
+          body: 'You have used ${(ratio * 100).toStringAsFixed(0)}% of your $categoryName budget.',
+          payload: 'budget:$categoryId',
+        );
+      }
+    } else {
+      // RESET: Spending dropped back below 80% (e.g. transaction edited or deleted)
+      _firedAlerts.remove(flag80);
+    }
+
+    // 100% Threshold Alert & Reset Logic
+    if (ratio >= 1.0) {
+      if (!_firedAlerts.contains(flag100)) {
+        _firedAlerts.add(flag100);
+        await showNotification(
+          id: ('100_${categoryId}_$month'.hashCode).abs() % 100000,
+          title: 'Budget Exceeded: $categoryName',
+          body: 'You have exceeded your $categoryName budget!',
+          payload: 'budget:$categoryId',
+        );
+      }
+    } else {
+      // RESET: Spending dropped back below 100% (e.g. transaction edited or deleted)
+      _firedAlerts.remove(flag100);
+    }
   }
 
   void _initTimezones() {

@@ -112,12 +112,12 @@ class _ContributionGraphState extends ConsumerState<ContributionGraph> {
     // Sort non-zero amounts and compute quartile thresholds
     final sorted = List<double>.from(allDailyAmounts.where((v) => v > 0))..sort();
     if (sorted.isEmpty) return 0;
-    
+
     final n = sorted.length;
     final q1 = sorted[(n * 0.25).round().clamp(0, n - 1)];
     final q2 = sorted[(n * 0.50).round().clamp(0, n - 1)];
     final q3 = sorted[(n * 0.75).round().clamp(0, n - 1)];
-    
+
     if (dailySpend <= q1) return 1;
     if (dailySpend <= q2) return 2;
     if (dailySpend <= q3) return 3;

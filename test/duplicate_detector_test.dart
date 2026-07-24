@@ -40,8 +40,8 @@ void main() {
         isIncome: false,
       );
 
-      expect(result.hasDuplicates, true);
-      expect(result.potentialDuplicates.first.id, '1');
+      expect(result.isNotEmpty, true);
+      expect(result.first.id, '1');
     });
 
     test('Does not flag debit as duplicate of credit with same amount', () {
@@ -53,7 +53,7 @@ void main() {
         isIncome: false, // Expense check vs Income existing
       );
 
-      expect(result.hasDuplicates, false);
+      expect(result.isEmpty, true);
     });
 
     test('Detects duplicate credit/income transaction', () {
@@ -65,8 +65,8 @@ void main() {
         isIncome: true, // Income check vs Income existing
       );
 
-      expect(result.hasDuplicates, true);
-      expect(result.potentialDuplicates.first.id, '2');
+      expect(result.isNotEmpty, true);
+      expect(result.first.id, '2');
     });
   });
 }

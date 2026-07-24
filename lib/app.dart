@@ -25,8 +25,14 @@ class BudgetLiteApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final darkMode = ref.watch(darkModeProvider).valueOrNull ?? false;
+    final themeOption = ref.watch(themeModeProvider).valueOrNull ?? ThemeModeOption.light;
     final accentColorVal = ref.watch(accentColorProvider).valueOrNull;
+
+    final themeMode = switch (themeOption) {
+      ThemeModeOption.light => ThemeMode.light,
+      ThemeModeOption.dark => ThemeMode.dark,
+      ThemeModeOption.system => ThemeMode.system,
+    };
 
     ThemeData lightTheme = AppTheme.light;
     ThemeData darkTheme = AppTheme.dark;
@@ -50,7 +56,7 @@ class BudgetLiteApp extends ConsumerWidget {
       debugShowCheckedModeBanner: false,
       theme: lightTheme,
       darkTheme: darkTheme,
-      themeMode: darkMode ? ThemeMode.dark : ThemeMode.light,
+      themeMode: themeMode,
       home: const _AppEntry(),
     );
   }
@@ -85,23 +91,22 @@ class _AppEntryState extends ConsumerState<_AppEntry> with WidgetsBindingObserve
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused) {
-      _backgroundedAt = DateTime.now();
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      _backgroundedAt ??= DateTime.now();
     } else if (state == AppLifecycleState.resumed) {
-      if (_backgroundedAt != null && _biometricEnabled && _isAuthenticated) {
-        final duration = ref.read(autoLockDurationProvider).valueOrNull ?? 1;
-        if (duration > 0 && DateTime.now().difference(_backgroundedAt!) >= Duration(minutes: duration)) {
+      final biometric = ref.read(biometricLockEnabledProvider).valueOrNull ?? false;
+      if (_backgroundedAt != null && biometric && _isAuthenticated) {
+        final durationMinutes = ref.read(autoLockDurationProvider).valueOrNull ?? 1;
+        final elapsedSeconds = DateTime.now().difference(_backgroundedAt!).inSeconds;
+        if (elapsedSeconds >= durationMinutes * 60) {
           setState(() {
             _isAuthenticated = false;
-          });
-          _authenticate();
-        } else if (duration == 0) {
-          setState(() {
-            _isAuthenticated = false;
+            _biometricEnabled = true;
           });
           _authenticate();
         }
       }
+      _backgroundedAt = null;
     }
   }
 
@@ -127,7 +132,7 @@ class _AppEntryState extends ConsumerState<_AppEntry> with WidgetsBindingObserve
     try {
       final isAvailable = await localAuth.canCheckBiometrics;
       final isSupported = await localAuth.isDeviceSupported();
-      if (isAvailable && isSupported) {
+      if (isAvailable || isSupported) {
         final didAuthenticate = await localAuth.authenticate(
           localizedReason: 'Authenticate to access BudgetLite',
         );
@@ -207,7 +212,15 @@ class _MainShellState extends ConsumerState<_MainShell> {
   @override
   void initState() {
     super.initState();
-    NotificationService.instance.initialize();
+    NotificationService.instance.initialize(
+      onNotificationTap: (payload) {
+        if (payload != null && payload.startsWith('budget:')) {
+          final catId = payload.substring('budget:'.length);
+          ref.read(currentTabProvider.notifier).state = 2; // Budget Tab
+          ref.read(budgetHighlightProvider.notifier).state = catId;
+        }
+      },
+    );
     // Post any due recurring transactions on app open
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(transactionNotifierProvider.notifier).postDueRecurringTransactions();
@@ -548,7 +561,7 @@ class _MainShellState extends ConsumerState<_MainShell> {
               );
               
               if (!ctx.mounted) return;
-              if (dupCheck != null && dupCheck.hasDuplicates) {
+              if (dupCheck.isNotEmpty) {
                 final addAnyway = await showDialog<bool>(
                   context: ctx,
                   builder: (dialogCtx) => AlertDialog(
@@ -569,7 +582,7 @@ class _MainShellState extends ConsumerState<_MainShell> {
                           style: AppTheme.bodyStyle(size: 14, color: colorScheme.onSurfaceVariant),
                         ),
                         const SizedBox(height: 12),
-                        ...dupCheck.potentialDuplicates.take(3).map((d) => Padding(
+                        ...dupCheck.take(3).map((d) => Padding(
                           padding: const EdgeInsets.only(bottom: 6),
                           child: Row(
                             children: [
@@ -584,9 +597,9 @@ class _MainShellState extends ConsumerState<_MainShell> {
                             ],
                           ),
                         )),
-                        if (dupCheck.potentialDuplicates.length > 3)
+                        if (dupCheck.length > 3)
                           Text(
-                            '...and ${dupCheck.potentialDuplicates.length - 3} more',
+                            '...and ${dupCheck.length - 3} more',
                             style: AppTheme.bodyStyle(size: 11, color: colorScheme.onSurfaceVariant),
                           ),
                         const SizedBox(height: 12),
