@@ -131,4 +131,76 @@ void main() {
       expect(parsed.date.second, 15);
     });
   });
+
+  group('SmsParser - Amount Edge Cases', () {
+    test('Parses INR 499 without decimal (Netflix)', () {
+      const sms = 'Alert: Spent INR 499 on Netflix Recharge at NETFLIX via Netbanking.';
+      final parsed = SmsParser.parseMessage(sms);
+
+      expect(parsed, isNotNull);
+      expect(parsed!.amount, 499);
+      expect(parsed.isIncome, false);
+      expect(parsed.categoryId, 'bills');
+    });
+
+    test('Parses Rs 1499 (no space after Rs, no decimal)', () {
+      const sms = 'Thank you for using Paytm. Rs 1499 spent at ZARA store on 22-07-2026.';
+      final parsed = SmsParser.parseMessage(sms);
+
+      expect(parsed, isNotNull);
+      expect(parsed!.amount, 1499);
+      expect(parsed.isIncome, false);
+      expect(parsed.note.toLowerCase(), contains('zara'));
+    });
+
+    test('Parses amount with balance remaining text', () {
+      const sms = 'Your card was charged Rs 350.00 at STARBUCKS. Remaining balance Rs 45000.';
+      final parsed = SmsParser.parseMessage(sms);
+
+      expect(parsed, isNotNull);
+      expect(parsed!.amount, 350.00);
+      expect(parsed.isIncome, false);
+      expect(parsed.categoryId, 'food');
+    });
+  });
+
+  group('SmsParser - Direction Detection Edge Cases', () {
+    test('Transferred from is debit', () {
+      const sms = 'Rs. 2000.00 transferred from your account to AMAZON on 15-07-2026. UPI Ref: 12345';
+      final parsed = SmsParser.parseMessage(sms);
+
+      expect(parsed, isNotNull);
+      expect(parsed!.isIncome, false);
+      expect(parsed.note.toLowerCase(), contains('amazon'));
+    });
+
+    test('Added to your is credit', () {
+      const sms = 'Rs. 500.00 added to your account from PARENTS on 15-07-2026. UPI Ref: 67890';
+      final parsed = SmsParser.parseMessage(sms);
+
+      expect(parsed, isNotNull);
+      expect(parsed!.isIncome, true);
+      expect(parsed.note.toLowerCase(), contains('parents'));
+    });
+
+    test('Debit SMS with towards keyword extracts merchant', () {
+      const sms = 'Rs. 349.00 debited towards NETFLIX SUBSCRIPTION on 10-06-2026. UPI Ref: 123456';
+      final parsed = SmsParser.parseMessage(sms);
+
+      expect(parsed, isNotNull);
+      expect(parsed!.isIncome, false);
+      expect(parsed.note.toLowerCase(), contains('netflix'));
+      expect(parsed.categoryId, 'bills');
+    });
+
+    test('Debit with towards keyword (AutoPay)', () {
+      const sms = 'Your account debited Rs. 69.00 on 19/05/2026 for UPI AutoPay towards SPOTIFY INDIA PVT LTD.';
+      final parsed = SmsParser.parseMessage(sms);
+
+      expect(parsed, isNotNull);
+      expect(parsed!.amount, 69);
+      expect(parsed.isIncome, false);
+      expect(parsed.note.toLowerCase(), contains('spotify'));
+    });
+  });
 }

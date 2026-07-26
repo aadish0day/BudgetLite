@@ -4,7 +4,7 @@ import 'package:budget_lite/core/database/database.dart';
 
 void main() {
   group('DuplicateDetector Tests', () {
-    final List<Transaction> existingTransactions = [
+    final existingTransactions = [
       Transaction(
         id: '1',
         accountId: 'default',
@@ -20,7 +20,7 @@ void main() {
       Transaction(
         id: '2',
         accountId: 'default',
-        amount: -8000.0, // Income
+        amount: -8000.0,
         categoryId: 'income',
         note: 'PARENTS Pocket Money',
         date: DateTime(2026, 7, 10),
@@ -50,7 +50,7 @@ void main() {
         amount: 8000.0,
         date: DateTime(2026, 7, 10),
         note: 'PARENTS',
-        isIncome: false, // Expense check vs Income existing
+        isIncome: false,
       );
 
       expect(result.isEmpty, true);
@@ -62,11 +62,40 @@ void main() {
         amount: 8000.0,
         date: DateTime(2026, 7, 10),
         note: 'PARENTS',
-        isIncome: true, // Income check vs Income existing
+        isIncome: true,
       );
 
       expect(result.isNotEmpty, true);
       expect(result.first.id, '2');
+    });
+
+    test('Detects duplicate transaction even if existing transaction has no note', () {
+      final txnsWithEmptyNote = [
+        Transaction(
+          id: '3',
+          accountId: 'default',
+          amount: 250.0,
+          categoryId: 'food',
+          note: null,
+          date: DateTime(2026, 7, 15),
+          paymentMethod: 'UPI',
+          isRecurring: false,
+          isRecurringInstance: false,
+          createdAt: DateTime(2026, 7, 15),
+        ),
+      ];
+
+      final result = DuplicateDetector.findDuplicates(
+        existingTransactions: txnsWithEmptyNote,
+        amount: 250.0,
+        categoryId: 'food',
+        date: DateTime(2026, 7, 15),
+        note: 'Swiggy order',
+        isIncome: false,
+      );
+
+      expect(result.isNotEmpty, true);
+      expect(result.first.id, '3');
     });
   });
 }
