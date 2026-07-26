@@ -529,6 +529,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _scanSmsInbox(BuildContext context, WidgetRef ref) async {
+    final colorScheme = Theme.of(context).colorScheme;
     final messenger = ScaffoldMessenger.of(context);
     final listener = SmsListenerService();
 
@@ -567,7 +568,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
 
     int totalSmsParsed = 0;
-    int newlyAddedToQueue = 0;
+    int addedCount = 0;
     final queueNotifier = ref.read(smsReviewQueueProvider.notifier);
     final includeMerchantNote = ref.read(smsAutoNoteEnabledProvider).valueOrNull ?? true;
 
@@ -580,23 +581,53 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       );
       if (parsedTxn != null) {
         totalSmsParsed++;
-        if (!queueNotifier.isProcessed(parsedTxn.id) && !queueNotifier.isAlreadyInQueue(parsedTxn.id)) {
-          await queueNotifier.addToQueue(parsedTxn);
-          newlyAddedToQueue++;
+        if (!queueNotifier.isAlreadyInQueue(parsedTxn.id)) {
+          await queueNotifier.addToQueue(parsedTxn, force: true);
+          addedCount++;
         }
       }
     }
 
-    final messageText = newlyAddedToQueue > 0
-        ? 'Added $newlyAddedToQueue new transaction${newlyAddedToQueue == 1 ? "" : "s"} to review queue ($totalSmsParsed total UPI SMS scanned)'
-        : 'Scanned $totalSmsParsed UPI SMS — all were already processed or in review queue';
+    if (context.mounted) {
+      final messenger = ScaffoldMessenger.of(context);
+      messenger.hideCurrentSnackBar();
 
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text(messageText),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+      messenger.showSnackBar(
+        SnackBar(
+          duration: const Duration(seconds: 3),
+          content: Text(
+            'Found $totalSmsParsed UPI transaction${totalSmsParsed == 1 ? "" : "s"} — added to Review Queue!',
+            style: AppTheme.bodyStyle(
+              size: 13,
+              weight: FontWeight.w500,
+              color: colorScheme.onSurface,
+            ),
+          ),
+          backgroundColor: colorScheme.surfaceContainerHighest,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+            side: BorderSide(color: colorScheme.outline.withValues(alpha: 0.12)),
+          ),
+          action: SnackBarAction(
+            label: 'VIEW QUEUE',
+            textColor: colorScheme.primary,
+            onPressed: () {
+              messenger.hideCurrentSnackBar();
+            },
+          ),
+        ),
+      );
+
+      // Automatically open Review Queue screen so user can review all items immediately
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const SmsReviewQueueScreen()),
+      ).then((_) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        }
+      });
+    }
   }
 
   void _processSmsBody(WidgetRef ref, String body, {int? timestamp}) {

@@ -160,11 +160,20 @@ class _SmsReviewQueueScreenState extends ConsumerState<SmsReviewQueueScreen> {
     await notifier.confirmItem(id, overrideCategory: overrideCategory, overrideNote: overrideNote);
     ref.invalidate(transactionsProvider);
     if (mounted) {
+      final colorScheme = Theme.of(context).colorScheme;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Transaction confirmed ✓'),
+        SnackBar(
+          content: Text(
+            'Transaction confirmed ✓',
+            style: AppTheme.bodyStyle(size: 13, weight: FontWeight.w500, color: colorScheme.onSurface),
+          ),
+          backgroundColor: colorScheme.surfaceContainerHighest,
           behavior: SnackBarBehavior.floating,
-          duration: Duration(seconds: 2),
+          duration: const Duration(seconds: 2),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+            side: BorderSide(color: colorScheme.outline.withValues(alpha: 0.12)),
+          ),
         ),
       );
     }
@@ -209,10 +218,20 @@ class _SmsReviewQueueScreenState extends ConsumerState<SmsReviewQueueScreen> {
       await notifier.confirmAll();
       ref.invalidate(transactionsProvider);
       if (mounted) {
+        final colorScheme = Theme.of(context).colorScheme;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('All transactions confirmed ✓'),
+          SnackBar(
+            content: Text(
+              'All transactions confirmed ✓',
+              style: AppTheme.bodyStyle(size: 13, weight: FontWeight.w500, color: colorScheme.onSurface),
+            ),
+            backgroundColor: colorScheme.surfaceContainerHighest,
             behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 2),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+              side: BorderSide(color: colorScheme.outline.withValues(alpha: 0.12)),
+            ),
           ),
         );
       }

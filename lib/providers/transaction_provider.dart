@@ -462,9 +462,11 @@ class SmsReviewQueueNotifier extends StateNotifier<List<ParsedSmsTxn>> {
     await _persist();
   }
 
-  /// Add a parsed SMS to the review queue if not already processed or queued
-  Future<void> addToQueue(ParsedSmsTxn txn) async {
-    if (isProcessed(txn.id) || isAlreadyInQueue(txn.id)) return;
+  /// Add a parsed SMS to the review queue if not already queued
+  Future<void> addToQueue(ParsedSmsTxn txn, {bool force = false}) async {
+    if (isAlreadyInQueue(txn.id)) return;
+    if (!force && isProcessed(txn.id)) return;
+    _processedIds.remove(txn.id);
     state = [...state, txn];
     await _persist();
   }
