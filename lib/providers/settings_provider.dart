@@ -108,6 +108,131 @@ class SettingsNotifier extends StateNotifier<AsyncValue<void>> {
     return exportFile.path;
   }
 
+  /// Export all database entities to a structured JSON file.
+  Future<String> exportJsonBackup() async {
+    final db = ref.read(databaseProvider);
+    final accounts = await db.select(db.accounts).get();
+    final categories = await db.select(db.categories).get();
+    final transactions = await db.select(db.transactions).get();
+    final budgets = await db.select(db.budgets).get();
+    final goals = await db.select(db.goals).get();
+    final income = await db.select(db.monthlyIncome).get();
+    final settings = await db.select(db.appSettings).get();
+
+    final data = {
+      'version': 1,
+      'exportedAt': DateTime.now().toIso8601String(),
+      'accounts': accounts.map((a) => {'id': a.id, 'name': a.name, 'balance': a.balance, 'currency': a.currency}).toList(),
+      'categories': categories.map((c) => {'id': c.id, 'name': c.name, 'icon': c.icon, 'color': c.color, 'type': c.type}).toList(),
+      'transactions': transactions.map((t) => {
+        'id': t.id,
+        'amount': t.amount,
+        'categoryId': t.categoryId,
+        'accountId': t.accountId,
+        'note': t.note,
+        'date': t.date.toIso8601String(),
+        'paymentMethod': t.paymentMethod,
+        'isRecurring': t.isRecurring,
+        'isRecurringInstance': t.isRecurringInstance,
+        'recurringInterval': t.recurringInterval,
+        'recurringEndDate': t.recurringEndDate?.toIso8601String(),
+        'receiptImagePath': t.receiptImagePath,
+        'createdAt': t.createdAt.toIso8601String(),
+      }).toList(),
+      'budgets': budgets.map((b) => {'id': b.id, 'categoryId': b.categoryId, 'month': b.month, 'allocatedAmount': b.allocatedAmount, 'rollover': b.rollover}).toList(),
+      'goals': goals.map((g) => {'id': g.id, 'name': g.name, 'targetAmount': g.targetAmount, 'currentAmount': g.currentAmount, 'targetDate': g.targetDate.toIso8601String(), 'color': g.color, 'icon': g.icon, 'createdAt': g.createdAt.toIso8601String()}).toList(),
+      'monthlyIncome': income.map((i) => {'id': i.id, 'month': i.month, 'amount': i.amount, 'createdAt': i.createdAt.toIso8601String()}).toList(),
+      'settings': settings.map((s) => {'key': s.key, 'value': s.value}).toList(),
+    };
+
+    final tempDir = await getTemporaryDirectory();
+    final file = File(p.join(tempDir.path, 'budget_lite_backup_${DateTime.now().millisecondsSinceEpoch}.json'));
+    await file.writeAsString(const JsonEncoder.withIndent('  ').convert(data));
+    return file.path;
+  }
+
+  /// Import database entities from a JSON backup file.
+  Future<int> importJsonBackup(String filePath) async {
+    final file = File(filePath);
+    if (!await file.exists()) throw Exception('Backup file not found');
+    final json = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
+
+    final db = ref.read(databaseProvider);
+    int importedCount = 0;
+
+    Future<void> processList(String key, Future<void> Function(Map<String, dynamic> m) insert) async {
+      final list = json[key];
+      if (list is List) {
+        for (final item in list) {
+          if (item is Map<String, dynamic>) await insert(item);
+        }
+      }
+    }
+
+    await db.transaction(() async {
+      await processList('accounts', (m) async => db.into(db.accounts).insertOnConflictUpdate(AccountsCompanion.insert(
+        id: m['id'] as String,
+        name: m['name'] as String,
+        balance: Value((m['balance'] as num).toDouble()),
+        currency: Value(m['currency'] as String? ?? 'INR'),
+      )));
+
+      await processList('categories', (m) async => db.into(db.categories).insertOnConflictUpdate(CategoriesCompanion.insert(
+        id: m['id'] as String,
+        name: m['name'] as String,
+        icon: Value(m['icon'] as String? ?? 'category'),
+        color: Value(m['color'] as int? ?? 0xFF0D7377),
+        type: Value(m['type'] as String? ?? 'expense'),
+      )));
+
+      await processList('transactions', (m) async {
+        await db.into(db.transactions).insertOnConflictUpdate(TransactionsCompanion.insert(
+          id: m['id'] as String,
+          amount: (m['amount'] as num).toDouble(),
+          categoryId: m['categoryId'] as String,
+          accountId: m['accountId'] as String,
+          note: Value(m['note'] as String?),
+          date: DateTime.parse(m['date'] as String),
+          paymentMethod: Value(m['paymentMethod'] as String? ?? 'cash'),
+          isRecurring: Value(m['isRecurring'] as bool? ?? false),
+          isRecurringInstance: Value(m['isRecurringInstance'] as bool? ?? false),
+          recurringInterval: Value(m['recurringInterval'] as String?),
+          recurringEndDate: Value(m['recurringEndDate'] != null ? DateTime.parse(m['recurringEndDate'] as String) : null),
+          receiptImagePath: Value(m['receiptImagePath'] as String?),
+          createdAt: Value(m['createdAt'] != null ? DateTime.parse(m['createdAt'] as String) : DateTime.now()),
+        ));
+        importedCount++;
+      });
+
+      await processList('budgets', (m) async => db.into(db.budgets).insertOnConflictUpdate(BudgetsCompanion.insert(
+        id: m['id'] as String,
+        categoryId: m['categoryId'] as String,
+        month: m['month'] as String,
+        allocatedAmount: (m['allocatedAmount'] as num).toDouble(),
+        rollover: Value(m['rollover'] as bool? ?? false),
+      )));
+
+      await processList('goals', (m) async => db.into(db.goals).insertOnConflictUpdate(GoalsCompanion.insert(
+        id: m['id'] as String,
+        name: m['name'] as String,
+        targetAmount: (m['targetAmount'] as num).toDouble(),
+        currentAmount: Value((m['currentAmount'] as num? ?? 0).toDouble()),
+        targetDate: DateTime.parse(m['targetDate'] as String),
+        color: Value(m['color'] as int? ?? 0xFF14B8A6),
+        icon: Value(m['icon'] as String? ?? 'flag'),
+        createdAt: Value(m['createdAt'] != null ? DateTime.parse(m['createdAt'] as String) : DateTime.now()),
+      )));
+
+      await processList('settings', (m) async => db.into(db.appSettings).insertOnConflictUpdate(AppSettingsCompanion.insert(
+        key: m['key'] as String,
+        value: m['value'] as String,
+      )));
+    });
+
+    ref.invalidate(databaseProvider);
+    return importedCount;
+  }
+
   Future<void> importDatabase(String filePath) async {
     final dbFolder = await getApplicationDocumentsDirectory();
     final source = File(filePath);

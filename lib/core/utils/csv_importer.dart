@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:csv/csv.dart';
 
 /// A parsed row from a bank statement CSV.
 class CsvTransactionRow {
@@ -75,8 +76,8 @@ class CsvImporter {
       );
     }
 
-    final lines = await file.readAsLines();
-    if (lines.isEmpty) {
+    final content = await file.readAsString();
+    if (content.trim().isEmpty) {
       return const CsvImportResult(
         transactions: [],
         totalRows: 0,
@@ -86,7 +87,16 @@ class CsvImporter {
     }
 
     // Parse CSV respecting quoted fields
-    final parsedLines = lines.map(_parseCsvLine).toList();
+    final parsedRows = const CsvToListConverter().convert(content);
+    final parsedLines = parsedRows.map((r) => r.map((e) => e.toString()).toList()).toList();
+    if (parsedLines.isEmpty) {
+      return const CsvImportResult(
+        transactions: [],
+        totalRows: 0,
+        skippedRows: 0,
+        errors: ['Empty file'],
+      );
+    }
     final headerRow = parsedLines.first.map((c) => c.trim().toLowerCase()).toList();
     final dataRows = parsedLines.skip(1).toList();
 
@@ -312,27 +322,6 @@ class CsvImporter {
     return double.tryParse(clean);
   }
 
-  /// Parse a simple CSV line respecting quoted fields.
-  static List<String> _parseCsvLine(String line) {
-    final fields = <String>[];
-    StringBuffer current = StringBuffer();
-    bool inQuotes = false;
-
-    for (int i = 0; i < line.length; i++) {
-      final char = line[i];
-      if (char == '"') {
-        inQuotes = !inQuotes;
-      } else if (char == ',' && !inQuotes) {
-        fields.add(current.toString());
-        current = StringBuffer();
-      } else {
-        current.write(char);
-      }
-    }
-    fields.add(current.toString());
-
-    return fields;
-  }
 
   static int? _monthAbbrToInt(String abbr) {
     const months = {
