@@ -10,11 +10,6 @@ final categoriesProvider = FutureProvider<List<Category>>((ref) async {
   return db.select(db.categories).get();
 });
 
-final tagsProvider = FutureProvider<List<Tag>>((ref) async {
-  final db = ref.read(databaseProvider);
-  return db.select(db.tags).get();
-});
-
 final accountsProvider = FutureProvider<List<Account>>((ref) async {
   final db = ref.read(databaseProvider);
   return db.select(db.accounts).get();

@@ -154,7 +154,7 @@ final spendingVelocityProvider = FutureProvider<SpendingVelocity>((ref) async {
   final now = DateTime.now();
 
   final thisMonthTxns = await ref.read(thisMonthTransactionsProvider.future);
-  final lastMonthKey = Formatters.monthKeyFor(DateTime(now.year, now.month - 1, 1));
+  final lastMonthKey = Formatters.formatMonthKey(DateTime(now.year, now.month - 1, 1));
   final lastMonthTxns = await ref.read(transactionsByMonthProvider(lastMonthKey).future);
 
   final thisMonthSpent = thisMonthTxns
@@ -314,7 +314,7 @@ Future<List<CategoryDelta>> _calculateCategoryDeltas(Ref ref, DateTime now) asyn
   // Build trailing 3-month average (months: now-3, now-2, now-1)
   final trailingMonths = List.generate(3, (i) {
     final date = DateTime(now.year, now.month - 3 + i, 1);
-    return Formatters.monthKeyFor(date);
+    return Formatters.formatMonthKey(date);
   });
 
   // Aggregate spending across trailing 3 months by category
@@ -401,7 +401,7 @@ final customReportProvider = FutureProvider.family<CustomReportData,
   // By month
   final byMonth = <String, MonthReportData>{};
   for (final t in transactions) {
-    final monthKey = Formatters.monthKeyFor(t.date);
+    final monthKey = Formatters.formatMonthKey(t.date);
     final isIncome = t.amount < 0;
     byMonth.update(
       monthKey,

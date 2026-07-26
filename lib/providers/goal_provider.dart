@@ -5,11 +5,11 @@ import '../core/database/database.dart';
 import 'database_provider.dart';
 import 'transaction_provider.dart';
 
-final goalsProvider = FutureProvider<List<Goal>>((ref) async {
-  final db = ref.read(databaseProvider);
+final goalsProvider = StreamProvider<List<Goal>>((ref) {
+  final db = ref.watch(databaseProvider);
   return (db.select(db.goals)
         ..orderBy([(t) => OrderingTerm(expression: t.createdAt, mode: OrderingMode.desc)]))
-      .get();
+      .watch();
 });
 
 class GoalNotifier extends StateNotifier<AsyncValue<void>> {

@@ -11,41 +11,59 @@ import '../core/utils/notification_service.dart';
 import 'database_provider.dart';
 import 'settings_provider.dart';
 
-final transactionsProvider = FutureProvider.autoDispose<List<Transaction>>((ref) async {
-  final db = ref.read(databaseProvider);
+final transactionsProvider = StreamProvider.autoDispose<List<Transaction>>((ref) {
+  final db = ref.watch(databaseProvider);
   return (db.select(db.transactions)
         ..orderBy([(t) => OrderingTerm(expression: t.date, mode: OrderingMode.desc)]))
-      .get();
+      .watch();
 });
 
 final transactionsByMonthProvider =
-    FutureProvider.family<List<Transaction>, String>((ref, monthKey) async {
-  final db = ref.read(databaseProvider);
+    StreamProvider.family<List<Transaction>, String>((ref, monthKey) {
+  final db = ref.watch(databaseProvider);
+  final parts = monthKey.split('-');
+  final year = int.parse(parts[0]);
+  final month = int.parse(parts[1]);
   return (db.select(db.transactions)
-        ..where((t) => t.date.year.equals(int.parse(monthKey.split('-')[0])))
-        ..where((t) => t.date.month.equals(int.parse(monthKey.split('-')[1])))
+        ..where((t) => t.date.year.equals(year))
+        ..where((t) => t.date.month.equals(month))
         ..orderBy([(t) => OrderingTerm(expression: t.date, mode: OrderingMode.desc)]))
-      .get();
+      .watch();
 });
 
-final thisMonthTransactionsProvider = FutureProvider<List<Transaction>>((ref) async {
-  return ref.read(transactionsByMonthProvider(Formatters.monthKey).future);
+final thisMonthTransactionsProvider = StreamProvider<List<Transaction>>((ref) {
+  final asyncTxns = ref.watch(transactionsByMonthProvider(Formatters.monthKey));
+  return asyncTxns.when(
+    data: (txns) => Stream.value(txns),
+    error: (err, stack) => Stream.error(err, stack),
+    loading: () => const Stream.empty(),
+  );
 });
 
 /// Total spending this month.
-final totalSpentThisMonthProvider = FutureProvider<double>((ref) async {
-  final transactions = await ref.read(thisMonthTransactionsProvider.future);
-  return transactions
-      .where((t) => t.amount > 0)
-      .fold<double>(0, (sum, t) => sum + t.amount);
+final totalSpentThisMonthProvider = StreamProvider<double>((ref) {
+  final asyncTxns = ref.watch(thisMonthTransactionsProvider);
+  return asyncTxns.when(
+    data: (txns) {
+      final spent = txns.where((t) => t.amount > 0).fold<double>(0, (sum, t) => sum + t.amount);
+      return Stream.value(spent);
+    },
+    error: (err, stack) => Stream.error(err, stack),
+    loading: () => const Stream.empty(),
+  );
 });
 
 /// Total income this month.
-final totalIncomeThisMonthProvider = FutureProvider<double>((ref) async {
-  final transactions = await ref.read(thisMonthTransactionsProvider.future);
-  return transactions
-      .where((t) => t.amount < 0)
-      .fold<double>(0, (sum, t) => sum + t.amount.abs());
+final totalIncomeThisMonthProvider = StreamProvider<double>((ref) {
+  final asyncTxns = ref.watch(thisMonthTransactionsProvider);
+  return asyncTxns.when(
+    data: (txns) {
+      final income = txns.where((t) => t.amount < 0).fold<double>(0, (sum, t) => sum + t.amount.abs());
+      return Stream.value(income);
+    },
+    error: (err, stack) => Stream.error(err, stack),
+    loading: () => const Stream.empty(),
+  );
 });
 
 class TransactionNotifier extends StateNotifier<AsyncValue<void>> {

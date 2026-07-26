@@ -38,7 +38,4 @@ class Formatters {
     return formatMonthKey(prev);
   }
 
-  static String monthKeyFor(DateTime date) {
-    return formatMonthKey(date);
-  }
 }

@@ -10,36 +10,53 @@ import 'transaction_provider.dart';
 import 'database_provider.dart';
 import 'settings_provider.dart';
 
-final budgetsProvider = FutureProvider<List<Budget>>((ref) async {
-  final db = ref.read(databaseProvider);
-  return db.select(db.budgets).get();
+final budgetsProvider = StreamProvider<List<Budget>>((ref) {
+  final db = ref.watch(databaseProvider);
+  return db.select(db.budgets).watch();
 });
 
 final budgetsByMonthProvider =
-    FutureProvider.family<List<Budget>, String>((ref, monthKey) async {
-  final db = ref.read(databaseProvider);
-  return (db.select(db.budgets)..where((t) => t.month.equals(monthKey))).get();
+    StreamProvider.family<List<Budget>, String>((ref, monthKey) {
+  final db = ref.watch(databaseProvider);
+  return (db.select(db.budgets)..where((t) => t.month.equals(monthKey))).watch();
 });
 
-final thisMonthBudgetsProvider = FutureProvider<List<Budget>>((ref) async {
-  return ref.read(budgetsByMonthProvider(Formatters.monthKey).future);
+final thisMonthBudgetsProvider = StreamProvider<List<Budget>>((ref) {
+  final asyncBudgets = ref.watch(budgetsByMonthProvider(Formatters.monthKey));
+  return asyncBudgets.when(
+    data: (budgets) => Stream.value(budgets),
+    error: (err, stack) => Stream.error(err, stack),
+    loading: () => const Stream.empty(),
+  );
 });
 
-final monthlyIncomeProvider = FutureProvider<double>((ref) async {
-  // Pure running total of actual income transactions logged this month.
-  // No projections, no auto-posting — only real transactions count.
-  return ref.read(totalIncomeThisMonthProvider.future);
+final monthlyIncomeProvider = StreamProvider<double>((ref) {
+  final asyncIncome = ref.watch(totalIncomeThisMonthProvider);
+  return asyncIncome.when(
+    data: (income) => Stream.value(income),
+    error: (err, stack) => Stream.error(err, stack),
+    loading: () => const Stream.empty(),
+  );
 });
 
-final totalBudgetThisMonthProvider = FutureProvider<double>((ref) async {
-  final budgets = await ref.read(thisMonthBudgetsProvider.future);
-  return budgets.fold<double>(0, (sum, b) => sum + b.allocatedAmount);
+final totalBudgetThisMonthProvider = StreamProvider<double>((ref) {
+  final asyncBudgets = ref.watch(thisMonthBudgetsProvider);
+  return asyncBudgets.when(
+    data: (budgets) {
+      final total = budgets.fold<double>(0, (sum, b) => sum + b.allocatedAmount);
+      return Stream.value(total);
+    },
+    error: (err, stack) => Stream.error(err, stack),
+    loading: () => const Stream.empty(),
+  );
 });
 
-final remainingBudgetProvider = FutureProvider<double>((ref) async {
-  final income = await ref.read(monthlyIncomeProvider.future);
-  final spent = await ref.read(totalSpentThisMonthProvider.future);
-  return income - spent;
+final remainingBudgetProvider = StreamProvider<double>((ref) {
+  final incomeAsync = ref.watch(monthlyIncomeProvider);
+  final spentAsync = ref.watch(totalSpentThisMonthProvider);
+  final income = incomeAsync.valueOrNull ?? 0.0;
+  final spent = spentAsync.valueOrNull ?? 0.0;
+  return Stream.value(income - spent);
 });
 
 class BudgetNotifier extends StateNotifier<AsyncValue<void>> {

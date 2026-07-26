@@ -21,6 +21,8 @@ class Categories extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+@TableIndex(name: 'idx_transactions_date', columns: {#date})
+@TableIndex(name: 'idx_transactions_category', columns: {#categoryId})
 class Transactions extends Table {
   TextColumn get id => text()();
   RealColumn get amount => real()();
@@ -40,6 +42,7 @@ class Transactions extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+@TableIndex(name: 'idx_budgets_month_category', columns: {#month, #categoryId})
 class Budgets extends Table {
   TextColumn get id => text()();
   TextColumn get categoryId => text().references(Categories, #id)();
@@ -83,20 +86,3 @@ class AppSettings extends Table {
   Set<Column> get primaryKey => {key};
 }
 
-class Tags extends Table {
-  TextColumn get id => text()();
-  TextColumn get name => text()();
-  IntColumn get color => integer().withDefault(const Constant(0xFF9E9E9E))();
-  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
-
-  @override
-  Set<Column> get primaryKey => {id};
-}
-
-class TransactionTags extends Table {
-  TextColumn get transactionId => text().references(Transactions, #id)();
-  TextColumn get tagId => text().references(Tags, #id)();
-
-  @override
-  Set<Column> get primaryKey => {transactionId, tagId};
-}

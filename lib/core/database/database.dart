@@ -15,14 +15,12 @@ part 'database.g.dart';
   Goals,
   MonthlyIncome,
   AppSettings,
-  Tags,
-  TransactionTags,
 ])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -36,10 +34,6 @@ class AppDatabase extends _$AppDatabase {
       }
       if (from < 3) {
         await m.addColumn(transactions, transactions.recurringEndDate);
-      }
-      if (from < 4) {
-        await m.createTable(tags);
-        await m.createTable(transactionTags);
       }
     },
   );
@@ -153,8 +147,6 @@ class AppDatabase extends _$AppDatabase {
   /// and re-seed default account and categories.
   Future<void> clearAllData() async {
     await transaction(() async {
-      await delete(transactionTags).go();
-      await delete(tags).go();
       await delete(transactions).go();
       await delete(budgets).go();
       await delete(goals).go();
