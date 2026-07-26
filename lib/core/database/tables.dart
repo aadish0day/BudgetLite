@@ -10,12 +10,14 @@ class Accounts extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+@TableIndex(name: 'idx_categories_type', columns: {#type})
 class Categories extends Table {
   TextColumn get id => text()();
   TextColumn get name => text()();
   TextColumn get icon => text().withDefault(const Constant('category'))();
   IntColumn get color => integer().withDefault(const Constant(0xFF0D7377))();
   TextColumn get type => text().withDefault(const Constant('expense'))();
+  IntColumn get sortOrder => integer().withDefault(const Constant(0))();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -23,6 +25,8 @@ class Categories extends Table {
 
 @TableIndex(name: 'idx_transactions_date', columns: {#date})
 @TableIndex(name: 'idx_transactions_category', columns: {#categoryId})
+@TableIndex(name: 'idx_transactions_account', columns: {#accountId})
+@TableIndex(name: 'idx_transactions_recurring', columns: {#isRecurring})
 class Transactions extends Table {
   TextColumn get id => text()();
   RealColumn get amount => real()();
@@ -54,6 +58,7 @@ class Budgets extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+@TableIndex(name: 'idx_goals_target_date', columns: {#targetDate})
 class Goals extends Table {
   TextColumn get id => text()();
   TextColumn get name => text()();
@@ -68,6 +73,7 @@ class Goals extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+@TableIndex(name: 'idx_monthly_income_month', columns: {#month})
 class MonthlyIncome extends Table {
   TextColumn get id => text()();
   TextColumn get month => text()();

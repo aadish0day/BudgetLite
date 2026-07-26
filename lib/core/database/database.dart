@@ -20,7 +20,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -35,6 +35,9 @@ class AppDatabase extends _$AppDatabase {
       if (from < 3) {
         await m.addColumn(transactions, transactions.recurringEndDate);
       }
+      if (from < 4) {
+        await m.addColumn(categories, categories.sortOrder);
+      }
     },
   );
 
@@ -47,6 +50,7 @@ class AppDatabase extends _$AppDatabase {
           icon: const Value('restaurant'),
           color: const Value(0xFFEF4444),
           type: const Value('expense'),
+          sortOrder: const Value(1),
         ),
         CategoriesCompanion.insert(
           id: 'transport',
@@ -54,6 +58,7 @@ class AppDatabase extends _$AppDatabase {
           icon: const Value('directions_car'),
           color: const Value(0xFFF59E0B),
           type: const Value('expense'),
+          sortOrder: const Value(2),
         ),
         CategoriesCompanion.insert(
           id: 'rent',
@@ -61,6 +66,7 @@ class AppDatabase extends _$AppDatabase {
           icon: const Value('home'),
           color: const Value(0xFF8B5CF6),
           type: const Value('expense'),
+          sortOrder: const Value(3),
         ),
         CategoriesCompanion.insert(
           id: 'shopping',
@@ -68,6 +74,7 @@ class AppDatabase extends _$AppDatabase {
           icon: const Value('shopping_bag'),
           color: const Value(0xFFEC4899),
           type: const Value('expense'),
+          sortOrder: const Value(4),
         ),
         CategoriesCompanion.insert(
           id: 'bills',
@@ -75,6 +82,7 @@ class AppDatabase extends _$AppDatabase {
           icon: const Value('receipt'),
           color: const Value(0xFF0D7377),
           type: const Value('expense'),
+          sortOrder: const Value(5),
         ),
         CategoriesCompanion.insert(
           id: 'entertainment',
@@ -82,6 +90,7 @@ class AppDatabase extends _$AppDatabase {
           icon: const Value('gamepad_2'),
           color: const Value(0xFF8B5CF6),
           type: const Value('expense'),
+          sortOrder: const Value(6),
         ),
         CategoriesCompanion.insert(
           id: 'other',
@@ -89,6 +98,7 @@ class AppDatabase extends _$AppDatabase {
           icon: const Value('more_horiz'),
           color: const Value(0xFF6B7280),
           type: const Value('expense'),
+          sortOrder: const Value(7),
         ),
         CategoriesCompanion.insert(
           id: 'income',
@@ -96,6 +106,7 @@ class AppDatabase extends _$AppDatabase {
           icon: const Value('account_balance'),
           color: const Value(0xFF10B981),
           type: const Value('income'),
+          sortOrder: const Value(8),
         ),
       ]);
     });

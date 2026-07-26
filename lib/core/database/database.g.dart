@@ -360,8 +360,27 @@ class $CategoriesTable extends Categories
     requiredDuringInsert: false,
     defaultValue: const Constant('expense'),
   );
+  static const VerificationMeta _sortOrderMeta = const VerificationMeta(
+    'sortOrder',
+  );
   @override
-  List<GeneratedColumn> get $columns => [id, name, icon, color, type];
+  late final GeneratedColumn<int> sortOrder = GeneratedColumn<int>(
+    'sort_order',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    name,
+    icon,
+    color,
+    type,
+    sortOrder,
+  ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -405,6 +424,12 @@ class $CategoriesTable extends Categories
         type.isAcceptableOrUnknown(data['type']!, _typeMeta),
       );
     }
+    if (data.containsKey('sort_order')) {
+      context.handle(
+        _sortOrderMeta,
+        sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta),
+      );
+    }
     return context;
   }
 
@@ -434,6 +459,10 @@ class $CategoriesTable extends Categories
         DriftSqlType.string,
         data['${effectivePrefix}type'],
       )!,
+      sortOrder: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}sort_order'],
+      )!,
     );
   }
 
@@ -449,12 +478,14 @@ class Category extends DataClass implements Insertable<Category> {
   final String icon;
   final int color;
   final String type;
+  final int sortOrder;
   const Category({
     required this.id,
     required this.name,
     required this.icon,
     required this.color,
     required this.type,
+    required this.sortOrder,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -464,6 +495,7 @@ class Category extends DataClass implements Insertable<Category> {
     map['icon'] = Variable<String>(icon);
     map['color'] = Variable<int>(color);
     map['type'] = Variable<String>(type);
+    map['sort_order'] = Variable<int>(sortOrder);
     return map;
   }
 
@@ -474,6 +506,7 @@ class Category extends DataClass implements Insertable<Category> {
       icon: Value(icon),
       color: Value(color),
       type: Value(type),
+      sortOrder: Value(sortOrder),
     );
   }
 
@@ -488,6 +521,7 @@ class Category extends DataClass implements Insertable<Category> {
       icon: serializer.fromJson<String>(json['icon']),
       color: serializer.fromJson<int>(json['color']),
       type: serializer.fromJson<String>(json['type']),
+      sortOrder: serializer.fromJson<int>(json['sortOrder']),
     );
   }
   @override
@@ -499,6 +533,7 @@ class Category extends DataClass implements Insertable<Category> {
       'icon': serializer.toJson<String>(icon),
       'color': serializer.toJson<int>(color),
       'type': serializer.toJson<String>(type),
+      'sortOrder': serializer.toJson<int>(sortOrder),
     };
   }
 
@@ -508,12 +543,14 @@ class Category extends DataClass implements Insertable<Category> {
     String? icon,
     int? color,
     String? type,
+    int? sortOrder,
   }) => Category(
     id: id ?? this.id,
     name: name ?? this.name,
     icon: icon ?? this.icon,
     color: color ?? this.color,
     type: type ?? this.type,
+    sortOrder: sortOrder ?? this.sortOrder,
   );
   Category copyWithCompanion(CategoriesCompanion data) {
     return Category(
@@ -522,6 +559,7 @@ class Category extends DataClass implements Insertable<Category> {
       icon: data.icon.present ? data.icon.value : this.icon,
       color: data.color.present ? data.color.value : this.color,
       type: data.type.present ? data.type.value : this.type,
+      sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
     );
   }
 
@@ -532,13 +570,14 @@ class Category extends DataClass implements Insertable<Category> {
           ..write('name: $name, ')
           ..write('icon: $icon, ')
           ..write('color: $color, ')
-          ..write('type: $type')
+          ..write('type: $type, ')
+          ..write('sortOrder: $sortOrder')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, name, icon, color, type);
+  int get hashCode => Object.hash(id, name, icon, color, type, sortOrder);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -547,7 +586,8 @@ class Category extends DataClass implements Insertable<Category> {
           other.name == this.name &&
           other.icon == this.icon &&
           other.color == this.color &&
-          other.type == this.type);
+          other.type == this.type &&
+          other.sortOrder == this.sortOrder);
 }
 
 class CategoriesCompanion extends UpdateCompanion<Category> {
@@ -556,6 +596,7 @@ class CategoriesCompanion extends UpdateCompanion<Category> {
   final Value<String> icon;
   final Value<int> color;
   final Value<String> type;
+  final Value<int> sortOrder;
   final Value<int> rowid;
   const CategoriesCompanion({
     this.id = const Value.absent(),
@@ -563,6 +604,7 @@ class CategoriesCompanion extends UpdateCompanion<Category> {
     this.icon = const Value.absent(),
     this.color = const Value.absent(),
     this.type = const Value.absent(),
+    this.sortOrder = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   CategoriesCompanion.insert({
@@ -571,6 +613,7 @@ class CategoriesCompanion extends UpdateCompanion<Category> {
     this.icon = const Value.absent(),
     this.color = const Value.absent(),
     this.type = const Value.absent(),
+    this.sortOrder = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        name = Value(name);
@@ -580,6 +623,7 @@ class CategoriesCompanion extends UpdateCompanion<Category> {
     Expression<String>? icon,
     Expression<int>? color,
     Expression<String>? type,
+    Expression<int>? sortOrder,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -588,6 +632,7 @@ class CategoriesCompanion extends UpdateCompanion<Category> {
       if (icon != null) 'icon': icon,
       if (color != null) 'color': color,
       if (type != null) 'type': type,
+      if (sortOrder != null) 'sort_order': sortOrder,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -598,6 +643,7 @@ class CategoriesCompanion extends UpdateCompanion<Category> {
     Value<String>? icon,
     Value<int>? color,
     Value<String>? type,
+    Value<int>? sortOrder,
     Value<int>? rowid,
   }) {
     return CategoriesCompanion(
@@ -606,6 +652,7 @@ class CategoriesCompanion extends UpdateCompanion<Category> {
       icon: icon ?? this.icon,
       color: color ?? this.color,
       type: type ?? this.type,
+      sortOrder: sortOrder ?? this.sortOrder,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -628,6 +675,9 @@ class CategoriesCompanion extends UpdateCompanion<Category> {
     if (type.present) {
       map['type'] = Variable<String>(type.value);
     }
+    if (sortOrder.present) {
+      map['sort_order'] = Variable<int>(sortOrder.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -642,6 +692,7 @@ class CategoriesCompanion extends UpdateCompanion<Category> {
           ..write('icon: $icon, ')
           ..write('color: $color, ')
           ..write('type: $type, ')
+          ..write('sortOrder: $sortOrder, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -2849,6 +2900,10 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $GoalsTable goals = $GoalsTable(this);
   late final $MonthlyIncomeTable monthlyIncome = $MonthlyIncomeTable(this);
   late final $AppSettingsTable appSettings = $AppSettingsTable(this);
+  late final Index idxCategoriesType = Index(
+    'idx_categories_type',
+    'CREATE INDEX idx_categories_type ON categories (type)',
+  );
   late final Index idxTransactionsDate = Index(
     'idx_transactions_date',
     'CREATE INDEX idx_transactions_date ON transactions (date)',
@@ -2857,9 +2912,25 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     'idx_transactions_category',
     'CREATE INDEX idx_transactions_category ON transactions (category_id)',
   );
+  late final Index idxTransactionsAccount = Index(
+    'idx_transactions_account',
+    'CREATE INDEX idx_transactions_account ON transactions (account_id)',
+  );
+  late final Index idxTransactionsRecurring = Index(
+    'idx_transactions_recurring',
+    'CREATE INDEX idx_transactions_recurring ON transactions (is_recurring)',
+  );
   late final Index idxBudgetsMonthCategory = Index(
     'idx_budgets_month_category',
     'CREATE INDEX idx_budgets_month_category ON budgets (month, category_id)',
+  );
+  late final Index idxGoalsTargetDate = Index(
+    'idx_goals_target_date',
+    'CREATE INDEX idx_goals_target_date ON goals (target_date)',
+  );
+  late final Index idxMonthlyIncomeMonth = Index(
+    'idx_monthly_income_month',
+    'CREATE INDEX idx_monthly_income_month ON monthly_income (month)',
   );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
@@ -2873,9 +2944,14 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     goals,
     monthlyIncome,
     appSettings,
+    idxCategoriesType,
     idxTransactionsDate,
     idxTransactionsCategory,
+    idxTransactionsAccount,
+    idxTransactionsRecurring,
     idxBudgetsMonthCategory,
+    idxGoalsTargetDate,
+    idxMonthlyIncomeMonth,
   ];
 }
 
@@ -3167,6 +3243,7 @@ typedef $$CategoriesTableCreateCompanionBuilder =
       Value<String> icon,
       Value<int> color,
       Value<String> type,
+      Value<int> sortOrder,
       Value<int> rowid,
     });
 typedef $$CategoriesTableUpdateCompanionBuilder =
@@ -3176,6 +3253,7 @@ typedef $$CategoriesTableUpdateCompanionBuilder =
       Value<String> icon,
       Value<int> color,
       Value<String> type,
+      Value<int> sortOrder,
       Value<int> rowid,
     });
 
@@ -3255,6 +3333,11 @@ class $$CategoriesTableFilterComposer
 
   ColumnFilters<String> get type => $composableBuilder(
     column: $table.type,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -3342,6 +3425,11 @@ class $$CategoriesTableOrderingComposer
     column: $table.type,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$CategoriesTableAnnotationComposer
@@ -3367,6 +3455,9 @@ class $$CategoriesTableAnnotationComposer
 
   GeneratedColumn<String> get type =>
       $composableBuilder(column: $table.type, builder: (column) => column);
+
+  GeneratedColumn<int> get sortOrder =>
+      $composableBuilder(column: $table.sortOrder, builder: (column) => column);
 
   Expression<T> transactionsRefs<T extends Object>(
     Expression<T> Function($$TransactionsTableAnnotationComposer a) f,
@@ -3452,6 +3543,7 @@ class $$CategoriesTableTableManager
                 Value<String> icon = const Value.absent(),
                 Value<int> color = const Value.absent(),
                 Value<String> type = const Value.absent(),
+                Value<int> sortOrder = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => CategoriesCompanion(
                 id: id,
@@ -3459,6 +3551,7 @@ class $$CategoriesTableTableManager
                 icon: icon,
                 color: color,
                 type: type,
+                sortOrder: sortOrder,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -3468,6 +3561,7 @@ class $$CategoriesTableTableManager
                 Value<String> icon = const Value.absent(),
                 Value<int> color = const Value.absent(),
                 Value<String> type = const Value.absent(),
+                Value<int> sortOrder = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => CategoriesCompanion.insert(
                 id: id,
@@ -3475,6 +3569,7 @@ class $$CategoriesTableTableManager
                 icon: icon,
                 color: color,
                 type: type,
+                sortOrder: sortOrder,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
