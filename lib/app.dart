@@ -19,7 +19,7 @@ import 'core/utils/notification_service.dart';
 import 'providers/settings_provider.dart';
 import 'providers/transaction_provider.dart';
 import 'providers/navigation_provider.dart';
-import 'services/sms_listener_service.dart';
+import 'core/services/sms_listener_service.dart';
 import 'main.dart' show quickActionCallbackProvider, setupQuickActions;
 
 class BudgetLiteApp extends ConsumerWidget {
@@ -110,8 +110,6 @@ class _AppEntryState extends ConsumerState<_AppEntry> with WidgetsBindingObserve
         }
       }
       _backgroundedAt = null;
-
-      _autoScanSmsIfEnabled();
     }
   }
 
@@ -129,45 +127,6 @@ class _AppEntryState extends ConsumerState<_AppEntry> with WidgetsBindingObserve
       if (seen == 'true' && biometric) {
         _authenticate();
       }
-    }
-  }
-
-  Future<void> _autoScanSmsIfEnabled() async {
-    final smsEnabled = ref.read(smsParsingEnabledProvider).valueOrNull ?? false;
-    if (!smsEnabled || !mounted) return;
-    final listener = SmsListenerService();
-    final granted = await listener.isPermissionGranted();
-    if (!granted) return;
-    final messages = await listener.scanInbox();
-    if (!mounted || messages.isEmpty) return;
-    final userRules = ref.read(autoCategorizationRulesProvider);
-    final Map<String, String> keywordToCategory = {};
-    for (final rule in userRules) {
-      keywordToCategory[rule.keyword.toLowerCase()] = rule.categoryId;
-    }
-    final queueNotifier = ref.read(smsReviewQueueProvider.notifier);
-    int added = 0;
-    for (final sms in messages) {
-      final parsed = SmsParser.parseMessage(
-        sms.body,
-        keywordToCategory: keywordToCategory.isNotEmpty ? keywordToCategory : null,
-        dateOverride: DateTime.fromMillisecondsSinceEpoch(sms.timestamp, isUtc: true).toLocal(),
-      );
-      if (parsed != null) {
-        final alreadyInQueue = ref.read(smsReviewQueueProvider).any((t) => t.id == parsed.id);
-        if (!alreadyInQueue) {
-          queueNotifier.addToQueue(parsed);
-          added++;
-        }
-      }
-    }
-    if (added > 0 && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('$added UPI transaction${added != 1 ? 's' : ''} found from background period'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
     }
   }
 
@@ -249,16 +208,7 @@ class _MainShell extends ConsumerStatefulWidget {
 }
 
 class _MainShellState extends ConsumerState<_MainShell> {
-  static const _navLabels = ['Home', 'Transactions', 'Budget', 'Goals', 'Insights'];
   bool _isSmsDialogShowing = false;
-
-  final _screens = const [
-    HomeScreen(),
-    TransactionsScreen(),
-    BudgetScreen(),
-    GoalsScreen(),
-    InsightsScreen(),
-  ];
 
   @override
   void initState() {
@@ -266,9 +216,12 @@ class _MainShellState extends ConsumerState<_MainShell> {
     NotificationService.instance.initialize(
       onNotificationTap: (payload) {
         if (payload != null && payload.startsWith('budget:')) {
-          final catId = payload.substring('budget:'.length);
-          ref.read(currentTabProvider.notifier).state = 2;
-          ref.read(budgetHighlightProvider.notifier).state = catId;
+          final isBudgetEnabled = ref.read(budgetModuleEnabledProvider).valueOrNull ?? true;
+          if (isBudgetEnabled) {
+            final catId = payload.substring('budget:'.length);
+            ref.read(currentTabProvider.notifier).state = 2;
+            ref.read(budgetHighlightProvider.notifier).state = catId;
+          }
         }
       },
     );
@@ -285,8 +238,35 @@ class _MainShellState extends ConsumerState<_MainShell> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final currentTab = ref.watch(currentTabProvider);
+    final rawTab = ref.watch(currentTabProvider);
+    final isBudgetEnabled = ref.watch(budgetModuleEnabledProvider).valueOrNull ?? true;
     final shouldAnimate = AccessibilityUtils.shouldAnimate(context);
+
+    final navLabels = [
+      'Home',
+      'Transactions',
+      if (isBudgetEnabled) 'Budget',
+      'Goals',
+      'Insights',
+    ];
+
+    final screens = [
+      const HomeScreen(),
+      const TransactionsScreen(),
+      if (isBudgetEnabled) const BudgetScreen(),
+      const GoalsScreen(),
+      const InsightsScreen(),
+    ];
+
+    final navIcons = [
+      (LucideIcons.house, LucideIcons.house),
+      (LucideIcons.receipt, LucideIcons.receipt),
+      if (isBudgetEnabled) (LucideIcons.wallet, LucideIcons.wallet),
+      (LucideIcons.flag, LucideIcons.flag),
+      (LucideIcons.chartBar, LucideIcons.chartBar),
+    ];
+
+    final currentTab = rawTab >= screens.length ? 0 : rawTab;
 
     ref.listen<ParsedSmsTxn?>(pendingSmsTransactionProvider, (_, next) {
       if (next != null && !_isSmsDialogShowing) {
@@ -354,9 +334,9 @@ class _MainShellState extends ConsumerState<_MainShell> {
                     ),
                   );
                 },
-                child: _screens[currentTab < _screens.length ? currentTab : 0],
+                child: screens[currentTab],
               )
-            : _screens[currentTab < _screens.length ? currentTab : 0],
+            : screens[currentTab],
         bottomNavigationBar: Container(
           decoration: BoxDecoration(
             border: Border(
@@ -367,19 +347,16 @@ class _MainShellState extends ConsumerState<_MainShell> {
             ),
           ),
           child: BottomNavigationBar(
-            currentIndex: currentTab < _screens.length ? currentTab : 0,
+            currentIndex: currentTab,
             onTap: (i) {
               HapticFeedback.selectionClick();
               ref.read(currentTabProvider.notifier).state = i;
             },
             type: BottomNavigationBarType.fixed,
-            items: [
-              _bottomNavItem(LucideIcons.house, LucideIcons.house, currentTab, 0),
-              _bottomNavItem(LucideIcons.receipt, LucideIcons.receipt, currentTab, 1),
-              _bottomNavItem(LucideIcons.wallet, LucideIcons.wallet, currentTab, 2),
-              _bottomNavItem(LucideIcons.flag, LucideIcons.flag, currentTab, 3),
-              _bottomNavItem(LucideIcons.chartBar, LucideIcons.chartBar, currentTab, 4),
-            ],
+            items: List.generate(
+              screens.length,
+              (i) => _bottomNavItem(navIcons[i].$1, navIcons[i].$2, navLabels[i], currentTab, i),
+            ),
           ),
         ),
         floatingActionButton: currentTab <= 1
@@ -396,12 +373,13 @@ class _MainShellState extends ConsumerState<_MainShell> {
     );
   }
 
-  BottomNavigationBarItem _bottomNavItem(IconData outlined, IconData filled, int currentTab, int index) {
+  BottomNavigationBarItem _bottomNavItem(
+      IconData outlined, IconData filled, String label, int currentTab, int index) {
     final isSelected = currentTab == index;
     return BottomNavigationBarItem(
       icon: Icon(isSelected ? filled : outlined),
       activeIcon: Icon(filled),
-      label: _navLabels[index],
+      label: label,
     );
   }
 

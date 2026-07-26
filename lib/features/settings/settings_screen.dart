@@ -14,7 +14,7 @@ import '../../core/utils/sms_parser.dart';
 import '../../core/utils/demo_data.dart';
 import '../../core/utils/icon_helper.dart';
 import '../../core/database/database.dart';
-import '../../services/sms_listener_service.dart';
+import '../../core/services/sms_listener_service.dart';
 import '../../providers/settings_provider.dart';
 import '../../providers/transaction_provider.dart';
 import '../../providers/database_provider.dart';
@@ -176,6 +176,27 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ],
           ),
           const SizedBox(height: 24),
+          _SectionHeader(title: 'App Modules'),
+          const SizedBox(height: 12),
+          _SettingsCard(
+            children: [
+              _SettingTile(
+                icon: LucideIcons.wallet,
+                title: 'Budget Module',
+                subtitle: 'Enable or hide the Budget tab & features',
+                trailing: Consumer(builder: (context, ref, _) {
+                  final enabled = ref.watch(budgetModuleEnabledProvider).valueOrNull ?? true;
+                  return Switch.adaptive(
+                    value: enabled,
+                    onChanged: (v) {
+                      ref.read(settingsNotifierProvider.notifier).setBudgetModuleEnabled(v);
+                    },
+                  );
+                }),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
           _SectionHeader(title: 'Security'),
           const SizedBox(height: 12),
           _SettingsCard(
@@ -293,6 +314,28 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 subtitle: 'Edit auto-category keyword mappings',
                 trailing: const Icon(LucideIcons.chevronRight),
                 onTap: () => _showAutoCategoryRules(context),
+              ),
+              const Divider(height: 1, indent: 56),
+              Consumer(
+                builder: (context, ref, _) {
+                  final enabled = ref.watch(smsAutoNoteEnabledProvider).valueOrNull ?? true;
+                  return SwitchListTile(
+                    value: enabled,
+                    onChanged: (val) {
+                      ref.read(settingsNotifierProvider.notifier).setSmsAutoNoteEnabled(val);
+                    },
+                    title: Text(
+                      'Auto-fill Merchant in Notes',
+                      style: AppTheme.bodyStyle(size: 14, weight: FontWeight.w500),
+                    ),
+                    subtitle: Text(
+                      'Include payee/merchant name in transaction note',
+                      style: AppTheme.bodyStyle(size: 11, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                    ),
+                    secondary: const Icon(LucideIcons.fileText, size: 20),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  );
+                },
               ),
             ],
           ),
@@ -526,12 +569,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     int parsed = 0;
     final queueNotifier = ref.read(smsReviewQueueProvider.notifier);
     final pendingBefore = queueNotifier.pendingCount;
+    final includeMerchantNote = ref.read(smsAutoNoteEnabledProvider).valueOrNull ?? true;
 
     for (final sms in messages) {
       final parsedTxn = SmsParser.parseMessage(
         sms.body,
         keywordToCategory: keywordToCategory.isNotEmpty ? keywordToCategory : null,
         dateOverride: DateTime.fromMillisecondsSinceEpoch(sms.timestamp, isUtc: true).toLocal(),
+        includeMerchantNote: includeMerchantNote,
       );
       if (parsedTxn != null) {
         queueNotifier.addToQueue(parsedTxn);
@@ -554,6 +599,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     for (final rule in userRules) {
       keywordToCategory[rule.keyword.toLowerCase()] = rule.categoryId;
     }
+    final includeMerchantNote = ref.read(smsAutoNoteEnabledProvider).valueOrNull ?? true;
 
     final parsedTxn = SmsParser.parseMessage(
       body,
@@ -561,6 +607,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       dateOverride: timestamp != null
           ? DateTime.fromMillisecondsSinceEpoch(timestamp, isUtc: true).toLocal()
           : null,
+      includeMerchantNote: includeMerchantNote,
     );
     if (parsedTxn != null) {
       ref.read(smsReviewQueueProvider.notifier).addToQueue(parsedTxn);
@@ -801,86 +848,88 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               'Select Accent Color',
               style: AppTheme.displayStyle(size: 16, weight: FontWeight.w600),
             ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Live Preview',
-                  style: AppTheme.bodyStyle(size: 11, weight: FontWeight.w600, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                ),
-                const SizedBox(height: 8),
-                // ── Live Preview Sample Card ──
-                Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(14),
-                    color: selectedColor.withValues(alpha: 0.1),
-                    border: Border.all(color: selectedColor.withValues(alpha: 0.3)),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Live Preview',
+                    style: AppTheme.bodyStyle(size: 11, weight: FontWeight.w600, color: Theme.of(context).colorScheme.onSurfaceVariant),
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(LucideIcons.wallet, size: 18, color: selectedColor),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Sample Balance',
-                            style: AppTheme.bodyStyle(size: 12, weight: FontWeight.w600, color: selectedColor),
-                          ),
-                          const Spacer(),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(10),
-                              color: selectedColor,
+                  const SizedBox(height: 8),
+                  // ── Live Preview Sample Card ──
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(14),
+                      color: selectedColor.withValues(alpha: 0.1),
+                      border: Border.all(color: selectedColor.withValues(alpha: 0.3)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(LucideIcons.wallet, size: 18, color: selectedColor),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Sample Balance',
+                              style: AppTheme.bodyStyle(size: 12, weight: FontWeight.w600, color: selectedColor),
                             ),
-                            child: const Text(
-                              'Active',
-                              style: TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold),
+                            const Spacer(),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(10),
+                                color: selectedColor,
+                              ),
+                              child: const Text(
+                                'Active',
+                                style: TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold),
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        '₹12,450',
-                        style: AppTheme.financialStyle(size: 22, weight: FontWeight.w700, color: Theme.of(context).colorScheme.onSurface),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Pick Color Swatch',
-                  style: AppTheme.bodyStyle(size: 11, weight: FontWeight.w600, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                ),
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: colors.map((color) {
-                    final isSelected = selectedColor.toARGB32() == color.toARGB32();
-                    return GestureDetector(
-                      onTap: () => setState(() => selectedColor = color),
-                      child: Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(
-                          color: color,
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: isSelected ? Theme.of(context).colorScheme.onSurface : Colors.transparent,
-                            width: 3,
-                          ),
+                          ],
                         ),
-                        child: isSelected ? const Icon(Icons.check, size: 20, color: Colors.white) : null,
-                      ),
-                    );
-                  }).toList(),
-                ),
-              ],
+                        const SizedBox(height: 8),
+                        Text(
+                          '₹12,450',
+                          style: AppTheme.financialStyle(size: 22, weight: FontWeight.w700, color: Theme.of(context).colorScheme.onSurface),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Pick Color Swatch',
+                    style: AppTheme.bodyStyle(size: 11, weight: FontWeight.w600, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: colors.map((color) {
+                      final isSelected = selectedColor.toARGB32() == color.toARGB32();
+                      return GestureDetector(
+                        onTap: () => setState(() => selectedColor = color),
+                        child: Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: color,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: isSelected ? Theme.of(context).colorScheme.onSurface : Colors.transparent,
+                              width: 3,
+                            ),
+                          ),
+                          child: isSelected ? const Icon(Icons.check, size: 20, color: Colors.white) : null,
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ],
+              ),
             ),
             actions: [
               TextButton(
@@ -920,29 +969,31 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   ),
                 ],
               ),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'This action is irreversible! It will delete ALL transactions, budgets, goals, tags, settings, AND recurring transaction rules.',
-                    style: AppTheme.bodyStyle(size: 13, color: Theme.of(context).colorScheme.onSurfaceVariant, height: 1.4),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Type "RESET" to confirm deletion:',
-                    style: AppTheme.bodyStyle(size: 12, weight: FontWeight.w600),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    onChanged: (val) => setState(() => typedText = val),
-                    decoration: InputDecoration(
-                      hintText: 'RESET',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'This action is irreversible! It will delete ALL transactions, budgets, goals, tags, settings, AND recurring transaction rules.',
+                      style: AppTheme.bodyStyle(size: 13, color: Theme.of(context).colorScheme.onSurfaceVariant, height: 1.4),
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 16),
+                    Text(
+                      'Type "RESET" to confirm deletion:',
+                      style: AppTheme.bodyStyle(size: 12, weight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      onChanged: (val) => setState(() => typedText = val),
+                      decoration: InputDecoration(
+                        hintText: 'RESET',
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      ),
+                    ),
+                  ],
+                ),
               ),
               actions: [
                 TextButton(
@@ -1086,26 +1137,28 @@ class _ManageCategoriesSheet extends ConsumerWidget {
       builder: (ctx) => StatefulBuilder(
         builder: (dialogCtx, setState) => AlertDialog(
           title: const Text('Add Category'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameCtrl,
-                decoration: const InputDecoration(labelText: 'Category Name'),
-              ),
-              const SizedBox(height: 12),
-              DropdownButton<String>(
-                value: selectedType,
-                isExpanded: true,
-                items: const [
-                  DropdownMenuItem(value: 'expense', child: Text('Expense')),
-                  DropdownMenuItem(value: 'income', child: Text('Income')),
-                ],
-                onChanged: (val) {
-                  if (val != null) setState(() => selectedType = val);
-                },
-              ),
-            ],
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameCtrl,
+                  decoration: const InputDecoration(labelText: 'Category Name'),
+                ),
+                const SizedBox(height: 12),
+                DropdownButton<String>(
+                  value: selectedType,
+                  isExpanded: true,
+                  items: const [
+                    DropdownMenuItem(value: 'expense', child: Text('Expense')),
+                    DropdownMenuItem(value: 'income', child: Text('Income')),
+                  ],
+                  onChanged: (val) {
+                    if (val != null) setState(() => selectedType = val);
+                  },
+                ),
+              ],
+            ),
           ),
           actions: [
             TextButton(onPressed: () {
@@ -1202,24 +1255,26 @@ class _ManageCategoriesSheet extends ConsumerWidget {
         builder: (ctx) => StatefulBuilder(
           builder: (dialogCtx, setState) => AlertDialog(
             title: Text('Reassign Transactions ($txnCount)'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Category "${category.name}" has $txnCount existing transaction(s). Select a category to reassign them to before deleting:',
-                  style: AppTheme.bodyStyle(size: 13),
-                ),
-                const SizedBox(height: 14),
-                DropdownButton<String>(
-                  value: targetCategoryId,
-                  isExpanded: true,
-                  items: remaining.map((c) => DropdownMenuItem(value: c.id, child: Text(c.name))).toList(),
-                  onChanged: (val) {
-                    if (val != null) setState(() => targetCategoryId = val);
-                  },
-                ),
-              ],
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Category "${category.name}" has $txnCount existing transaction(s). Select a category to reassign them to before deleting:',
+                    style: AppTheme.bodyStyle(size: 13),
+                  ),
+                  const SizedBox(height: 14),
+                  DropdownButton<String>(
+                    value: targetCategoryId,
+                    isExpanded: true,
+                    items: remaining.map((c) => DropdownMenuItem(value: c.id, child: Text(c.name))).toList(),
+                    onChanged: (val) {
+                      if (val != null) setState(() => targetCategoryId = val);
+                    },
+                  ),
+                ],
+              ),
             ),
             actions: [
               TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
@@ -1305,13 +1360,17 @@ class _SettingsCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = colorScheme.brightness == Brightness.dark;
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(AppConstants.cardRadiusSmall),
-        color: isDark ? AppColors.cardDark : AppColors.cardLight,
-        boxShadow: isDark ? AppColors.cardShadowDark : AppColors.cardShadowLight,
+    return Material(
+      color: isDark ? AppColors.cardDark : AppColors.cardLight,
+      borderRadius: BorderRadius.circular(AppConstants.cardRadiusSmall),
+      clipBehavior: Clip.antiAlias,
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(AppConstants.cardRadiusSmall),
+          boxShadow: isDark ? AppColors.cardShadowDark : AppColors.cardShadowLight,
+        ),
+        child: Column(children: children),
       ),
-      child: Column(children: children),
     );
   }
 }

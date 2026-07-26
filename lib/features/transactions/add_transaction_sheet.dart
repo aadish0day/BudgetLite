@@ -92,6 +92,42 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
     super.dispose();
   }
 
+  static const List<String> _quickTags = [
+    'Office',
+    'Travel',
+    'Food',
+    'Personal',
+    'Urgent',
+    'Bills',
+    'Subscription',
+    'Medical',
+    'Shopping',
+  ];
+
+  Set<String> _getSelectedTagsList() {
+    return _tagsCtrl.text
+        .split(',')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toSet();
+  }
+
+  void _toggleTag(String tag) {
+    final current = _getSelectedTagsList();
+    final tagLower = tag.trim().toLowerCase();
+    final existing = current.firstWhere(
+      (e) => e.toLowerCase() == tagLower,
+      orElse: () => '',
+    );
+    if (existing.isNotEmpty) {
+      current.remove(existing);
+    } else {
+      current.add(tag);
+    }
+    _tagsCtrl.text = current.join(', ');
+    setState(() {});
+  }
+
   /// Uses the persisted auto-categorization rules from the provider.
   String? _detectCategory(String note) {
     return ref.read(autoCategorizationRulesProvider.notifier).detectCategory(note);
@@ -358,14 +394,78 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
                 ),
                 const SizedBox(height: 16),
 
-                // Tags
-                TextFormField(
-                  controller: _tagsCtrl,
-                  decoration: InputDecoration(
-                    labelText: 'Tags (comma-separated)',
-                    hintText: 'e.g. office, travel, urgent',
-                  ),
-                  maxLines: 1,
+                // ── Tags Section with Selectable Chips ──
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(LucideIcons.tag, size: 14, color: colorScheme.primary),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Select Tags',
+                          style: AppTheme.bodyStyle(
+                            size: 13,
+                            weight: FontWeight.w600,
+                            color: colorScheme.onSurface,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: _quickTags.map((tag) {
+                        final selected = _getSelectedTagsList().any(
+                          (t) => t.toLowerCase() == tag.toLowerCase(),
+                        );
+                        return FilterChip(
+                          label: Text(tag),
+                          selected: selected,
+                          onSelected: (_) => _toggleTag(tag),
+                          showCheckmark: true,
+                          checkmarkColor: colorScheme.onPrimary,
+                          selectedColor: colorScheme.primary,
+                          labelStyle: AppTheme.bodyStyle(
+                            size: 12,
+                            weight: selected ? FontWeight.w600 : FontWeight.w500,
+                            color: selected ? colorScheme.onPrimary : colorScheme.onSurface,
+                          ),
+                          backgroundColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
+                            side: BorderSide(
+                              color: selected
+                                  ? colorScheme.primary
+                                  : colorScheme.outline.withValues(alpha: 0.2),
+                            ),
+                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 10),
+                    TextFormField(
+                      controller: _tagsCtrl,
+                      onChanged: (_) => setState(() {}),
+                      decoration: InputDecoration(
+                        labelText: 'Custom Tags (or edit list)',
+                        hintText: 'e.g. office, travel, urgent',
+                        prefixIcon: const Icon(LucideIcons.tag, size: 16),
+                        suffixIcon: _tagsCtrl.text.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(LucideIcons.x, size: 16),
+                                onPressed: () {
+                                  _tagsCtrl.clear();
+                                  setState(() {});
+                                },
+                              )
+                            : null,
+                      ),
+                      maxLines: 1,
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 16),
 
@@ -383,15 +483,49 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
                   ),
                   maxLines: 2,
                   onChanged: (value) {
-                    if (!_isEditing && value.isNotEmpty) {
-                      final detected = _detectCategory(value);
-                      if (detected != null && detected != _selectedCategory) {
-                        setState(() => _selectedCategory = detected);
-                      }
-                    }
                     setState(() {});
+                    if (_isEditing) return;
+                    final category = _detectCategory(value);
+                    if (category != null) {
+                      setState(() => _selectedCategory = category);
+                    }
                   },
                 ),
+                if (widget.transaction?.payee != null && widget.transaction!.payee!.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(8),
+                        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
+                        border: Border.all(color: colorScheme.outline.withValues(alpha: 0.15)),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            _transactionType == 'income' ? LucideIcons.userCheck : LucideIcons.store,
+                            size: 14,
+                            color: colorScheme.primary,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            '${_transactionType == "income" ? "Sender" : "Paid to"}: ',
+                            style: AppTheme.bodyStyle(size: 12, weight: FontWeight.w600, color: colorScheme.onSurfaceVariant),
+                          ),
+                          Expanded(
+                            child: Text(
+                              widget.transaction!.payee!,
+                              style: AppTheme.bodyStyle(size: 12, weight: FontWeight.w700, color: colorScheme.onSurface),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Icon(LucideIcons.lock, size: 12, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5)),
+                        ],
+                      ),
+                    ),
+                  ),
                 const SizedBox(height: 16),
 
                 // Date picker & Payment method row

@@ -6,6 +6,7 @@ class ParsedSmsTxn {
   final String id;
   final DateTime detectedAt;
   final bool isIncome;
+  final String? payee;
 
   ParsedSmsTxn({
     required this.amount,
@@ -15,7 +16,8 @@ class ParsedSmsTxn {
     String? id,
     DateTime? detectedAt,
     this.isIncome = false,
-  })  : id = id ?? 'sms_${amount}_${note.hashCode}_${date.toIso8601String()}',
+    this.payee,
+  })  : id = id ?? 'sms_${amount}_${(payee ?? note).hashCode}_${date.toIso8601String()}',
         detectedAt = detectedAt ?? DateTime.now();
 
   Map<String, dynamic> toJson() => {
@@ -26,16 +28,18 @@ class ParsedSmsTxn {
     'date': date.toIso8601String(),
     'detectedAt': detectedAt.toIso8601String(),
     'isIncome': isIncome,
+    'payee': payee,
   };
 
   factory ParsedSmsTxn.fromJson(Map<String, dynamic> json) => ParsedSmsTxn(
     id: json['id'] as String,
     amount: (json['amount'] as num).toDouble(),
-    note: json['note'] as String,
+    note: json['note'] as String? ?? '',
     categoryId: json['categoryId'] as String? ?? 'other',
     date: DateTime.parse(json['date'] as String),
     detectedAt: DateTime.parse(json['detectedAt'] as String),
     isIncome: json['isIncome'] as bool? ?? false,
+    payee: json['payee'] as String?,
   );
 }
 
@@ -51,6 +55,7 @@ class SmsParser {
     String body, {
     Map<String, String>? keywordToCategory,
     DateTime? dateOverride,
+    bool includeMerchantNote = false,
   }) {
     final lowerBody = body.toLowerCase();
 
@@ -89,7 +94,8 @@ class SmsParser {
 
     // Amount extraction
     double? amount;
-    String note = 'Bank transaction';
+    String rawMerchant = 'Bank transaction';
+    String? payee;
 
     final amountMatch = RegExp(
       r'(?:Rs\.?|INR|₹)\s*([0-9,]+(?:\.[0-9]+)?)',
@@ -131,20 +137,26 @@ class SmsParser {
     ).firstMatch(body);
 
     if (merchantMatch != null) {
-      final rawNote = merchantMatch.group(1)!.trim();
-      if (rawNote.isNotEmpty && rawNote.length < 60) {
-        note = rawNote;
+      var extracted = merchantMatch.group(1)!.trim();
+      // Remove VPA handle suffixes (e.g. @oksbi, @ybl, @okicici, @axl, @paytm)
+      extracted = extracted.replaceAll(RegExp(r'@[a-zA-Z0-9\.\-_]+'), '').trim();
+      // Remove trailing URLs or fraud alert disclaimers
+      extracted = extracted.replaceAll(RegExp(r'https?://\S+.*$', caseSensitive: false), '').trim();
+      extracted = extracted.replaceAll(RegExp(r'not you.*$', caseSensitive: false), '').trim();
+      if (extracted.isNotEmpty && extracted.length < 60) {
+        rawMerchant = extracted;
+        payee = extracted;
       }
     }
 
-    // Clean up note if it contains generic wallet app names
-    if (note.toLowerCase().contains('gpay') ||
-        note.toLowerCase().contains('google pay') ||
-        note.toLowerCase().contains('phonepe') ||
-        note.toLowerCase().contains('paytm')) {
-      final parts = note.split(RegExp(r'\s+'));
-      note = parts.where((p) => !p.toLowerCase().contains('pay') && !p.toLowerCase().contains('gpay') && !p.toLowerCase().contains('phonepe')).join(' ');
-      if (note.trim().isEmpty) note = 'UPI transaction';
+    // Clean up if it contains generic wallet app names
+    if (rawMerchant.toLowerCase().contains('gpay') ||
+        rawMerchant.toLowerCase().contains('google pay') ||
+        rawMerchant.toLowerCase().contains('phonepe') ||
+        rawMerchant.toLowerCase().contains('paytm')) {
+      final parts = rawMerchant.split(RegExp(r'\s+'));
+      rawMerchant = parts.where((p) => !p.toLowerCase().contains('pay') && !p.toLowerCase().contains('gpay') && !p.toLowerCase().contains('phonepe')).join(' ');
+      if (rawMerchant.trim().isEmpty) rawMerchant = 'UPI transaction';
     }
 
     // Auto-detect category: user rules first, then built-in detection
@@ -152,7 +164,7 @@ class SmsParser {
     bool userRuleMatched = false;
     if (keywordToCategory != null && keywordToCategory.isNotEmpty) {
       for (final entry in keywordToCategory.entries) {
-        if (note.toLowerCase().contains(entry.key)) {
+        if (rawMerchant.toLowerCase().contains(entry.key)) {
           categoryId = entry.value;
           userRuleMatched = true;
           break;
@@ -160,7 +172,7 @@ class SmsParser {
       }
     }
     if (!userRuleMatched) {
-      categoryId = _detectCategoryFromMerchant(note);
+      categoryId = _detectCategoryFromMerchant(rawMerchant);
     }
 
     // Income defaults to 'income' only when no user rule matched
@@ -173,10 +185,11 @@ class SmsParser {
 
     return ParsedSmsTxn(
       amount: amount,
-      note: note.trim().isNotEmpty ? note.trim() : 'Bank transaction',
+      note: '', // Always empty for user notes!
       categoryId: categoryId,
       date: parsedDate,
       isIncome: isIncome,
+      payee: payee ?? rawMerchant,
     );
   }
 
@@ -214,7 +227,7 @@ class SmsParser {
       if (year < 100) {
         year += 2000;
       }
-      if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      if (month >= 1 && month <= 12 && day >= 1 && day <= DateTime(year, month + 1, 0).day) {
         return DateTime(year, month, day, hour, minute, second);
       }
     }
@@ -230,7 +243,7 @@ class SmsParser {
       final day = int.parse(dMonY.group(1)!);
       var year = int.parse(dMonY.group(3)!);
       if (year < 100) year += 2000;
-      if (month != null && day >= 1 && day <= 31) {
+      if (month != null && day >= 1 && day <= DateTime(year, month + 1, 0).day) {
         return DateTime(year, month, day, hour, minute, second);
       }
     }

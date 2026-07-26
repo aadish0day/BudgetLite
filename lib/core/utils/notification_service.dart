@@ -331,10 +331,9 @@ class NotificationService {
   }
 
   static DateTime _safeAddMonths(DateTime date, int monthsToAdd) {
-    final newMonth = date.month + monthsToAdd;
-    final yearOffset = (newMonth - 1) ~/ 12;
-    final targetYear = date.year + yearOffset;
-    final targetMonth = ((newMonth - 1) % 12) + 1;
+    final totalMonths = date.year * 12 + (date.month - 1) + monthsToAdd;
+    final targetYear = totalMonths ~/ 12;
+    final targetMonth = (totalMonths % 12) + 1;
     final lastDayOfTargetMonth = DateTime(targetYear, targetMonth + 1, 0).day;
     final targetDay = date.day > lastDayOfTargetMonth ? lastDayOfTargetMonth : date.day;
     return DateTime(targetYear, targetMonth, targetDay, date.hour, date.minute, date.second);

@@ -14,7 +14,7 @@ import '../../core/utils/notification_service.dart';
 import '../../core/utils/accessibility_utils.dart';
 import '../../core/widgets/arc_progress.dart';
 import '../../core/widgets/transaction_row.dart';
-import '../../core/widgets/transaction_skeleton.dart';
+import '../../core/widgets/loading_skeleton.dart';
 import '../../core/widgets/stat_item.dart';
 import '../../core/widgets/empty_state.dart';
 import '../../providers/transaction_provider.dart';
@@ -109,16 +109,23 @@ class HomeScreen extends ConsumerWidget {
             ),
             const SizedBox(height: 28),
 
-            // ── Budget Overview Section ──
-            budgets.when(
-              data: (budgetList) => budgetList.isEmpty
-                  ? _QuickBudgetSetup()
-                  : _BudgetOverview(budgets: budgetList),
-              loading: () => const _BudgetSkeleton(),
-              error: (_, _) => _QuickBudgetSetup(),
-            ),
-
-            const SizedBox(height: 28),
+            // ── Budget Overview Section (Conditional) ──
+            Consumer(builder: (context, ref, _) {
+              final isBudgetEnabled = ref.watch(budgetModuleEnabledProvider).valueOrNull ?? true;
+              if (!isBudgetEnabled) return const SizedBox.shrink();
+              return Column(
+                children: [
+                  budgets.when(
+                    data: (budgetList) => budgetList.isEmpty
+                        ? _QuickBudgetSetup()
+                        : _BudgetOverview(budgets: budgetList),
+                    loading: () => const _BudgetSkeleton(),
+                    error: (_, _) => _QuickBudgetSetup(),
+                  ),
+                  const SizedBox(height: 28),
+                ],
+              );
+            }),
 
             // ── Upcoming Payments / Subscriptions ──
             const _UpcomingPayments(),

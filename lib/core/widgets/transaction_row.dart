@@ -75,6 +75,20 @@ class TransactionRow extends ConsumerWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
+                if (transaction.payee != null && transaction.payee!.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      '${transaction.amount < 0 ? "Sender" : "Paid to"}: ${transaction.payee}',
+                      style: AppTheme.bodyStyle(
+                        size: 11,
+                        weight: FontWeight.w500,
+                        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.85),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
                 if (showAutoBadge && transaction.isRecurringInstance)
                   Padding(
                     padding: const EdgeInsets.only(top: 2),

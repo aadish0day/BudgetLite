@@ -20,7 +20,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -38,8 +38,29 @@ class AppDatabase extends _$AppDatabase {
       if (from < 4) {
         await m.addColumn(categories, categories.sortOrder);
       }
+      if (from < 5) {
+        await m.addColumn(transactions, transactions.payee);
+        await customStatement(
+          'UPDATE transactions SET payee = note, note = NULL WHERE payee IS NULL AND note IS NOT NULL AND note != ""',
+        );
+      }
     },
   );
+
+  /// Migrate existing transaction data: copies legacy merchant names from 'note' into 'payee' and clears 'note'
+  Future<void> migrateLegacyPayees() async {
+    final list = await (select(transactions)..where((t) => t.payee.isNull() & t.note.isNotNull())).get();
+    for (final txn in list) {
+      if (txn.note != null && txn.note!.trim().isNotEmpty && (txn.payee == null || txn.payee!.isEmpty)) {
+        await (update(transactions)..where((t) => t.id.equals(txn.id))).write(
+          TransactionsCompanion(
+            payee: Value(txn.note),
+            note: const Value(null),
+          ),
+        );
+      }
+    }
+  }
 
   Future<void> _seedCategories() async {
     await batch((b) {
@@ -148,8 +169,7 @@ class AppDatabase extends _$AppDatabase {
     await transaction(() async {
       await (update(transactions)..where((t) => t.categoryId.equals(categoryId)))
           .write(TransactionsCompanion(categoryId: Value(targetCategoryId)));
-      await (update(budgets)..where((b) => b.categoryId.equals(categoryId)))
-          .write(BudgetsCompanion(categoryId: Value(targetCategoryId)));
+      await (delete(budgets)..where((b) => b.categoryId.equals(categoryId))).go();
       await (delete(categories)..where((c) => c.id.equals(categoryId))).go();
     });
   }

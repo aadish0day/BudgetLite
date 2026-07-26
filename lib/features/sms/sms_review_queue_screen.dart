@@ -11,6 +11,8 @@ import '../../core/utils/sms_parser.dart';
 import '../../core/utils/duplicate_detector.dart';
 import '../../providers/transaction_provider.dart';
 import '../../providers/database_provider.dart';
+import '../../providers/settings_provider.dart';
+import '../../core/services/sms_listener_service.dart';
 
 /// Screen for reviewing pending SMS-detected transactions.
 class SmsReviewQueueScreen extends ConsumerStatefulWidget {
@@ -30,6 +32,11 @@ class _SmsReviewQueueScreenState extends ConsumerState<SmsReviewQueueScreen> {
       appBar: AppBar(
         title: const Text('SMS Review Queue'),
         actions: [
+          IconButton(
+            icon: const Icon(LucideIcons.scanLine, size: 20),
+            tooltip: 'Scan SMS Inbox',
+            onPressed: _scanSmsInbox,
+          ),
           if (queue.isNotEmpty)
             PopupMenuButton<String>(
               icon: Icon(LucideIcons.ellipsisVertical, size: 18, color: colorScheme.onSurfaceVariant),
@@ -45,7 +52,7 @@ class _SmsReviewQueueScreenState extends ConsumerState<SmsReviewQueueScreen> {
         ],
       ),
       body: queue.isEmpty
-          ? _EmptyQueue(colorScheme: colorScheme)
+          ? _EmptyQueue(colorScheme: colorScheme, onScanInbox: _scanSmsInbox)
           : ListView(
               padding: AppConstants.screenPadding,
               children: [
@@ -250,12 +257,61 @@ class _SmsReviewQueueScreenState extends ConsumerState<SmsReviewQueueScreen> {
       await notifier.discardAll();
     }
   }
+
+  Future<void> _scanSmsInbox() async {
+    final listener = SmsListenerService();
+    final granted = await listener.isPermissionGranted();
+    if (!granted) {
+      final req = await listener.requestPermission();
+      if (!req && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('SMS permission is required to scan inbox')),
+        );
+        return;
+      }
+    }
+    final messages = await listener.scanInbox();
+    if (!mounted) return;
+    if (messages.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No new SMS transactions found in inbox')),
+      );
+      return;
+    }
+    final userRules = ref.read(autoCategorizationRulesProvider);
+    final Map<String, String> keywordToCategory = {};
+    for (final rule in userRules) {
+      keywordToCategory[rule.keyword.toLowerCase()] = rule.categoryId;
+    }
+    final queueNotifier = ref.read(smsReviewQueueProvider.notifier);
+    int added = 0;
+    for (final sms in messages) {
+      final parsed = SmsParser.parseMessage(
+        sms.body,
+        keywordToCategory: keywordToCategory.isNotEmpty ? keywordToCategory : null,
+        dateOverride: DateTime.fromMillisecondsSinceEpoch(sms.timestamp, isUtc: true).toLocal(),
+      );
+      if (parsed != null && !queueNotifier.isProcessed(parsed.id) && !queueNotifier.isAlreadyInQueue(parsed.id)) {
+        queueNotifier.addToQueue(parsed);
+        added++;
+      }
+    }
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(added > 0 ? 'Found $added new transaction${added != 1 ? 's' : ''}' : 'No new SMS transactions found'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
 }
 
 /// Empty state for the review queue
 class _EmptyQueue extends StatelessWidget {
   final ColorScheme colorScheme;
-  const _EmptyQueue({required this.colorScheme});
+  final VoidCallback onScanInbox;
+  const _EmptyQueue({required this.colorScheme, required this.onScanInbox});
 
   @override
   Widget build(BuildContext context) {
@@ -278,6 +334,12 @@ class _EmptyQueue extends StatelessWidget {
           const SizedBox(height: 6),
           Text('No pending SMS transactions to review',
               style: AppTheme.bodyStyle(size: 13, color: colorScheme.onSurfaceVariant)),
+          const SizedBox(height: 16),
+          FilledButton.icon(
+            onPressed: onScanInbox,
+            icon: const Icon(LucideIcons.scanLine, size: 16),
+            label: const Text('Scan SMS Inbox'),
+          ),
         ],
       ),
     );
@@ -313,7 +375,7 @@ class _QueueItemCardState extends ConsumerState<_QueueItemCard> {
   @override
   void initState() {
     super.initState();
-    _noteCtrl = TextEditingController(text: widget.txn.note);
+    _noteCtrl = TextEditingController(text: '');
   }
 
   @override
@@ -498,7 +560,7 @@ class _QueueItemCardState extends ConsumerState<_QueueItemCard> {
               ],
             ),
 
-            // Note/merchant — always editable
+            // Note — personal editable note field
             Padding(
               padding: const EdgeInsets.only(top: 6, left: 48),
               child: TextField(
@@ -507,9 +569,7 @@ class _QueueItemCardState extends ConsumerState<_QueueItemCard> {
                 style: AppTheme.bodyStyle(
                   size: 13, color: widget.colorScheme.onSurface),
                 decoration: InputDecoration(
-                  hintText: widget.txn.isIncome
-                      ? 'Got it from...'
-                      : 'Spent on...',
+                  hintText: 'Add personal note (optional)...',
                   hintStyle: AppTheme.bodyStyle(
                     size: 13, color: widget.colorScheme.onSurfaceVariant.withValues(alpha: 0.5)),
                   border: OutlineInputBorder(

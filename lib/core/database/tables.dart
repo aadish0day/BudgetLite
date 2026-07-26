@@ -39,6 +39,7 @@ class Transactions extends Table {
   BoolColumn get isRecurringInstance => boolean().withDefault(const Constant(false))();
   TextColumn get recurringInterval => text().nullable()();
   DateTimeColumn get recurringEndDate => dateTime().nullable()();
+  TextColumn get payee => text().nullable()();
   TextColumn get receiptImagePath => text().nullable()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 

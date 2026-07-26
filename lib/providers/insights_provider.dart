@@ -292,11 +292,18 @@ final spendingInsightsProvider = FutureProvider<List<SpendingInsight>>((ref) asy
 });
 
 int _calculateCurrentStreak(Map<DateTime, double> dailySpending, DateTime now) {
-  int streak = 0;
+  if (dailySpending.isEmpty) return 0;
   final today = DateTime(now.year, now.month, now.day);
 
+  DateTime earliest = today;
+  for (final date in dailySpending.keys) {
+    if (date.isBefore(earliest)) earliest = date;
+  }
+
+  int streak = 0;
   for (int i = 0; i < 365; i++) {
     final checkDay = today.subtract(Duration(days: i));
+    if (checkDay.isBefore(earliest)) break;
     final spent = dailySpending[checkDay] ?? 0;
     if (spent == 0) {
       streak++;
@@ -446,6 +453,7 @@ final customReportProvider = FutureProvider.family<CustomReportData,
 });
 
 int _calculateLongestStreak(Map<DateTime, double> dailySpending, DateTime start, DateTime end) {
+  if (dailySpending.isEmpty) return 0;
   int longest = 0;
   int current = 0;
 

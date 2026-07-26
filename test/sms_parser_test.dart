@@ -13,7 +13,7 @@ void main() {
       expect(parsed.date.year, 2026);
       expect(parsed.date.month, 7);
       expect(parsed.date.day, 8);
-      expect(parsed.note.toLowerCase(), contains('chaurasiayavijaykumar'));
+      expect(parsed.payee?.toLowerCase(), contains('chaurasiayavijaykumar'));
     });
 
     test('Kotak Sample 2: Sent Rs.1500.00 to Name', () {
@@ -26,7 +26,7 @@ void main() {
       expect(parsed.date.year, 2026);
       expect(parsed.date.month, 6);
       expect(parsed.date.day, 8);
-      expect(parsed.note, contains('RABITHAKABEERNALAKAN'));
+      expect(parsed.payee, contains('RABITHAKABEERNALAKAN'));
     });
 
     test('Kotak Sample 3: Sent Rs.160.00 to Name', () {
@@ -39,7 +39,7 @@ void main() {
       expect(parsed.date.year, 2026);
       expect(parsed.date.month, 6);
       expect(parsed.date.day, 11);
-      expect(parsed.note, contains('MATIBUR RAHMAN BORBH'));
+      expect(parsed.payee, contains('MATIBUR RAHMAN BORBH'));
     });
 
     test('Kotak Sample 4: Received Rs.40.00 from VPA', () {
@@ -52,7 +52,7 @@ void main() {
       expect(parsed.date.year, 2026);
       expect(parsed.date.month, 5);
       expect(parsed.date.day, 19);
-      expect(parsed.note.toLowerCase(), contains('parvati.das27'));
+      expect(parsed.payee?.toLowerCase(), contains('parvati.das27'));
     });
 
     test('Kotak Sample 5: AutoPay debited towards Spotify', () {
@@ -65,7 +65,7 @@ void main() {
       expect(parsed.date.year, 2026);
       expect(parsed.date.month, 5);
       expect(parsed.date.day, 19);
-      expect(parsed.note.toLowerCase(), contains('spotify'));
+      expect(parsed.payee?.toLowerCase(), contains('spotify'));
       expect(parsed.categoryId, 'bills');
     });
 
@@ -79,7 +79,7 @@ void main() {
       expect(parsed.date.year, 2026);
       expect(parsed.date.month, 6);
       expect(parsed.date.day, 5);
-      expect(parsed.note.toLowerCase(), contains('parvati.das27'));
+      expect(parsed.payee?.toLowerCase(), contains('parvati.das27'));
     });
   });
 
@@ -150,7 +150,7 @@ void main() {
       expect(parsed, isNotNull);
       expect(parsed!.amount, 1499);
       expect(parsed.isIncome, false);
-      expect(parsed.note.toLowerCase(), contains('zara'));
+      expect(parsed.payee?.toLowerCase(), contains('zara'));
     });
 
     test('Parses amount with balance remaining text', () {
@@ -171,7 +171,7 @@ void main() {
 
       expect(parsed, isNotNull);
       expect(parsed!.isIncome, false);
-      expect(parsed.note.toLowerCase(), contains('amazon'));
+      expect(parsed.payee?.toLowerCase(), contains('amazon'));
     });
 
     test('Added to your is credit', () {
@@ -180,7 +180,7 @@ void main() {
 
       expect(parsed, isNotNull);
       expect(parsed!.isIncome, true);
-      expect(parsed.note.toLowerCase(), contains('parents'));
+      expect(parsed.payee?.toLowerCase(), contains('parents'));
     });
 
     test('Debit SMS with towards keyword extracts merchant', () {
@@ -189,7 +189,7 @@ void main() {
 
       expect(parsed, isNotNull);
       expect(parsed!.isIncome, false);
-      expect(parsed.note.toLowerCase(), contains('netflix'));
+      expect(parsed.payee?.toLowerCase(), contains('netflix'));
       expect(parsed.categoryId, 'bills');
     });
 
@@ -200,7 +200,27 @@ void main() {
       expect(parsed, isNotNull);
       expect(parsed!.amount, 69);
       expect(parsed.isIncome, false);
-      expect(parsed.note.toLowerCase(), contains('spotify'));
+      expect(parsed.payee?.toLowerCase(), contains('spotify'));
+    });
+
+    test('ParsedSmsTxn produces stable unique id for same SMS', () {
+      const sms = 'Sent Rs.50.00 from Kotak Bank AC X5729 to chaurasiayavijaykumar@oksbi on 08-07-26.';
+      final date = DateTime(2026, 7, 8);
+      final p1 = SmsParser.parseMessage(sms, dateOverride: date);
+      final p2 = SmsParser.parseMessage(sms, dateOverride: date);
+
+      expect(p1, isNotNull);
+      expect(p2, isNotNull);
+      expect(p1!.id, equals(p2!.id));
+    });
+
+    test('includeMerchantNote: false leaves note field clean and empty', () {
+      const sms = 'Sent Rs.50.00 from Kotak Bank AC X5729 to chaurasiayavijaykumar@oksbi on 08-07-26.';
+      final parsed = SmsParser.parseMessage(sms, includeMerchantNote: false);
+
+      expect(parsed, isNotNull);
+      expect(parsed!.amount, 50.0);
+      expect(parsed.note, equals(''));
     });
   });
 }

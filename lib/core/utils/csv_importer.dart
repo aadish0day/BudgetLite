@@ -151,7 +151,7 @@ class CsvImporter {
         double? amount;
         if (mapping.debitColumn != null && mapping.debitColumn! < row.length) {
           final debitStr = row[mapping.debitColumn!].trim();
-          final debitVal = _parseAmount(debitStr);
+          final debitVal = _parseAmount(debitStr)?.abs();
           if (debitVal != null && debitVal > 0) {
             amount = debitVal; // positive = expense
           }
@@ -160,7 +160,7 @@ class CsvImporter {
             mapping.creditColumn != null &&
             mapping.creditColumn! < row.length) {
           final creditStr = row[mapping.creditColumn!].trim();
-          final creditVal = _parseAmount(creditStr);
+          final creditVal = _parseAmount(creditStr)?.abs();
           if (creditVal != null && creditVal > 0) {
             amount = -creditVal; // negative = income
           }

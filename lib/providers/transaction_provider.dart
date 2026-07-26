@@ -83,6 +83,7 @@ class TransactionNotifier extends StateNotifier<AsyncValue<void>> {
     String? receiptImagePath,
     bool? isIncome,
     DateTime? recurringEndDate,
+    String? payee,
   }) async {
     final db = ref.read(databaseProvider);
     final uuid = const Uuid().v4();
@@ -112,6 +113,7 @@ class TransactionNotifier extends StateNotifier<AsyncValue<void>> {
       recurringInterval: Value(recurringInterval),
       recurringEndDate: Value(recurringEndDate),
       receiptImagePath: Value(receiptImagePath),
+      payee: Value(payee),
     ));
 
     ref.invalidate(transactionsProvider);
@@ -373,11 +375,9 @@ class TransactionNotifier extends StateNotifier<AsyncValue<void>> {
   }
 
   DateTime _addMonths(DateTime date, int monthsToAdd) {
-    final newMonth = date.month + monthsToAdd;
-    final yearOffset = (newMonth - 1) ~/ 12;
-    final targetYear = date.year + yearOffset;
-    final targetMonth = ((newMonth - 1) % 12) + 1;
-    // Get last day of target month
+    final totalMonths = date.year * 12 + (date.month - 1) + monthsToAdd;
+    final targetYear = totalMonths ~/ 12;
+    final targetMonth = (totalMonths % 12) + 1;
     final lastDayOfTargetMonth = DateTime(targetYear, targetMonth + 1, 0).day;
     final targetDay = date.day > lastDayOfTargetMonth ? lastDayOfTargetMonth : date.day;
     return DateTime(targetYear, targetMonth, targetDay, date.hour, date.minute, date.second);
@@ -403,9 +403,17 @@ class SmsReviewQueueNotifier extends StateNotifier<List<ParsedSmsTxn>> {
   }
 
   final Ref ref;
+  final Set<String> _processedIds = {};
 
   Future<void> _loadQueue() async {
     final settings = ref.read(settingsNotifierProvider.notifier);
+    
+    // Load persisted set of processed/discarded/confirmed SMS IDs
+    final storedProcessed = await settings.getSetting('processed_sms_ids');
+    if (storedProcessed != null && storedProcessed.isNotEmpty) {
+      _processedIds.addAll(storedProcessed.split('|||'));
+    }
+
     final stored = await settings.getSetting('pending_sms_queue');
     if (stored != null && stored.isNotEmpty) {
       try {
@@ -421,7 +429,8 @@ class SmsReviewQueueNotifier extends StateNotifier<List<ParsedSmsTxn>> {
           }
         }).whereType<ParsedSmsTxn>().toList();
         if (list.isNotEmpty) {
-          state = list;
+          // Filter out any items that were already processed in past sessions
+          state = list.where((t) => !_processedIds.contains(t.id)).toList();
         }
       } catch (_) {}
     }
@@ -431,16 +440,31 @@ class SmsReviewQueueNotifier extends StateNotifier<List<ParsedSmsTxn>> {
     final settings = ref.read(settingsNotifierProvider.notifier);
     final jsonStr = state.map((t) => const JsonEncoder().convert(t.toJson())).join('|||');
     await settings.setSetting('pending_sms_queue', jsonStr);
+    await settings.setSetting('processed_sms_ids', _processedIds.join('|||'));
   }
 
-  /// Clear all items from the queue.
+  /// Check if an SMS ID was already processed, confirmed, or discarded
+  bool isProcessed(String id) {
+    return _processedIds.contains(id);
+  }
+
+  /// Check if an SMS ID is currently in the pending queue
+  bool isAlreadyInQueue(String id) {
+    return state.any((t) => t.id == id);
+  }
+
+  /// Clear all items from the queue and mark them as processed
   Future<void> clear() async {
+    for (final txn in state) {
+      _processedIds.add(txn.id);
+    }
     state = [];
     await _persist();
   }
 
-  /// Add a parsed SMS to the review queue
+  /// Add a parsed SMS to the review queue if not already processed or queued
   Future<void> addToQueue(ParsedSmsTxn txn) async {
+    if (isProcessed(txn.id) || isAlreadyInQueue(txn.id)) return;
     state = [...state, txn];
     await _persist();
   }
@@ -454,18 +478,21 @@ class SmsReviewQueueNotifier extends StateNotifier<List<ParsedSmsTxn>> {
     await notifier.addTransaction(
       amount: txn.amount,
       categoryId: overrideCategory ?? txn.categoryId,
-      note: overrideNote ?? txn.note,
+      note: overrideNote ?? (txn.note.isNotEmpty ? txn.note : null),
       date: txn.date,
       paymentMethod: 'UPI',
       isIncome: txn.isIncome,
+      payee: txn.payee,
     );
 
+    _processedIds.add(id);
     state = state.where((t) => t.id != id).toList();
     await _persist();
   }
 
   /// Discard (remove without adding) a single item
   Future<void> discardItem(String id) async {
+    _processedIds.add(id);
     state = state.where((t) => t.id != id).toList();
     await _persist();
   }
@@ -480,11 +507,13 @@ class SmsReviewQueueNotifier extends StateNotifier<List<ParsedSmsTxn>> {
       await notifier.addTransaction(
         amount: txn.amount,
         categoryId: txn.categoryId,
-        note: txn.note,
+        note: txn.note.isNotEmpty ? txn.note : null,
         date: txn.date,
         paymentMethod: 'UPI',
         isIncome: txn.isIncome,
+        payee: txn.payee,
       );
+      _processedIds.add(txn.id);
     }
     state = [];
     await _persist();
@@ -492,6 +521,9 @@ class SmsReviewQueueNotifier extends StateNotifier<List<ParsedSmsTxn>> {
 
   /// Discard all pending items
   Future<void> discardAll() async {
+    for (final txn in state) {
+      _processedIds.add(txn.id);
+    }
     state = [];
     await _persist();
   }

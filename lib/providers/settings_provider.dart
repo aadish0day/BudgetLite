@@ -283,6 +283,11 @@ class SettingsNotifier extends StateNotifier<AsyncValue<void>> {
     ref.invalidate(balanceHiddenProvider);
   }
 
+  Future<void> setSmsAutoNoteEnabled(bool value) async {
+    await setSetting('sms_auto_note_enabled', value.toString());
+    ref.invalidate(smsAutoNoteEnabledProvider);
+  }
+
   Future<int> getAutoLockDuration() async {
     final val = await getSetting('auto_lock_minutes');
     return int.tryParse(val ?? '') ?? 1;
@@ -301,6 +306,16 @@ class SettingsNotifier extends StateNotifier<AsyncValue<void>> {
   Future<void> setAccentColor(int colorValue) async {
     await setSetting('accent_color', colorValue.toString());
     ref.invalidate(accentColorProvider);
+  }
+
+  Future<bool> getBudgetModuleEnabled() async {
+    final val = await getSetting('budget_module_enabled');
+    return val != 'false';
+  }
+
+  Future<void> setBudgetModuleEnabled(bool value) async {
+    await setSetting('budget_module_enabled', value.toString());
+    ref.invalidate(budgetModuleEnabledProvider);
   }
 
   // ── Subscription Review Tracking ──
@@ -375,6 +390,17 @@ final autoLockDurationProvider = FutureProvider<int>((ref) async {
 final accentColorProvider = FutureProvider<int?>((ref) async {
   final settings = ref.read(settingsNotifierProvider.notifier);
   return settings.getAccentColor();
+});
+
+final budgetModuleEnabledProvider = FutureProvider<bool>((ref) async {
+  final settings = ref.read(settingsNotifierProvider.notifier);
+  return settings.getBudgetModuleEnabled();
+});
+
+final smsAutoNoteEnabledProvider = FutureProvider<bool>((ref) async {
+  final settings = ref.read(settingsNotifierProvider.notifier);
+  final val = await settings.getSetting('sms_auto_note_enabled');
+  return val != 'false';
 });
 
 /// Provider that loads/saves auto-categorization rules from AppSettings.

@@ -69,10 +69,10 @@ flutter:
 flutter_launcher_icons:
   android: "ic_launcher"
   ios: false
-  image_path: "assets/icon/concept_2_wallet_coin.png"
+  image_path: "assets/icon/vector_app_icon.png"
   min_sdk_android: 21
   web:
     generate: true
-    image_path: "assets/icon/concept_2_wallet_coin.png"
+    image_path: "assets/icon/vector_app_icon.png"
     background_color: "#0F171E"
     theme_color: "#0D7377"
