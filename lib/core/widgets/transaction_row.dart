@@ -95,16 +95,29 @@ class TransactionRow extends ConsumerWidget {
               ],
             ),
           ),
-          Text(
-            transaction.amount < 0
-                ? '+${Formatters.formatCurrency(transaction.amount.abs(), hide: isBalanceHidden)}'
-                : '-${Formatters.formatCurrency(transaction.amount, hide: isBalanceHidden)}',
-            style: AppTheme.financialStyle(
-              size: 14,
-              weight: FontWeight.w600,
-              color: transaction.amount < 0 ? AppColors.success : AppColors.error,
-              letterSpacing: -0.3,
-            ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                transaction.amount < 0
+                    ? '+${Formatters.formatCurrency(transaction.amount.abs(), hide: isBalanceHidden)}'
+                    : '-${Formatters.formatCurrency(transaction.amount, hide: isBalanceHidden)}',
+                style: AppTheme.financialStyle(
+                  size: 14,
+                  weight: FontWeight.w600,
+                  color: transaction.amount < 0 ? AppColors.success : AppColors.error,
+                  letterSpacing: -0.3,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                Formatters.formatDateShort(transaction.date),
+                style: AppTheme.bodyStyle(
+                  size: 11,
+                  color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                ),
+              ),
+            ],
           ),
         ],
       ),
