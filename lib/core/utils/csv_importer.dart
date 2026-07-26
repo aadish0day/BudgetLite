@@ -86,10 +86,14 @@ class CsvImporter {
       );
     }
 
-    // Parse CSV respecting quoted fields
-    final parsedRows = const CsvToListConverter().convert(content);
+    final normalizedContent = content.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+    final parsedRows = const CsvToListConverter(eol: '\n').convert(normalizedContent);
     final parsedLines = parsedRows.map((r) => r.map((e) => e.toString()).toList()).toList();
-    if (parsedLines.isEmpty) {
+    // Filter out completely empty lines/rows
+    final cleanLines = parsedLines
+        .where((row) => row.any((cell) => cell.trim().isNotEmpty))
+        .toList();
+    if (cleanLines.isEmpty) {
       return const CsvImportResult(
         transactions: [],
         totalRows: 0,
@@ -97,8 +101,8 @@ class CsvImporter {
         errors: ['Empty file'],
       );
     }
-    final headerRow = parsedLines.first.map((c) => c.trim().toLowerCase()).toList();
-    final dataRows = parsedLines.skip(1).toList();
+    final headerRow = cleanLines.first.map((c) => c.trim().toLowerCase()).toList();
+    final dataRows = cleanLines.skip(1).toList();
 
     // Auto-detect or use forced mapping
     final mapping = forcedMapping ?? _detectMapping(headerRow);
@@ -166,8 +170,11 @@ class CsvImporter {
             mapping.amountColumn! < row.length) {
           final amtStr = row[mapping.amountColumn!].trim();
           final amtVal = _parseAmount(amtStr);
-          if (amtVal != null) {
-            amount = amtVal > 0 ? amtVal : -amtVal.abs();
+          if (amtVal != null && amtVal != 0) {
+            // In standard bank CSVs, negative amounts represent Debits (Expense)
+            // and positive amounts represent Credits (Income).
+            // BudgetLite stores Expenses as positive and Income as negative.
+            amount = -amtVal;
           }
         }
 
@@ -255,47 +262,45 @@ class CsvImporter {
 
   /// Parse a date string in various common formats.
   static DateTime? _parseDate(String input, String? dateFormat) {
-    // Try DD/MM/YYYY
-    final dmy = RegExp(r'^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$').firstMatch(input);
-    if (dmy != null) {
-      return DateTime(
-        int.parse(dmy.group(3)!),
-        int.parse(dmy.group(2)!),
-        int.parse(dmy.group(1)!),
-      );
-    }
+    final trimmed = input.trim();
+    if (trimmed.isEmpty) return null;
 
-    // Try YYYY-MM-DD
-    final ymd = RegExp(r'^(\d{4})[/-](\d{1,2})[/-](\d{1,2})$').firstMatch(input);
-    if (ymd != null) {
-      return DateTime(
-        int.parse(ymd.group(1)!),
-        int.parse(ymd.group(2)!),
-        int.parse(ymd.group(3)!),
-      );
+    final isoDate = DateTime.tryParse(trimmed);
+    if (isoDate != null) return isoDate;
+
+    // Try DD/MM/YYYY or DD-MM-YYYY
+    final dmy = RegExp(r'^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$').firstMatch(trimmed);
+    if (dmy != null) {
+      final day = int.parse(dmy.group(1)!);
+      final month = int.parse(dmy.group(2)!);
+      final year = int.parse(dmy.group(3)!);
+      if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+        return DateTime(year, month, day);
+      }
     }
 
     // Try MM/DD/YYYY (US format)
-    final mdy = RegExp(r'^(\d{1,2})[/](\d{1,2})[/](\d{4})$').firstMatch(input);
+    final mdy = RegExp(r'^(\d{1,2})[/](\d{1,2})[/](\d{4})$').firstMatch(trimmed);
     if (mdy != null) {
       final month = int.parse(mdy.group(1)!);
       final day = int.parse(mdy.group(2)!);
-      if (month > 12) {
-        // Day is in first position, swap
-        return DateTime(int.parse(mdy.group(3)!), day, month);
+      final year = int.parse(mdy.group(3)!);
+      if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+        return DateTime(year, month, day);
       }
-      return DateTime(int.parse(mdy.group(3)!), month, day);
     }
 
     // Try DD-Mon-YYYY (e.g., "22-Jan-2026")
     final dMonY = RegExp(
       r'^(\d{1,2})[-/](\w{3})[-/](\d{4})$',
       caseSensitive: false,
-    ).firstMatch(input);
+    ).firstMatch(trimmed);
     if (dMonY != null) {
       final month = _monthAbbrToInt(dMonY.group(2)!);
-      if (month != null) {
-        return DateTime(int.parse(dMonY.group(3)!), month, int.parse(dMonY.group(1)!));
+      final day = int.parse(dMonY.group(1)!);
+      final year = int.parse(dMonY.group(3)!);
+      if (month != null && day >= 1 && day <= 31) {
+        return DateTime(year, month, day);
       }
     }
 
@@ -306,7 +311,7 @@ class CsvImporter {
   static double? _parseAmount(String input) {
     // Remove currency symbols, spaces, and commas (except decimal comma)
     var clean = input
-        .replaceAll(RegExp(r'[₹$€£¥,,\s]'), '')
+        .replaceAll(RegExp(r'[₹$€£¥,\s]'), '')
         .replaceAll('(', '-')
         .replaceAll(')', '');
 

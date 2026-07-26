@@ -40,8 +40,7 @@ class DuplicateDetector {
       final daysDiff = t.date.difference(date).inDays.abs();
       if (daysDiff > maxDaysApart) continue;
 
-      // Boost confidence with note similarity
-      if (note != null && t.note != null && t.note!.isNotEmpty) {
+      if (note != null && note.isNotEmpty && t.note != null && t.note!.isNotEmpty) {
         if (!_notesAreSimilar(note, t.note!)) continue;
       }
 
