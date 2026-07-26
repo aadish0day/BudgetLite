@@ -11,8 +11,8 @@ import '../../core/utils/constants.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/utils/icon_helper.dart';
 import '../../core/utils/notification_service.dart';
+import '../../core/utils/accessibility_utils.dart';
 import '../../core/widgets/arc_progress.dart';
-import '../../core/widgets/animated_number.dart';
 import '../../providers/transaction_provider.dart';
 import '../../providers/budget_provider.dart';
 import '../../providers/navigation_provider.dart';
@@ -317,13 +317,17 @@ class _Balance extends ConsumerWidget {
                   const SizedBox(width: 6),
                   GestureDetector(
                     onTap: onEditBalance,
-                    child: Container(
-                      padding: const EdgeInsets.all(3),
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: colorScheme.primary.withValues(alpha: 0.08),
+                    behavior: HitTestBehavior.opaque,
+                    child: Padding(
+                      padding: const EdgeInsets.all(8),
+                      child: Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: colorScheme.primary.withValues(alpha: 0.08),
+                        ),
+                        child: Icon(LucideIcons.pencil, size: 14, color: colorScheme.primary),
                       ),
-                      child: Icon(LucideIcons.pencil, size: 12, color: colorScheme.primary),
                     ),
                   ),
                 ],
@@ -362,8 +366,8 @@ class _Balance extends ConsumerWidget {
         Row(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            AnimatedNumber(
-              value: remaining,
+            TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0, end: remaining),
               duration: 800.ms,
               curve: Curves.easeOutCubic,
               builder: (context, animatedValue, child) {
@@ -434,10 +438,10 @@ class _Balance extends ConsumerWidget {
                   ),
                 ),
               ),
-            ).animate().scale(
+            ).animate(target: AccessibilityUtils.shouldAnimate(context) ? null : 1.0).scale(
               begin: const Offset(0.8, 0.8),
               end: const Offset(1, 1),
-              duration: 400.ms,
+              duration: AppConstants.animSlow,
               delay: 450.ms,
               curve: Curves.easeOutBack,
             ),
@@ -511,7 +515,7 @@ class _StatItem extends StatelessWidget {
             ),
           ),
         ],
-      ).animate().fadeIn(duration: 350.ms, delay: delayMs.ms).slideX(begin: 0.04, curve: Curves.easeOutCubic),
+      ).animate(target: AccessibilityUtils.shouldAnimate(context) ? null : 1.0).fadeIn(duration: AppConstants.animNormal, delay: delayMs.ms).slideX(begin: 0.04, curve: Curves.easeOutCubic),
     );
   }
 }
@@ -902,16 +906,20 @@ class _UpcomingPayments extends ConsumerWidget {
                             // Mark as Paid button with scale-on-press
                             GestureDetector(
                               onTap: () => _markAsPaid(context, ref, payment),
-                              child: Container(
-                                padding: const EdgeInsets.all(4),
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: AppColors.success.withValues(alpha: 0.1),
-                                ),
-                                child: Icon(
-                                  LucideIcons.check,
-                                  size: 16,
-                                  color: AppColors.success,
+                              behavior: HitTestBehavior.opaque,
+                              child: Padding(
+                                padding: const EdgeInsets.all(8),
+                                child: Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: AppColors.success.withValues(alpha: 0.1),
+                                  ),
+                                  child: Icon(
+                                    LucideIcons.check,
+                                    size: 18,
+                                    color: AppColors.success,
+                                  ),
                                 ),
                               ),
                             ),
@@ -965,7 +973,7 @@ class _UpcomingPayments extends ConsumerWidget {
           ),
         ),
       ],
-    ).animate().fadeIn(duration: 500.ms);
+    ).animate(target: AccessibilityUtils.shouldAnimate(context) ? null : 1.0).fadeIn(duration: AppConstants.animSlow);
   }
 }
 
@@ -1241,6 +1249,6 @@ class _EmptyState extends StatelessWidget {
           ),
         ],
       ),
-    ).animate().fadeIn(duration: 400.ms).slideY(begin: 0.05);
+    ).animate(target: AccessibilityUtils.shouldAnimate(context) ? null : 1.0).fadeIn(duration: AppConstants.animNormal).slideY(begin: 0.05);
   }
 }

@@ -111,9 +111,10 @@ class SettingsScreen extends ConsumerWidget {
                               ref.read(settingsNotifierProvider.notifier).setThemeMode(selected.first);
                             }
                           },
-                          style: const ButtonStyle(
-                            visualDensity: VisualDensity.compact,
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          style: ButtonStyle(
+                            visualDensity: const VisualDensity(horizontal: -1, vertical: 0),
+                            tapTargetSize: MaterialTapTargetSize.padded,
+                            minimumSize: WidgetStatePropertyAll(const Size(0, 44)),
                           ),
                         ),
                       );

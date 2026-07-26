@@ -8,6 +8,7 @@ import '../../core/theme/colors.dart';
 import '../../core/utils/constants.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/utils/icon_helper.dart';
+import '../../core/utils/accessibility_utils.dart';
 import '../../providers/transaction_provider.dart';
 import '../../providers/settings_provider.dart';
 import 'dart:async';
@@ -52,7 +53,7 @@ class _SubscriptionAuditScreenState extends ConsumerState<SubscriptionAuditScree
       ),
       body: recurring.when(
         data: (payments) => _buildContent(context, colorScheme, payments),
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const _SubscriptionsSkeleton(),
         error: (_, _) => const Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -400,7 +401,7 @@ class _StatsHeader extends StatelessWidget {
           ),
         ],
       ),
-    ).animate().fadeIn(duration: 300.ms).slideY(begin: -0.05);
+    ).animate(target: AccessibilityUtils.shouldAnimate(context) ? null : 1.0).fadeIn(duration: AppConstants.animNormal).slideY(begin: -0.05);
   }
 }
 
@@ -789,4 +790,93 @@ void markRecurringAsPaid(BuildContext context, WidgetRef ref, RecurringPaymentIn
       duration: const Duration(seconds: 3),
     ),
   );
+}
+
+class _SubscriptionsSkeleton extends StatelessWidget {
+  const _SubscriptionsSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return ListView(
+      padding: AppConstants.screenPadding,
+      children: [
+        // Stats header skeleton
+        Container(
+          height: 90,
+          decoration: BoxDecoration(
+            color: colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(AppConstants.cardRadius),
+          ),
+        ).animate(onPlay: (c) => c.repeat())
+          .shimmer(duration: 1200.ms, color: colorScheme.primary.withValues(alpha: 0.08)),
+        const SizedBox(height: 20),
+        // Section header
+        Container(
+          width: 120, height: 16,
+          decoration: BoxDecoration(
+            color: colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(4),
+          ),
+        ).animate(onPlay: (c) => c.repeat())
+          .shimmer(duration: 1200.ms, delay: 200.ms, color: colorScheme.primary.withValues(alpha: 0.08)),
+        const SizedBox(height: 12),
+        // Subscription card skeletons
+        ...List.generate(4, (i) => Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Container(
+            height: 76,
+            decoration: BoxDecoration(
+              color: colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(AppConstants.cardRadiusSmall),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Row(
+              children: [
+                Container(
+                  width: 40, height: 40,
+                  decoration: BoxDecoration(
+                    color: colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(AppConstants.cardRadiusIcon),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Container(
+                        width: 130, height: 14,
+                        decoration: BoxDecoration(
+                          color: colorScheme.surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Container(
+                        width: 90, height: 10,
+                        decoration: BoxDecoration(
+                          color: colorScheme.surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  width: 60, height: 16,
+                  decoration: BoxDecoration(
+                    color: colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+              ],
+            ),
+          ).animate(onPlay: (c) => c.repeat())
+            .shimmer(duration: 1200.ms, delay: ((i + 2) * 150).ms, color: colorScheme.primary.withValues(alpha: 0.08)),
+        )),
+      ],
+    );
+  }
 }

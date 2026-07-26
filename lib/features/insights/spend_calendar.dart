@@ -30,7 +30,6 @@ class _SpendCalendarState extends ConsumerState<SpendCalendar> {
   late DateTime _currentMonth;
   DateTime? _previousMonth;
   String? _filterCategoryId;
-  String? _filterTagId;
 
   @override
   void initState() {
@@ -365,7 +364,6 @@ class _SpendCalendarState extends ConsumerState<SpendCalendar> {
     final isDark = colorScheme.brightness == Brightness.dark;
     final categories = ref.watch(categoriesProvider).valueOrNull ?? [];
     final accounts = ref.watch(accountsProvider).valueOrNull ?? [];
-    final tags = ref.watch(tagsProvider).valueOrNull ?? [];
     final allTransactions = ref.watch(transactionsProvider).valueOrNull ?? [];
 
     // Listen for calendar focus target from the bar chart (must be inside build)
@@ -601,11 +599,10 @@ class _SpendCalendarState extends ConsumerState<SpendCalendar> {
                           children: [
                             _FilterChip(
                               label: 'All',
-                              selected: _filterCategoryId == null && _filterTagId == null,
+                              selected: _filterCategoryId == null,
                               color: colorScheme.primary,
                               onTap: () => setState(() {
                                 _filterCategoryId = null;
-                                _filterTagId = null;
                               }),
                             ),
                             const SizedBox(width: 6),
@@ -616,20 +613,7 @@ class _SpendCalendarState extends ConsumerState<SpendCalendar> {
                                 selected: _filterCategoryId == cat.id,
                                 color: Color(cat.color),
                                 onTap: () => setState(() {
-                                  _filterTagId = null;
                                   _filterCategoryId = _filterCategoryId == cat.id ? null : cat.id;
-                                }),
-                              ),
-                            )),
-                            ...tags.map((tag) => Padding(
-                              padding: const EdgeInsets.only(right: 6),
-                              child: _FilterChip(
-                                label: '#${tag.name}',
-                                selected: _filterTagId == tag.id,
-                                color: Color(tag.color),
-                                onTap: () => setState(() {
-                                  _filterCategoryId = null;
-                                  _filterTagId = _filterTagId == tag.id ? null : tag.id;
                                 }),
                               ),
                             )),

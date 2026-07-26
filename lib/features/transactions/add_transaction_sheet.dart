@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
@@ -630,6 +631,7 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
 
   void _submit() async {
     if (!_formKey.currentState!.validate()) return;
+    HapticFeedback.lightImpact();
     final amount = double.parse(_amountCtrl.text);
     if (amount <= 0) return;
 

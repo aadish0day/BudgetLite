@@ -10,6 +10,7 @@ import '../../core/theme/colors.dart';
 import '../../core/utils/constants.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/utils/icon_helper.dart';
+import '../../core/utils/accessibility_utils.dart';
 import '../../providers/transaction_provider.dart';
 import '../../providers/budget_provider.dart';
 import '../../providers/navigation_provider.dart';
@@ -30,7 +31,8 @@ class InsightsScreen extends ConsumerWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = colorScheme.brightness == Brightness.dark;
     final categories = ref.watch(categoriesProvider).valueOrNull ?? [];
-    final transactions = ref.watch(thisMonthTransactionsProvider).valueOrNull ?? [];
+    final transactionsAsync = ref.watch(thisMonthTransactionsProvider);
+    final transactions = transactionsAsync.valueOrNull ?? [];
     final budgets = ref.watch(thisMonthBudgetsProvider).valueOrNull ?? [];
     final incomeThisMonth = ref.watch(totalIncomeThisMonthProvider).valueOrNull ?? 0.0;
     final totalSpentThisMonth = ref.watch(totalSpentThisMonthProvider).valueOrNull ?? 0.0;
@@ -62,7 +64,10 @@ class InsightsScreen extends ConsumerWidget {
           ),
         ],
       ),
-      body: RefreshIndicator(
+      body: transactionsAsync.when(
+        loading: () => const _InsightsSkeleton(),
+        error: (_, _) => const Center(child: Text('Failed to load insights')),
+        data: (_) => RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(spendingInsightsProvider);
           ref.invalidate(thisMonthTransactionsProvider);
@@ -165,7 +170,7 @@ class InsightsScreen extends ConsumerWidget {
                       ],
                     ),
                   ),
-          ).animate().fadeIn(duration: 500.ms),
+          ).animate(target: AccessibilityUtils.shouldAnimate(context) ? null : 1.0).fadeIn(duration: AppConstants.animSlow),
           const SizedBox(height: 24),
 
           // ── Month-over-Month Bar Chart ──
@@ -308,7 +313,7 @@ class InsightsScreen extends ConsumerWidget {
                   );
                 }).toList(),
               ),
-            ).animate().fadeIn(duration: 600.ms, delay: 200.ms),
+            ).animate(target: AccessibilityUtils.shouldAnimate(context) ? null : 1.0).fadeIn(duration: AppConstants.animSlow, delay: 200.ms),
             const SizedBox(height: 24),
           ],
 
@@ -334,7 +339,7 @@ class InsightsScreen extends ConsumerWidget {
                 height: 200,
                 child: _WeeklyChart(transactions: transactions),
               ),
-            ).animate().fadeIn(duration: 600.ms, delay: 150.ms),
+            ).animate(target: AccessibilityUtils.shouldAnimate(context) ? null : 1.0).fadeIn(duration: AppConstants.animSlow, delay: 150.ms),
             const SizedBox(height: 24),
           ],
 
@@ -359,7 +364,7 @@ class InsightsScreen extends ConsumerWidget {
               height: 200,
               child: _DayOfWeekChart(),
             ),
-          ).animate().fadeIn(duration: 600.ms, delay: 200.ms),
+          ).animate(target: AccessibilityUtils.shouldAnimate(context) ? null : 1.0).fadeIn(duration: AppConstants.animSlow, delay: 200.ms),
           const SizedBox(height: 24),
 
           // Monthly trend — with cumulative/monthly toggle
@@ -372,6 +377,7 @@ class InsightsScreen extends ConsumerWidget {
           const SizedBox(height: 100),
         ],
         ),
+      ),
       ),
     );
   }
@@ -955,7 +961,7 @@ class _TrendChartWithToggleState extends ConsumerState<_TrendChartWithToggle> {
             height: 200,
             child: _TrendChart(isCumulative: _isCumulative),
           ),
-        ).animate().fadeIn(duration: 600.ms, delay: 100.ms),
+        ).animate(target: AccessibilityUtils.shouldAnimate(context) ? null : 1.0).fadeIn(duration: AppConstants.animSlow, delay: 100.ms),
       ],
     );
   }
@@ -1849,6 +1855,49 @@ class _ChartEmptyState extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _InsightsSkeleton extends StatelessWidget {
+  const _InsightsSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return ListView(
+      padding: AppConstants.screenPadding,
+      children: [
+        // Totals banner skeleton
+        Container(
+          height: 100,
+          decoration: BoxDecoration(
+            color: colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(AppConstants.cardRadius),
+          ),
+        ).animate(onPlay: (c) => c.repeat())
+          .shimmer(duration: 1200.ms, color: colorScheme.primary.withValues(alpha: 0.08)),
+        const SizedBox(height: 20),
+        // Pie chart skeleton
+        Container(
+          height: 280,
+          decoration: BoxDecoration(
+            color: colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(AppConstants.cardRadius),
+          ),
+        ).animate(onPlay: (c) => c.repeat())
+          .shimmer(duration: 1200.ms, delay: 200.ms, color: colorScheme.primary.withValues(alpha: 0.08)),
+        const SizedBox(height: 20),
+        // Bar chart skeleton
+        Container(
+          height: 220,
+          decoration: BoxDecoration(
+            color: colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(AppConstants.cardRadius),
+          ),
+        ).animate(onPlay: (c) => c.repeat())
+          .shimmer(duration: 1200.ms, delay: 400.ms, color: colorScheme.primary.withValues(alpha: 0.08)),
+      ],
     );
   }
 }

@@ -6,6 +6,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/theme/colors.dart';
 import '../../core/utils/constants.dart';
 import '../../core/utils/formatters.dart';
+import '../../core/utils/accessibility_utils.dart';
 import '../../core/widgets/arc_progress.dart';
 import '../../providers/goal_provider.dart';
 import '../../core/database/database.dart';
@@ -43,22 +44,39 @@ class GoalsScreen extends ConsumerWidget {
       body: goals.when(
         data: (goalList) {
           if (goalList.isEmpty) return _EmptyGoals();
+          final allAchieved = goalList.every((g) => g.currentAmount >= g.targetAmount);
           return ListView(
             padding: AppConstants.screenPadding,
             children: [
-              Text(
-                '${goalList.length} goals',
-                style: AppTheme.bodyStyle(
-                  size: 14,
-                  color: colorScheme.onSurfaceVariant,
-                ),
-              ),
+              if (allAchieved)
+                _AllGoalsAchieved(count: goalList.length),
+              _GoalsPortfolioHeader(goals: goalList),
               const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Your Goals (${goalList.length})',
+                    style: AppTheme.displayStyle(
+                      size: 15,
+                      weight: FontWeight.w600,
+                      color: colorScheme.onSurface,
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: () => _showSimulator(context),
+                    icon: const Icon(LucideIcons.flaskConical, size: 14),
+                    label: const Text('Simulate All', style: TextStyle(fontSize: 12)),
+                    style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
               ...goalList.map((goal) => _GoalCard(goal: goal, ref: ref)),
             ],
           );
         },
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const _GoalsSkeleton(),
         error: (_, _) => _EmptyGoals(),
       ),
     );
@@ -81,6 +99,123 @@ class GoalsScreen extends ConsumerWidget {
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (_) => const WhatIfSimulatorSheet(),
+    );
+  }
+}
+
+class _GoalsPortfolioHeader extends StatelessWidget {
+  final List<Goal> goals;
+  const _GoalsPortfolioHeader({required this.goals});
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isDark = colorScheme.brightness == Brightness.dark;
+
+    final totalTarget = goals.fold<double>(0, (sum, g) => sum + g.targetAmount);
+    final totalSaved = goals.fold<double>(0, (sum, g) => sum + g.currentAmount);
+    final totalRemaining = (totalTarget - totalSaved).clamp(0.0, double.infinity);
+    final overallProgress = totalTarget > 0 ? (totalSaved / totalTarget).clamp(0.0, 1.0) : 0.0;
+    final activeCount = goals.where((g) => g.currentAmount < g.targetAmount).length;
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(AppConstants.cardRadius),
+        gradient: LinearGradient(
+          colors: isDark
+              ? [AppColors.primaryDark.withValues(alpha: 0.25), colorScheme.surfaceContainerHigh]
+              : [AppColors.primary.withValues(alpha: 0.08), Colors.white],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        border: Border.all(color: colorScheme.primary.withValues(alpha: 0.15)),
+        boxShadow: isDark ? AppColors.cardShadowDark : AppColors.cardShadowLight,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: colorScheme.primary.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(LucideIcons.target, size: 18, color: colorScheme.primary),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    'Savings Portfolio',
+                    style: AppTheme.displayStyle(size: 15, weight: FontWeight.w600, color: colorScheme.onSurface),
+                  ),
+                ],
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppColors.success.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  '${(overallProgress * 100).toStringAsFixed(0)}% Overall',
+                  style: AppTheme.bodyStyle(size: 11, weight: FontWeight.w700, color: AppColors.success),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Total Saved', style: AppTheme.bodyStyle(size: 11, color: colorScheme.onSurfaceVariant)),
+                    Text(
+                      Formatters.formatCurrency(totalSaved),
+                      style: AppTheme.financialStyle(size: 18, weight: FontWeight.w700, color: colorScheme.primary),
+                    ),
+                  ],
+                ),
+              ),
+              Container(width: 1, height: 32, color: colorScheme.outline.withValues(alpha: 0.15)),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Total Target', style: AppTheme.bodyStyle(size: 11, color: colorScheme.onSurfaceVariant)),
+                    Text(
+                      Formatters.formatCurrency(totalTarget),
+                      style: AppTheme.financialStyle(size: 18, weight: FontWeight.w700, color: colorScheme.onSurface),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: overallProgress,
+              minHeight: 6,
+              backgroundColor: colorScheme.outline.withValues(alpha: 0.15),
+              color: colorScheme.primary,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '$activeCount active goal${activeCount == 1 ? '' : 's'} • ${Formatters.formatCurrency(totalRemaining)} remaining to save',
+            style: AppTheme.bodyStyle(size: 11, color: colorScheme.onSurfaceVariant),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -171,12 +306,18 @@ class _GoalCard extends StatelessWidget {
                       onPressed: () {
                         final amount = double.tryParse(amountCtrl.text);
                         if (amount != null && amount > 0) {
+                          final isAchievedNow = (goal.currentAmount + amount) >= goal.targetAmount;
                           ref.read(goalNotifierProvider.notifier)
                               .updateGoalProgress(goal.id, amount);
                           Navigator.pop(ctx);
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              content: Text('₹${amount.toStringAsFixed(0)} added to ${goal.name}'),
+                              content: Text(
+                                isAchievedNow
+                                    ? '🎉 Goal Achieved! Added ₹${amount.toStringAsFixed(0)} to ${goal.name}!'
+                                    : '₹${amount.toStringAsFixed(0)} added to ${goal.name}',
+                              ),
+                              backgroundColor: isAchievedNow ? AppColors.success : null,
                               behavior: SnackBarBehavior.floating,
                             ),
                           );
@@ -212,12 +353,33 @@ class _GoalCard extends StatelessWidget {
     final neededPerDay = daysLeft > 0 ? (remaining / daysLeft).roundToDouble() : 0;
     final monthlyPace = neededPerDay * 30;
 
+    // Goal Health Calculation
+    final String healthLabel;
+    final Color healthColor;
+    if (isGoalExceeded) {
+      healthLabel = 'Achieved';
+      healthColor = AppColors.success;
+    } else if (daysLeft <= 0) {
+      healthLabel = 'Overdue';
+      healthColor = AppColors.error;
+    } else if (progress >= 0.75) {
+      healthLabel = 'Home Stretch';
+      healthColor = AppColors.success;
+    } else if (progress >= 0.4) {
+      healthLabel = 'On Track';
+      healthColor = AppColors.primary;
+    } else {
+      healthLabel = 'Needs Attention';
+      healthColor = AppColors.warning;
+    }
+
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(AppConstants.cardRadius),
         color: isDark ? AppColors.cardDark : AppColors.cardLight,
         boxShadow: isDark ? AppColors.cardShadowDark : AppColors.cardShadowLight,
+        border: isGoalExceeded ? Border.all(color: AppColors.success.withValues(alpha: 0.4), width: 1.5) : null,
       ),
       padding: AppConstants.cardPadding,
       child: Column(
@@ -250,23 +412,40 @@ class _GoalCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      goal.name,
-                      style: AppTheme.displayStyle(
-                        size: 16,
-                        weight: FontWeight.w600,
-                        color: colorScheme.onSurface,
-                      ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            goal.name,
+                            style: AppTheme.displayStyle(
+                              size: 16,
+                              weight: FontWeight.w600,
+                              color: colorScheme.onSurface,
+                            ),
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: healthColor.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            healthLabel,
+                            style: AppTheme.bodyStyle(size: 10, weight: FontWeight.w600, color: healthColor),
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 2),
                     Text(
                       isGoalExceeded
-                          ? 'Goal exceeded!'
+                          ? 'Goal completed!'
                           : daysLeft > 0
-                              ? '$daysLeft days left'
-                              : 'Overdue',
+                              ? '$daysLeft days left • Target: ${Formatters.formatDate(goal.targetDate)}'
+                              : 'Target passed',
                       style: AppTheme.bodyStyle(
-                        size: 12,
+                        size: 11,
                         color: isGoalExceeded
                             ? AppColors.success
                             : colorScheme.onSurfaceVariant,
@@ -275,6 +454,7 @@ class _GoalCard extends StatelessWidget {
                   ],
                 ),
               ),
+              const SizedBox(width: 8),
               ArcProgress(
                 progress: isGoalExceeded ? 1.0 : progress,
                 color: goalColor,
@@ -293,6 +473,19 @@ class _GoalCard extends StatelessWidget {
                         ),
                 ),
               ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          // ── Milestone badges ──
+          Row(
+            children: [
+              _MilestoneBadge(label: '25%', reached: progress >= 0.25, color: goalColor),
+              const SizedBox(width: 6),
+              _MilestoneBadge(label: '50%', reached: progress >= 0.50, color: goalColor),
+              const SizedBox(width: 6),
+              _MilestoneBadge(label: '75%', reached: progress >= 0.75, color: goalColor),
+              const SizedBox(width: 6),
+              _MilestoneBadge(label: '100%', reached: progress >= 1.0, color: goalColor),
             ],
           ),
           const SizedBox(height: 12),
@@ -343,51 +536,111 @@ class _GoalCard extends StatelessWidget {
           ),
           // ── Pace indicator ──
           if (daysLeft > 0 && remaining > 0) ...[
-            const SizedBox(height: 6),
-            Row(
-              children: [
-                Icon(LucideIcons.gauge, size: 14, color: goalColor.withValues(alpha: 0.7)),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    daysLeft < 30
-                        ? 'Need ₹${neededPerDay.toStringAsFixed(0)}/day to reach goal'
-                        : '₹${monthlyPace.toStringAsFixed(0)}/month recommended',
-                    style: AppTheme.bodyStyle(
-                      size: 11,
-                      color: goalColor.withValues(alpha: 0.8),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: goalColor.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  Icon(LucideIcons.gauge, size: 14, color: goalColor),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      daysLeft < 30
+                          ? 'Pace needed: ₹${neededPerDay.toStringAsFixed(0)}/day to hit target'
+                          : 'Recommended pace: ₹${monthlyPace.toStringAsFixed(0)}/month',
+                      style: AppTheme.bodyStyle(
+                        size: 11,
+                        weight: FontWeight.w500,
+                        color: goalColor,
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ],
           const SizedBox(height: 14),
-          // ── Contribute button ──
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.tonalIcon(
-              onPressed: () => _showContributeSheet(context),
-              icon: const Icon(LucideIcons.wallet, size: 16),
-              label: Text(
-                goal.currentAmount >= goal.targetAmount
-                    ? 'Goal Achieved'
-                    : 'Contribute',
-                style: AppTheme.bodyStyle(size: 13, weight: FontWeight.w600),
-              ),
-              style: FilledButton.styleFrom(
-                backgroundColor: goalColor.withValues(alpha: 0.12),
-                foregroundColor: goalColor,
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+          // ── Actions ──
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.tonalIcon(
+                  onPressed: () => _showContributeSheet(context),
+                  icon: const Icon(LucideIcons.wallet, size: 16),
+                  label: Text(
+                    goal.currentAmount >= goal.targetAmount
+                        ? 'Completed'
+                        : 'Contribute',
+                    style: AppTheme.bodyStyle(size: 13, weight: FontWeight.w600),
+                  ),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: goalColor.withValues(alpha: 0.12),
+                    foregroundColor: goalColor,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
                 ),
               ),
-            ),
+              const SizedBox(width: 8),
+              IconButton.outlined(
+                onPressed: () {
+                  showModalBottomSheet(
+                    context: context,
+                    isScrollControlled: true,
+                    useSafeArea: true,
+                    shape: const RoundedRectangleBorder(
+                      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                    ),
+                    builder: (_) => const WhatIfSimulatorSheet(),
+                  );
+                },
+                icon: const Icon(LucideIcons.flaskConical, size: 16),
+                tooltip: 'Simulate Acceleration',
+                style: IconButton.styleFrom(
+                  side: BorderSide(color: colorScheme.outline.withValues(alpha: 0.2)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+              IconButton.outlined(
+                onPressed: () => _confirmDelete(context),
+                icon: Icon(LucideIcons.trash2, size: 16, color: AppColors.error),
+                tooltip: 'Delete Goal',
+                style: IconButton.styleFrom(
+                  side: BorderSide(color: AppColors.error.withValues(alpha: 0.2)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+            ],
           ),
         ],
       ),
-    ).animate().fadeIn(duration: 400.ms, curve: Curves.easeOutCubic).slideY(begin: 0.06, duration: 400.ms, curve: Curves.easeOutCubic);
+    ).animate(target: AccessibilityUtils.shouldAnimate(context) ? null : 1.0).fadeIn(duration: AppConstants.animNormal, curve: Curves.easeOutCubic).slideY(begin: 0.06, duration: AppConstants.animNormal, curve: Curves.easeOutCubic);
+  }
+
+  void _confirmDelete(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Goal?'),
+        content: Text('Are you sure you want to delete "${goal.name}"?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () {
+              ref.read(goalNotifierProvider.notifier).deleteGoal(goal.id);
+              Navigator.pop(ctx);
+            },
+            child: Text('Delete', style: TextStyle(color: AppColors.error)),
+          ),
+        ],
+      ),
+    );
   }
 
   IconData _getIcon(String iconName) {
@@ -399,6 +652,54 @@ class _GoalCard extends StatelessWidget {
       'car': LucideIcons.carFront,
       'shopping': LucideIcons.shoppingBag,
     }[iconName] ?? LucideIcons.flag;
+  }
+}
+
+class _MilestoneBadge extends StatelessWidget {
+  final String label;
+  final bool reached;
+  final Color color;
+
+  const _MilestoneBadge({
+    required this.label,
+    required this.reached,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        decoration: BoxDecoration(
+          color: reached ? color.withValues(alpha: 0.15) : colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(
+            color: reached ? color.withValues(alpha: 0.4) : colorScheme.outline.withValues(alpha: 0.1),
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              reached ? LucideIcons.checkCheck : LucideIcons.circle,
+              size: 10,
+              color: reached ? color : colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+            ),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: AppTheme.bodyStyle(
+                size: 10,
+                weight: reached ? FontWeight.w700 : FontWeight.w500,
+                color: reached ? color : colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -436,6 +737,78 @@ class _EmptyGoals extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// Celebration banner shown when every active goal has been achieved.
+class _AllGoalsAchieved extends StatelessWidget {
+  final int count;
+  const _AllGoalsAchieved({required this.count});
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isDark = colorScheme.brightness == Brightness.dark;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 20),
+      padding: AppConstants.cardPadding,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(AppConstants.cardRadius),
+        gradient: LinearGradient(
+          colors: [
+            AppColors.success.withValues(alpha: isDark ? 0.15 : 0.08),
+            AppColors.primary.withValues(alpha: isDark ? 0.10 : 0.05),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        border: Border.all(
+          color: AppColors.success.withValues(alpha: 0.2),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.success.withValues(alpha: 0.15),
+            ),
+            child: Icon(
+              LucideIcons.trophy,
+              color: AppColors.success,
+              size: 24,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'All goals achieved!',
+                  style: AppTheme.displayStyle(
+                    size: 16,
+                    weight: FontWeight.w600,
+                    color: AppColors.success,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'You\'ve hit $count goal${count == 1 ? '' : 's'}. Keep it up!',
+                  style: AppTheme.bodyStyle(
+                    size: 13,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    ).animate(target: AccessibilityUtils.shouldAnimate(context) ? null : 1.0).fadeIn(duration: AppConstants.animSlow).slideY(begin: -0.05, duration: AppConstants.animNormal, curve: Curves.easeOutCubic);
   }
 }
 
@@ -566,5 +939,91 @@ class _AddGoalSheetState extends ConsumerState<_AddGoalSheet> {
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
+  }
+}
+
+class _GoalsSkeleton extends StatelessWidget {
+  const _GoalsSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return ListView(
+      padding: AppConstants.screenPadding,
+      children: List.generate(3, (i) => Padding(
+        padding: const EdgeInsets.only(bottom: 16),
+        child: Container(
+          height: 180,
+          decoration: BoxDecoration(
+            color: colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(AppConstants.cardRadius),
+          ),
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 48, height: 48,
+                    decoration: BoxDecoration(
+                      color: colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(AppConstants.cardRadiusSmall),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 140, height: 16,
+                          decoration: BoxDecoration(
+                            color: colorScheme.surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Container(
+                          width: 100, height: 12,
+                          decoration: BoxDecoration(
+                            color: colorScheme.surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    width: 56, height: 56,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: colorScheme.surfaceContainerHighest,
+                    ),
+                  ),
+                ],
+              ),
+              const Spacer(),
+              Container(
+                height: 8,
+                decoration: BoxDecoration(
+                  color: colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity, height: 40,
+                decoration: BoxDecoration(
+                  color: colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(AppConstants.cardRadiusSmall),
+                ),
+              ),
+            ],
+          ),
+        ).animate(onPlay: (c) => c.repeat())
+          .shimmer(duration: 1200.ms, delay: (i * 200).ms, color: colorScheme.primary.withValues(alpha: 0.08)),
+      )),
+    );
   }
 }

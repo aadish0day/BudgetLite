@@ -10,6 +10,7 @@ import '../../core/theme/colors.dart';
 import '../../core/utils/constants.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/utils/icon_helper.dart';
+import '../../core/utils/accessibility_utils.dart';
 import '../../providers/budget_provider.dart';
 import '../../providers/transaction_provider.dart';
 import '../../providers/navigation_provider.dart';
@@ -37,7 +38,7 @@ class _BudgetScreenState extends ConsumerState<BudgetScreen> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final categories = ref.watch(expenseCategoriesProvider).valueOrNull ?? [];
+    final categoriesAsync = ref.watch(expenseCategoriesProvider);
     final budgets = ref.watch(thisMonthBudgetsProvider).valueOrNull ?? [];
     final spent = ref.watch(totalSpentThisMonthProvider).valueOrNull ?? 0;
     final income = ref.watch(totalIncomeThisMonthProvider).valueOrNull ?? 0;
@@ -66,8 +67,11 @@ class _BudgetScreenState extends ConsumerState<BudgetScreen> {
           ),
         ),
       ),
-      body: ListView(
-        padding: AppConstants.screenPadding,
+      body: categoriesAsync.when(
+        loading: () => const _BudgetScreenSkeleton(),
+        error: (_, _) => const Center(child: Text('Failed to load budget setup')),
+        data: (categories) => ListView(
+          padding: AppConstants.screenPadding,
         children: [
           // ── Income Summary (read-only) ──
           AnimatedContainer(
@@ -149,7 +153,7 @@ class _BudgetScreenState extends ConsumerState<BudgetScreen> {
                 ),
               ],
             ),
-          ).animate().fadeIn().slideY(begin: 0.1),
+          ).animate(target: AccessibilityUtils.shouldAnimate(context) ? null : 1.0).fadeIn(duration: AppConstants.animNormal).slideY(begin: 0.1),
           const SizedBox(height: 20),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -204,6 +208,7 @@ class _BudgetScreenState extends ConsumerState<BudgetScreen> {
           ),
           const SizedBox(height: 40),
         ],
+      ),
       ),
     );
   }
@@ -728,6 +733,52 @@ class _TypeButtonState extends State<_TypeButton> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _BudgetScreenSkeleton extends StatelessWidget {
+  const _BudgetScreenSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return ListView(
+      padding: AppConstants.screenPadding,
+      children: [
+        // Income card skeleton
+        Container(
+          height: 120,
+          decoration: BoxDecoration(
+            color: colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(AppConstants.cardRadius),
+          ),
+        ).animate(onPlay: (c) => c.repeat())
+          .shimmer(duration: 1200.ms, color: colorScheme.primary.withValues(alpha: 0.08)),
+        const SizedBox(height: 24),
+        // Section header skeleton
+        Container(
+          width: 160, height: 18,
+          decoration: BoxDecoration(
+            color: colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(4),
+          ),
+        ).animate(onPlay: (c) => c.repeat())
+          .shimmer(duration: 1200.ms, delay: 200.ms, color: colorScheme.primary.withValues(alpha: 0.08)),
+        const SizedBox(height: 16),
+        // Budget slot skeletons
+        ...List.generate(4, (i) => Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Container(
+            height: 68,
+            decoration: BoxDecoration(
+              color: colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(AppConstants.cardRadiusSmall),
+            ),
+          ).animate(onPlay: (c) => c.repeat())
+            .shimmer(duration: 1200.ms, delay: ((i + 2) * 150).ms, color: colorScheme.primary.withValues(alpha: 0.08)),
+        )),
+      ],
     );
   }
 }

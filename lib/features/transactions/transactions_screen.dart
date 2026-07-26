@@ -9,6 +9,7 @@ import '../../core/theme/colors.dart';
 import '../../core/utils/constants.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/utils/icon_helper.dart';
+import '../../core/utils/accessibility_utils.dart';
 import '../../providers/transaction_provider.dart';
 import '../../providers/navigation_provider.dart';
 import '../../core/database/database.dart';
@@ -169,7 +170,9 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
             .firstOrNull
             ?.name
             .toLowerCase() ?? '';
-        if (!note.contains(query) && !catName.contains(query)) return false;
+        final amtStr = t.amount.abs().toStringAsFixed(0);
+        final paymentMethod = t.paymentMethod.toLowerCase();
+        if (!note.contains(query) && !catName.contains(query) && !amtStr.contains(query) && !paymentMethod.contains(query)) return false;
       }
 
       // Date range
@@ -243,7 +246,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
               onMinAmountChanged: (v) => setState(() => _minAmount = v),
               onMaxAmountChanged: (v) => setState(() => _maxAmount = v),
               onClear: _clearAllFilters,
-            ).animate().slideY(begin: -0.1, duration: 200.ms).fadeIn(duration: 200.ms),
+            ).animate(target: AccessibilityUtils.shouldAnimate(context) ? null : 1.0).slideY(begin: -0.1, duration: AppConstants.animFast).fadeIn(duration: AppConstants.animFast),
 
           Expanded(
             child: transactions.when(
@@ -264,14 +267,14 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                       category: categories.where((c) => c.id == t.categoryId).firstOrNull,
                       onTap: () => _editTransaction(t),
                       onDelete: (transaction) => _deleteWithUndo(transaction),
-                    ).animate().fadeIn(
-                      duration: 300.ms,
-                      delay: (index * 50).ms,
+                    ).animate(target: AccessibilityUtils.shouldAnimate(context) ? null : 1.0).fadeIn(
+                      duration: AppConstants.animNormal,
+                      delay: AppConstants.staggerDelay * index,
                     );
                   },
                 );
               },
-              loading: () => const Center(child: CircularProgressIndicator()),
+              loading: () => const _TransactionListSkeleton(),
               error: (_, _) => _EmptyTransactions(),
             ),
           ),
@@ -860,6 +863,72 @@ class _EmptyTransactions extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _TransactionListSkeleton extends StatelessWidget {
+  const _TransactionListSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return ListView(
+      padding: AppConstants.screenPadding,
+      children: List.generate(6, (i) => Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Container(
+          height: 72,
+          decoration: BoxDecoration(
+            color: colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(AppConstants.cardRadiusSmall),
+          ),
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Container(
+                width: 40, height: 40,
+                decoration: BoxDecoration(
+                  color: colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(AppConstants.cardRadiusIcon),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      width: 120, height: 14,
+                      decoration: BoxDecoration(
+                        color: colorScheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      width: 80, height: 10,
+                      decoration: BoxDecoration(
+                        color: colorScheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                width: 60, height: 16,
+                decoration: BoxDecoration(
+                  color: colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+            ],
+          ),
+        ).animate(onPlay: (c) => c.repeat())
+          .shimmer(duration: 1200.ms, delay: (i * 150).ms, color: colorScheme.primary.withValues(alpha: 0.08)),
+      )),
     );
   }
 }
