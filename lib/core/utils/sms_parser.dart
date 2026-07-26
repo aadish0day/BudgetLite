@@ -15,7 +15,7 @@ class ParsedSmsTxn {
     String? id,
     DateTime? detectedAt,
     this.isIncome = false,
-  })  : id = id ?? 'sms_${DateTime.now().millisecondsSinceEpoch}_${(DateTime.now().microsecondsSinceEpoch % 1000).toString().padLeft(3, '0')}',
+  })  : id = id ?? 'sms_${amount}_${note.hashCode}_${date.toIso8601String()}',
         detectedAt = detectedAt ?? DateTime.now();
 
   Map<String, dynamic> toJson() => {
@@ -69,10 +69,9 @@ class SmsParser {
           lowerBody.contains('deposited') ||
           lowerBody.contains('refund') ||
           lowerBody.contains('cashback') ||
-          lowerBody.contains('added') ||
-          lowerBody.contains('transferred to your');
-      // NOTE: do NOT use 'txn' as a debit keyword — it appears in credit SMS
-      // as "Txn ref:" and would misclassify income as expense.
+          lowerBody.contains('added to your') ||
+          lowerBody.contains('transferred to your a/c') ||
+          lowerBody.contains('transferred to your account');
       isDebit = lowerBody.contains('debit') ||
           lowerBody.contains('debited') ||
           lowerBody.contains('spent') ||
@@ -80,7 +79,8 @@ class SmsParser {
           lowerBody.contains('paid') ||
           lowerBody.contains('transacted') ||
           lowerBody.contains('withdrawn') ||
-          lowerBody.contains('payment of');
+          lowerBody.contains('payment of') ||
+          lowerBody.contains('transferred from');
     }
 
     if (!isCredit && !isDebit) return null;
@@ -94,6 +94,14 @@ class SmsParser {
     final amountMatch = RegExp(
       r'(?:Rs\.?|INR|₹)\s*([0-9,]+(?:\.[0-9]+)?)',
       caseSensitive: false,
+    ).firstMatch(body) ??
+    RegExp(
+      r'([0-9,]+\.[0-9]+)\s*(?:INR|Rs\.?)',
+      caseSensitive: false,
+    ).firstMatch(body) ??
+    RegExp(
+      r'([0-9,]{2,})\s*(?:INR|Rs\.?)(?!\w)',
+      caseSensitive: false,
     ).firstMatch(body);
     if (amountMatch != null) {
       amount = double.tryParse(amountMatch.group(1)!.replaceAll(',', ''));
@@ -102,8 +110,8 @@ class SmsParser {
     if (amount == null || amount <= 0) return null;
 
     // Merchant / counterparty extraction
-    // For Debit: Target recipient is after 'to', 'towards', or 'at'.
-    // For Credit: Sender is after 'from'.
+    // For Credit (income): sender is after 'from'.
+    // For Debit (expense): recipient is after 'to', 'towards', 'at', or 'for'.
     final primaryRegex = isIncome
         ? RegExp(
             r"(?:from)\s+([a-zA-Z0-9\s\.'&,\-@]+?)(?:\s+on\s+\d|\s+at\s+\d|\s+(?:ref|txn|upi|not|refer|regards)[\s:]|(?:\s+\.\s+)|(?:\.\s*$)|$)",
@@ -118,7 +126,7 @@ class SmsParser {
 
     // Fallback if primary preposition wasn't found
     merchantMatch ??= RegExp(
-      r"(?:towards|to|from|at|in|info)\s+([a-zA-Z0-9\s\.'&,\-@]+?)(?:\s+on\s+\d|\s+at\s+\d|\s+(?:ref|txn|upi|not|refer|regards)[\s:]|(?:\s+\.\s+)|(?:\.\s*$)|$)",
+      r"(?:towards|to|from|at)\s+([a-zA-Z0-9\s\.'&,\-@]+?)(?:\s+on\s+\d|\s+at\s+\d|\s+(?:ref|txn|upi|not|refer|regards)[\s:]|(?:\s+\.\s+)|(?:\.\s*$)|$)",
       caseSensitive: false,
     ).firstMatch(body);
 

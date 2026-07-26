@@ -150,6 +150,13 @@ class SmsService(private val activity: Activity, private val engine: FlutterEngi
 
         val client = smsRetrieverClient ?: return result.success(false)
 
+        // Register the consent receiver before starting the retriever
+        if (consentReceiver == null) {
+            consentReceiver = SmsUserConsentReceiver(activity, this)
+            val intentFilter = IntentFilter(SmsRetriever.SMS_RETRIEVED_ACTION)
+            ContextCompat.registerReceiver(activity, consentReceiver, intentFilter, ContextCompat.RECEIVER_EXPORTED)
+        }
+
         // Start listening for SMS Retriever intent
         val task = client.startSmsUserConsent(null) // null = any sender
 

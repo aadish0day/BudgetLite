@@ -351,8 +351,11 @@ class _QueueItemCardState extends ConsumerState<_QueueItemCard> {
         ),
         child: const Icon(LucideIcons.x, color: Colors.white, size: 24),
       ),
-      onDismissed: (_) {
+      confirmDismiss: (_) async {
         HapticFeedback.mediumImpact();
+        return true;
+      },
+      onDismissed: (_) {
         widget.onDiscard();
       },
       child: Container(

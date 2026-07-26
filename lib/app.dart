@@ -7,6 +7,7 @@ import 'core/theme/app_theme.dart';
 import 'core/theme/colors.dart';
 import 'core/utils/sms_parser.dart';
 import 'core/utils/formatters.dart';
+import 'core/utils/accessibility_utils.dart';
 import 'features/home/home_screen.dart';
 import 'features/transactions/transactions_screen.dart';
 import 'features/transactions/add_transaction_sheet.dart';
@@ -18,7 +19,8 @@ import 'core/utils/notification_service.dart';
 import 'providers/settings_provider.dart';
 import 'providers/transaction_provider.dart';
 import 'providers/navigation_provider.dart';
-import 'main.dart' show registerTabNavigation;
+import 'services/sms_listener_service.dart';
+import 'main.dart' show quickActionCallbackProvider, setupQuickActions;
 
 class BudgetLiteApp extends ConsumerWidget {
   const BudgetLiteApp({super.key});
@@ -91,7 +93,8 @@ class _AppEntryState extends ConsumerState<_AppEntry> with WidgetsBindingObserve
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+    if (!mounted) return;
+    if (state == AppLifecycleState.paused) {
       _backgroundedAt ??= DateTime.now();
     } else if (state == AppLifecycleState.resumed) {
       final biometric = ref.read(biometricLockEnabledProvider).valueOrNull ?? false;
@@ -107,6 +110,8 @@ class _AppEntryState extends ConsumerState<_AppEntry> with WidgetsBindingObserve
         }
       }
       _backgroundedAt = null;
+
+      _autoScanSmsIfEnabled();
     }
   }
 
@@ -127,7 +132,50 @@ class _AppEntryState extends ConsumerState<_AppEntry> with WidgetsBindingObserve
     }
   }
 
+  Future<void> _autoScanSmsIfEnabled() async {
+    final smsEnabled = ref.read(smsParsingEnabledProvider).valueOrNull ?? false;
+    if (!smsEnabled || !mounted) return;
+    final listener = SmsListenerService();
+    final granted = await listener.isPermissionGranted();
+    if (!granted) return;
+    final messages = await listener.scanInbox();
+    if (!mounted || messages.isEmpty) return;
+    final userRules = ref.read(autoCategorizationRulesProvider);
+    final Map<String, String> keywordToCategory = {};
+    for (final rule in userRules) {
+      keywordToCategory[rule.keyword.toLowerCase()] = rule.categoryId;
+    }
+    final queueNotifier = ref.read(smsReviewQueueProvider.notifier);
+    int added = 0;
+    for (final sms in messages) {
+      final parsed = SmsParser.parseMessage(
+        sms.body,
+        keywordToCategory: keywordToCategory.isNotEmpty ? keywordToCategory : null,
+        dateOverride: DateTime.fromMillisecondsSinceEpoch(sms.timestamp, isUtc: true).toLocal(),
+      );
+      if (parsed != null) {
+        final alreadyInQueue = ref.read(smsReviewQueueProvider).any((t) => t.id == parsed.id);
+        if (!alreadyInQueue) {
+          queueNotifier.addToQueue(parsed);
+          added++;
+        }
+      }
+    }
+    if (added > 0 && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('$added UPI transaction${added != 1 ? 's' : ''} found from background period'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  bool _isAuthenticating = false;
+
   Future<void> _authenticate() async {
+    if (_isAuthenticating) return;
+    _isAuthenticating = true;
     final localAuth = LocalAuthentication();
     try {
       final isAvailable = await localAuth.canCheckBiometrics;
@@ -154,6 +202,8 @@ class _AppEntryState extends ConsumerState<_AppEntry> with WidgetsBindingObserve
           _isAuthenticated = true;
         });
       }
+    } finally {
+      _isAuthenticating = false;
     }
   }
 
@@ -200,6 +250,7 @@ class _MainShell extends ConsumerStatefulWidget {
 
 class _MainShellState extends ConsumerState<_MainShell> {
   static const _navLabels = ['Home', 'Transactions', 'Budget', 'Goals', 'Insights'];
+  bool _isSmsDialogShowing = false;
 
   final _screens = const [
     HomeScreen(),
@@ -216,18 +267,18 @@ class _MainShellState extends ConsumerState<_MainShell> {
       onNotificationTap: (payload) {
         if (payload != null && payload.startsWith('budget:')) {
           final catId = payload.substring('budget:'.length);
-          ref.read(currentTabProvider.notifier).state = 2; // Budget Tab
+          ref.read(currentTabProvider.notifier).state = 2;
           ref.read(budgetHighlightProvider.notifier).state = catId;
         }
       },
     );
-    // Post any due recurring transactions on app open
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
       ref.read(transactionNotifierProvider.notifier).postDueRecurringTransactions();
-    });
-    // Register navigation callback for app shortcuts
-    registerTabNavigation((tabIndex) {
-      ref.read(currentTabProvider.notifier).state = tabIndex;
+      setupQuickActions(ref);
+      ref.read(quickActionCallbackProvider.notifier).state = (tabIndex) {
+        ref.read(currentTabProvider.notifier).state = tabIndex;
+      };
     });
   }
 
@@ -235,15 +286,14 @@ class _MainShellState extends ConsumerState<_MainShell> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final currentTab = ref.watch(currentTabProvider);
+    final shouldAnimate = AccessibilityUtils.shouldAnimate(context);
 
-    // Listen to pending SMS transactions detected
-    ref.listen<ParsedSmsTxn?>(pendingSmsTransactionProvider, (previous, next) {
-      if (next != null) {
+    ref.listen<ParsedSmsTxn?>(pendingSmsTransactionProvider, (_, next) {
+      if (next != null && !_isSmsDialogShowing) {
         _showSmsConfirmationDialog(context, next);
       }
     });
 
-    // Schedule notifications when transactions change
     ref.listen(transactionsProvider, (prev, next) {
       next.whenData((txns) {
         NotificationService.instance.rescheduleAll(txns);
@@ -288,23 +338,25 @@ class _MainShellState extends ConsumerState<_MainShell> {
         }
       },
       child: Scaffold(
-        body: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 350),
-          switchInCurve: Curves.easeOutCubic,
-          switchOutCurve: Curves.easeInCubic,
-          transitionBuilder: (child, animation) {
-            return ScaleTransition(
-              scale: Tween<double>(begin: 0.97, end: 1.0).animate(
-                CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
-              ),
-              child: FadeTransition(
-                opacity: Tween<double>(begin: 0.3, end: 1.0).animate(animation),
-                child: child,
-              ),
-            );
-          },
-          child: _screens[currentTab < _screens.length ? currentTab : 0],
-        ),
+        body: shouldAnimate
+            ? AnimatedSwitcher(
+                duration: const Duration(milliseconds: 350),
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeInCubic,
+                transitionBuilder: (child, animation) {
+                  return ScaleTransition(
+                    scale: Tween<double>(begin: 0.97, end: 1.0).animate(
+                      CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+                    ),
+                    child: FadeTransition(
+                      opacity: Tween<double>(begin: 0.3, end: 1.0).animate(animation),
+                      child: child,
+                    ),
+                  );
+                },
+                child: _screens[currentTab < _screens.length ? currentTab : 0],
+              )
+            : _screens[currentTab < _screens.length ? currentTab : 0],
         bottomNavigationBar: Container(
           decoration: BoxDecoration(
             border: Border(
@@ -322,11 +374,11 @@ class _MainShellState extends ConsumerState<_MainShell> {
             },
             type: BottomNavigationBarType.fixed,
             items: [
-              _navItem(LucideIcons.house, LucideIcons.house, 0),
-              _navItem(LucideIcons.receipt, LucideIcons.receipt, 1),
-              _navItem(LucideIcons.wallet, LucideIcons.wallet, 2),
-              _navItem(LucideIcons.flag, LucideIcons.flag, 3),
-              _navItem(LucideIcons.chartBar, LucideIcons.chartBar, 4),
+              _bottomNavItem(LucideIcons.house, LucideIcons.house, currentTab, 0),
+              _bottomNavItem(LucideIcons.receipt, LucideIcons.receipt, currentTab, 1),
+              _bottomNavItem(LucideIcons.wallet, LucideIcons.wallet, currentTab, 2),
+              _bottomNavItem(LucideIcons.flag, LucideIcons.flag, currentTab, 3),
+              _bottomNavItem(LucideIcons.chartBar, LucideIcons.chartBar, currentTab, 4),
             ],
           ),
         ),
@@ -344,10 +396,10 @@ class _MainShellState extends ConsumerState<_MainShell> {
     );
   }
 
-  BottomNavigationBarItem _navItem(IconData outlined, IconData filled, int index) {
-    final currentTab = ref.watch(currentTabProvider);
+  BottomNavigationBarItem _bottomNavItem(IconData outlined, IconData filled, int currentTab, int index) {
+    final isSelected = currentTab == index;
     return BottomNavigationBarItem(
-      icon: Icon(currentTab == index ? filled : outlined),
+      icon: Icon(isSelected ? filled : outlined),
       activeIcon: Icon(filled),
       label: _navLabels[index],
     );
@@ -381,7 +433,7 @@ class _MainShellState extends ConsumerState<_MainShell> {
               Row(
                 children: [
                   Expanded(
-                    child: _ActionButton(
+                    child: _QuickActionButton(
                       icon: LucideIcons.minusCircle,
                       label: 'Log Expense',
                       color: colorScheme.primary,
@@ -393,7 +445,7 @@ class _MainShellState extends ConsumerState<_MainShell> {
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: _ActionButton(
+                    child: _QuickActionButton(
                       icon: LucideIcons.plusCircle,
                       label: 'Add Pocket Money',
                       color: AppColors.success,
@@ -438,6 +490,7 @@ class _MainShellState extends ConsumerState<_MainShell> {
   }
 
   void _showSmsConfirmationDialog(BuildContext context, ParsedSmsTxn txn) {
+    _isSmsDialogShowing = true;
     final colorScheme = Theme.of(context).colorScheme;
     showDialog(
       context: context,
@@ -449,10 +502,7 @@ class _MainShellState extends ConsumerState<_MainShell> {
             const SizedBox(width: 8),
             Text(
               'Bank SMS Detected',
-              style: AppTheme.displayStyle(
-                size: 18,
-                weight: FontWeight.w600,
-              ),
+              style: AppTheme.displayStyle(size: 18, weight: FontWeight.w600),
             ),
           ],
         ),
@@ -478,14 +528,8 @@ class _MainShellState extends ConsumerState<_MainShell> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        'Amount',
-                        style: AppTheme.bodyStyle(size: 11, color: colorScheme.onSurfaceVariant),
-                      ),
-                      Text(
-                        'Category',
-                        style: AppTheme.bodyStyle(size: 11, color: colorScheme.onSurfaceVariant),
-                      ),
+                      Text('Amount', style: AppTheme.bodyStyle(size: 11, color: colorScheme.onSurfaceVariant)),
+                      Text('Category', style: AppTheme.bodyStyle(size: 11, color: colorScheme.onSurfaceVariant)),
                     ],
                   ),
                   const SizedBox(height: 4),
@@ -494,11 +538,7 @@ class _MainShellState extends ConsumerState<_MainShell> {
                     children: [
                       Text(
                         '₹${txn.amount.toStringAsFixed(0)}',
-                        style: AppTheme.financialStyle(
-                          size: 18,
-                          weight: FontWeight.w700,
-                          color: colorScheme.onSurface,
-                        ),
+                        style: AppTheme.financialStyle(size: 18, weight: FontWeight.w700, color: colorScheme.onSurface),
                       ),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -508,29 +548,15 @@ class _MainShellState extends ConsumerState<_MainShell> {
                         ),
                         child: Text(
                           txn.categoryId.toUpperCase(),
-                          style: AppTheme.bodyStyle(
-                            size: 11,
-                            weight: FontWeight.w600,
-                            color: colorScheme.primary,
-                          ),
+                          style: AppTheme.bodyStyle(size: 11, weight: FontWeight.w600, color: colorScheme.primary),
                         ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 12),
-                  Text(
-                    'Note / Merchant',
-                    style: AppTheme.bodyStyle(size: 11, color: colorScheme.onSurfaceVariant),
-                  ),
+                  Text('Note / Merchant', style: AppTheme.bodyStyle(size: 11, color: colorScheme.onSurfaceVariant)),
                   const SizedBox(height: 2),
-                  Text(
-                    txn.note,
-                    style: AppTheme.bodyStyle(
-                      size: 13,
-                      weight: FontWeight.w500,
-                      color: colorScheme.onSurface,
-                    ),
-                  ),
+                  Text(txn.note, style: AppTheme.bodyStyle(size: 13, weight: FontWeight.w500, color: colorScheme.onSurface)),
                 ],
               ),
             ),
@@ -542,24 +568,21 @@ class _MainShellState extends ConsumerState<_MainShell> {
               ref.read(pendingSmsTransactionProvider.notifier).state = null;
               Navigator.pop(ctx);
             },
-            child: Text(
-              'Ignore',
-              style: AppTheme.bodyStyle(color: colorScheme.onSurfaceVariant),
-            ),
+            child: Text('Ignore', style: AppTheme.bodyStyle(color: colorScheme.onSurfaceVariant)),
           ),
           FilledButton(
             onPressed: () async {
               if (!ctx.mounted) return;
               final notifier = ref.read(transactionNotifierProvider.notifier);
-              
-              // Check for duplicates before adding
+
               final dupCheck = await notifier.checkForDuplicates(
                 amount: txn.amount,
                 categoryId: txn.categoryId,
                 date: txn.date,
                 note: txn.note,
+                isIncome: txn.isIncome,
               );
-              
+
               if (!ctx.mounted) return;
               if (dupCheck.isNotEmpty) {
                 final addAnyway = await showDialog<bool>(
@@ -577,10 +600,8 @@ class _MainShellState extends ConsumerState<_MainShell> {
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          'A similar transaction already exists:',
-                          style: AppTheme.bodyStyle(size: 14, color: colorScheme.onSurfaceVariant),
-                        ),
+                        Text('A similar transaction already exists:',
+                          style: AppTheme.bodyStyle(size: 14, color: colorScheme.onSurfaceVariant)),
                         const SizedBox(height: 12),
                         ...dupCheck.take(3).map((d) => Padding(
                           padding: const EdgeInsets.only(bottom: 6),
@@ -598,15 +619,11 @@ class _MainShellState extends ConsumerState<_MainShell> {
                           ),
                         )),
                         if (dupCheck.length > 3)
-                          Text(
-                            '...and ${dupCheck.length - 3} more',
-                            style: AppTheme.bodyStyle(size: 11, color: colorScheme.onSurfaceVariant),
-                          ),
+                          Text('...and ${dupCheck.length - 3} more',
+                            style: AppTheme.bodyStyle(size: 11, color: colorScheme.onSurfaceVariant)),
                         const SizedBox(height: 12),
-                        Text(
-                          'Add it anyway?',
-                          style: AppTheme.bodyStyle(size: 14, color: colorScheme.onSurfaceVariant),
-                        ),
+                        Text('Add it anyway?',
+                          style: AppTheme.bodyStyle(size: 14, color: colorScheme.onSurfaceVariant)),
                       ],
                     ),
                     actions: [
@@ -623,7 +640,7 @@ class _MainShellState extends ConsumerState<_MainShell> {
                 );
                 if (addAnyway != true) return;
               }
-              
+
               if (!ctx.mounted) return;
               await notifier.addTransaction(
                 amount: txn.amount,
@@ -631,6 +648,7 @@ class _MainShellState extends ConsumerState<_MainShell> {
                 note: txn.note,
                 date: txn.date,
                 paymentMethod: 'UPI',
+                isIncome: txn.isIncome,
               );
               ref.read(pendingSmsTransactionProvider.notifier).state = null;
               if (ctx.mounted) {
@@ -643,24 +661,21 @@ class _MainShellState extends ConsumerState<_MainShell> {
                 );
               }
             },
-            child: Text(
-              'Add Expense',
-              style: AppTheme.bodyStyle(weight: FontWeight.w600),
-            ),
+            child: Text(txn.isIncome ? 'Add Income' : 'Add Expense', style: AppTheme.bodyStyle(weight: FontWeight.w600)),
           ),
         ],
       ),
-    );
+    ).then((_) => _isSmsDialogShowing = false);
   }
 }
 
-class _ActionButton extends StatefulWidget {
+class _QuickActionButton extends StatelessWidget {
   final IconData icon;
   final String label;
   final Color color;
   final VoidCallback onTap;
 
-  const _ActionButton({
+  const _QuickActionButton({
     required this.icon,
     required this.label,
     required this.color,
@@ -668,47 +683,32 @@ class _ActionButton extends StatefulWidget {
   });
 
   @override
-  State<_ActionButton> createState() => _ActionButtonState();
-}
-
-class _ActionButtonState extends State<_ActionButton> {
-  bool _isPressed = false;
-
-  @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTapDown: (_) => setState(() => _isPressed = true),
-      onTapUp: (_) => setState(() => _isPressed = false),
-      onTapCancel: () => setState(() => _isPressed = false),
-      onTap: widget.onTap,
-      child: AnimatedScale(
-        scale: _isPressed ? 0.94 : 1.0,
-        duration: const Duration(milliseconds: 120),
-        curve: Curves.easeOut,
+    return Material(
+      color: color.withValues(alpha: 0.1),
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onTap,
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 20),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
-            color: widget.color.withValues(alpha: 0.1),
-            border: Border.all(color: widget.color.withValues(alpha: 0.2)),
+            border: Border.all(color: color.withValues(alpha: 0.2)),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(widget.icon, size: 28, color: widget.color),
+              Icon(icon, size: 28, color: color),
               const SizedBox(height: 8),
               Text(
-              widget.label,
-              style: AppTheme.bodyStyle(
-                size: 13,
-                weight: FontWeight.w600,
-                color: widget.color,
+                label,
+                style: AppTheme.bodyStyle(size: 13, weight: FontWeight.w600, color: color),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
-    ),
     );
   }
 }
@@ -734,37 +734,30 @@ class _LockScreen extends StatelessWidget {
                   shape: BoxShape.circle,
                   color: colorScheme.primary.withValues(alpha: 0.1),
                 ),
-                child: Icon(
-                  LucideIcons.lock,
-                  size: 40,
-                  color: colorScheme.primary,
-                ),
+                child: Icon(LucideIcons.lock, size: 40, color: colorScheme.primary),
               ),
               const SizedBox(height: 24),
-              Text(
-                'BudgetLite Locked',
-                style: AppTheme.displayStyle(
-                  size: 22,
-                  weight: FontWeight.w700,
-                  color: colorScheme.onSurface,
-                ),
+              Text('BudgetLite Locked',
+                style: AppTheme.displayStyle(size: 22, weight: FontWeight.w700, color: colorScheme.onSurface),
               ),
               const SizedBox(height: 8),
               Text(
                 'Please unlock with your biometric credentials to manage your budget.',
                 textAlign: TextAlign.center,
-                style: AppTheme.bodyStyle(
-                  size: 14,
-                  color: colorScheme.onSurfaceVariant,
-                ),
+                style: AppTheme.bodyStyle(size: 14, color: colorScheme.onSurfaceVariant),
               ),
               const SizedBox(height: 32),
               FilledButton.icon(
                 onPressed: onRetry,
                 icon: const Icon(LucideIcons.fingerprint),
                 label: const Text('Tap to Unlock'),
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size(200, 50),
+                style: FilledButton.styleFrom(minimumSize: const Size(200, 50)),
+              ),
+              const SizedBox(height: 12),
+              TextButton(
+                onPressed: onRetry,
+                child: Text('Use Passcode / Retry',
+                  style: AppTheme.bodyStyle(size: 13, color: colorScheme.primary, weight: FontWeight.w600),
                 ),
               ),
             ],

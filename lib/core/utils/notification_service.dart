@@ -224,7 +224,7 @@ class NotificationService {
       case 'quarterly':
         return null; // Scheduled manually
       case 'yearly':
-        return DateTimeComponents.dayOfMonthAndTime;
+        return null; // No built-in yearly repeat in flutter_local_notifications; rescheduleAll handles re-scheduling
       default:
         return null;
     }
@@ -241,12 +241,17 @@ class NotificationService {
         lastDate: t.date,
         interval: t.recurringInterval,
       );
-      if (nextDate != null && nextDate.difference(DateTime.now()).inDays <= 30) {
-        await scheduleForTransaction(
-          transaction: t,
-          notificationId: id++,
-          nextDueDate: nextDate,
-        );
+      if (nextDate != null) {
+        final now = DateTime.now();
+        final today = DateTime(now.year, now.month, now.day);
+        final nextDay = DateTime(nextDate.year, nextDate.month, nextDate.day);
+        if (nextDay.difference(today).inDays <= 30) {
+          await scheduleForTransaction(
+            transaction: t,
+            notificationId: id++,
+            nextDueDate: nextDate,
+          );
+        }
       }
     }
   }
@@ -286,13 +291,13 @@ class NotificationService {
         next = lastDate.add(const Duration(days: 14));
         break;
       case 'monthly':
-        next = DateTime(lastDate.year, lastDate.month + 1, lastDate.day);
+        next = _safeAddMonths(lastDate, 1);
         break;
       case 'quarterly':
-        next = DateTime(lastDate.year, lastDate.month + 3, lastDate.day);
+        next = _safeAddMonths(lastDate, 3);
         break;
       case 'yearly':
-        next = DateTime(lastDate.year + 1, lastDate.month, lastDate.day);
+        next = _safeAddMonths(lastDate, 12);
         break;
       default:
         return null;
@@ -311,17 +316,27 @@ class NotificationService {
           next = next.add(const Duration(days: 14));
           break;
         case 'monthly':
-          next = DateTime(next.year, next.month + 1, next.day);
+          next = _safeAddMonths(next, 1);
           break;
         case 'quarterly':
-          next = DateTime(next.year, next.month + 3, next.day);
+          next = _safeAddMonths(next, 3);
           break;
         case 'yearly':
-          next = DateTime(next.year + 1, next.month, next.day);
+          next = _safeAddMonths(next, 12);
           break;
       }
     }
 
     return next;
+  }
+
+  static DateTime _safeAddMonths(DateTime date, int monthsToAdd) {
+    final newMonth = date.month + monthsToAdd;
+    final yearOffset = (newMonth - 1) ~/ 12;
+    final targetYear = date.year + yearOffset;
+    final targetMonth = ((newMonth - 1) % 12) + 1;
+    final lastDayOfTargetMonth = DateTime(targetYear, targetMonth + 1, 0).day;
+    final targetDay = date.day > lastDayOfTargetMonth ? lastDayOfTargetMonth : date.day;
+    return DateTime(targetYear, targetMonth, targetDay, date.hour, date.minute, date.second);
   }
 }

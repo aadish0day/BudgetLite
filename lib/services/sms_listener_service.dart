@@ -101,9 +101,9 @@ class SmsListenerService {
       final result = await _channel.invokeMethod<List<dynamic>>('scanInbox');
       if (result == null) return [];
       return result.map((e) {
-        final map = e as Map<String, dynamic>;
+        final map = Map<String, dynamic>.from(e as Map);
         return SmsMessage(
-          map['body'] as String,
+          (map['body'] as String?) ?? '',
           (map['timestamp'] as num?)?.toInt() ?? DateTime.now().millisecondsSinceEpoch,
         );
       }).toList();
