@@ -13,6 +13,10 @@ import '../../core/utils/icon_helper.dart';
 import '../../core/utils/notification_service.dart';
 import '../../core/utils/accessibility_utils.dart';
 import '../../core/widgets/arc_progress.dart';
+import '../../core/widgets/transaction_row.dart';
+import '../../core/widgets/transaction_skeleton.dart';
+import '../../core/widgets/stat_item.dart';
+import '../../core/widgets/empty_state.dart';
 import '../../providers/transaction_provider.dart';
 import '../../providers/budget_provider.dart';
 import '../../providers/navigation_provider.dart';
@@ -151,12 +155,12 @@ class HomeScreen extends ConsumerWidget {
 
             transactions.when(
               data: (txns) => txns.take(5).isEmpty
-                  ? _EmptyState()
+                  ? const EmptyState()
                   : Column(
-                      children: txns.take(5).map((t) => _TransactionRow(transaction: t)).toList(),
+                      children: txns.take(5).map((t) => TransactionRow(transaction: t)).toList(),
                     ),
-              loading: () => const _TransactionSkeleton(),
-              error: (_, _) => _EmptyState(),
+              loading: () => const TransactionSkeleton(),
+              error: (_, _) => const EmptyState(),
             ),
             const SizedBox(height: 100),
           ],
@@ -450,7 +454,7 @@ class _Balance extends ConsumerWidget {
             Expanded(
               child: Row(
                 children: [
-                  _StatItem(
+                  StatItem(
                     label: 'Pocket Money',
                     value: Formatters.formatCurrency(monthlyIncome, hide: isBalanceHidden),
                     color: colorScheme.onSurface,
@@ -458,7 +462,7 @@ class _Balance extends ConsumerWidget {
                     delayMs: 500,
                   ),
                   const SizedBox(width: 24),
-                  _StatItem(
+                  StatItem(
                     label: 'Spent',
                     value: Formatters.formatCurrency(spent, hide: isBalanceHidden),
                     color: colorScheme.onSurface,
@@ -475,50 +479,7 @@ class _Balance extends ConsumerWidget {
   }
 }
 
-class _StatItem extends StatelessWidget {
-  final String label;
-  final String value;
-  final Color color;
-  final Color valueColor;
-  final int delayMs;
 
-  const _StatItem({
-    required this.label,
-    required this.value,
-    required this.color,
-    required this.valueColor,
-    this.delayMs = 0,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: AppTheme.bodyStyle(
-              size: 11,
-              weight: FontWeight.w500,
-              color: color.withValues(alpha: 0.6),
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            value,
-            style: AppTheme.financialStyle(
-              size: 16,
-              weight: FontWeight.w700,
-              color: valueColor,
-              letterSpacing: -0.3,
-            ),
-          ),
-        ],
-      ).animate(target: AccessibilityUtils.shouldAnimate(context) ? null : 1.0).fadeIn(duration: AppConstants.animNormal, delay: delayMs.ms).slideX(begin: 0.04, curve: Curves.easeOutCubic),
-    );
-  }
-}
 
 /// Loading skeleton for the budget section — mirrors _BudgetOverview shape.
 class _BudgetSkeleton extends StatelessWidget {
@@ -651,7 +612,7 @@ class _BudgetOverview extends ConsumerWidget {
         ...budgets.take(4).map((budget) {
           final category = categories.where((c) => c.id == budget.categoryId).firstOrNull;
           final spent = transactions
-              .where((t) => t.categoryId == budget.categoryId)
+              .where((t) => t.amount > 0 && t.categoryId == budget.categoryId)
               .fold<double>(0, (sum, t) => sum + t.amount);
           final ratio = budget.allocatedAmount > 0
               ? (spent / budget.allocatedAmount).clamp(0, 1).toDouble()
@@ -765,13 +726,15 @@ class _UpcomingPayments extends ConsumerWidget {
     // Find recurring transactions and calculate next due date
     final upcoming = <_UpcomingPayment>[];
     final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
     for (final t in allTransactions.where((t) => t.isRecurring)) {
       final nextDate = NotificationService.calculateNextDueDate(
         lastDate: t.date,
         interval: t.recurringInterval,
       );
       if (nextDate != null) {
-        final daysUntil = nextDate.difference(now).inDays;
+        final nextDay = DateTime(nextDate.year, nextDate.month, nextDate.day);
+        final daysUntil = nextDay.difference(today).inDays;
         if (daysUntil <= 30) {
           final category = categories.where((c) => c.id == t.categoryId).firstOrNull;
           upcoming.add(_UpcomingPayment(
@@ -997,27 +960,32 @@ void _markAsPaid(BuildContext context, WidgetRef ref, _UpcomingPayment payment) 
   final notifier = ref.read(transactionNotifierProvider.notifier);
   final messenger = ScaffoldMessenger.of(context);
 
-  // Save original transaction data for undo
   final originalTransaction = payment.transaction;
+  final wasIncome = originalTransaction.amount < 0;
 
-  // Fire async operations (fire-and-forget is acceptable here)
+  final nextDue = NotificationService.calculateNextDueDate(
+    lastDate: originalTransaction.date,
+    interval: originalTransaction.recurringInterval,
+  );
+
   unawaited(
     notifier.addTransaction(
-      amount: payment.transaction.amount.abs(),
-      categoryId: payment.transaction.categoryId,
-      note: payment.transaction.note ?? payment.category?.name ?? 'Payment',
+      amount: originalTransaction.amount.abs(),
+      categoryId: originalTransaction.categoryId,
+      note: originalTransaction.note ?? payment.category?.name ?? 'Payment',
       date: DateTime.now(),
-      paymentMethod: payment.transaction.paymentMethod,
+      paymentMethod: originalTransaction.paymentMethod,
       isRecurring: false,
+      isIncome: wasIncome,
     ).then((_) {
-      // 2. Advance the recurring transaction's date
+      if (nextDue == null) return;
       final updated = Transaction(
         id: originalTransaction.id,
         amount: originalTransaction.amount,
         categoryId: originalTransaction.categoryId,
         accountId: 'default',
         note: originalTransaction.note,
-        date: DateTime.now(),
+        date: nextDue,
         paymentMethod: originalTransaction.paymentMethod,
         isRecurring: originalTransaction.isRecurring,
         isRecurringInstance: originalTransaction.isRecurringInstance,
@@ -1037,218 +1005,4 @@ void _markAsPaid(BuildContext context, WidgetRef ref, _UpcomingPayment payment) 
       duration: const Duration(seconds: 3),
     ),
   );
-}
-
-/// Transaction row with hairline ledger styling.
-class _TransactionRow extends ConsumerWidget {
-  final Transaction transaction;
-
-  const _TransactionRow({required this.transaction});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final categories = ref.watch(categoriesProvider).valueOrNull ?? [];
-    final category = categories.where((c) => c.id == transaction.categoryId).firstOrNull;
-    final catColor = Color(category?.color ?? 0xFF6B7280);
-    final isBalanceHidden = ref.watch(balanceHiddenProvider).valueOrNull ?? false;
-
-    return Container(
-      decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(
-            color: colorScheme.outline.withValues(alpha: 0.06),
-            width: 0.5,
-          ),
-        ),
-      ),
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      child: Row(
-        children: [
-          // Category icon
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(10),
-              color: catColor.withValues(alpha: 0.1),
-            ),
-            child: Icon(
-              getCategoryIcon(category?.icon ?? ''),
-              size: 18,
-              color: catColor,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  category?.name ?? 'Unknown',
-                  style: AppTheme.bodyStyle(
-                    size: 14,
-                    weight: FontWeight.w500,
-                    color: colorScheme.onSurface,
-                  ),
-                ),
-                if (transaction.note != null && transaction.note!.isNotEmpty)
-                  Text(
-                    transaction.note!,
-                    style: AppTheme.bodyStyle(
-                      size: 12,
-                      color: colorScheme.onSurfaceVariant,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-              if (transaction.isRecurringInstance)
-                Padding(
-                  padding: const EdgeInsets.only(top: 2),
-                  child: Row(
-                    children: [
-                      Icon(LucideIcons.sparkles, size: 10, color: AppColors.tertiary.withValues(alpha: 0.7)),
-                      const SizedBox(width: 3),
-                      Text(
-                        'Auto',
-                        style: AppTheme.bodyStyle(
-                          size: 9,
-                          color: AppColors.tertiary.withValues(alpha: 0.7),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Text(
-            transaction.amount < 0
-                ? '+${Formatters.formatCurrency(transaction.amount.abs(), hide: isBalanceHidden)}'
-                : '-${Formatters.formatCurrency(transaction.amount, hide: isBalanceHidden)}',
-            style: AppTheme.financialStyle(
-              size: 14,
-              weight: FontWeight.w600,
-              color: transaction.amount < 0 ? AppColors.success : AppColors.error,
-              letterSpacing: -0.3,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Loading skeleton for transactions — mirrors _TransactionRow shape.
-class _TransactionSkeleton extends StatelessWidget {
-  const _TransactionSkeleton();
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final shimmerColor = colorScheme.primary.withValues(alpha: 0.04);
-    return Column(
-      children: List.generate(4, (i) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        child: Row(
-          children: [
-            Container(
-              width: 38, height: 38,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(10),
-                color: colorScheme.surfaceContainerHighest,
-              ),
-            ).animate(onPlay: (controller) => controller.repeat())
-              .shimmer(duration: 1200.ms, delay: (i * 100).ms, color: shimmerColor),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: 100 + (i * 30).toDouble(),
-                    height: 14,
-                    decoration: BoxDecoration(
-                      color: colorScheme.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                  ).animate(onPlay: (controller) => controller.repeat())
-                    .shimmer(duration: 1200.ms, delay: (150 + i * 100).ms, color: shimmerColor),
-                  const SizedBox(height: 6),
-                  Container(
-                    width: 60, height: 11,
-                    decoration: BoxDecoration(
-                      color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                  ).animate(onPlay: (controller) => controller.repeat())
-                    .shimmer(duration: 1200.ms, delay: (300 + i * 100).ms, color: shimmerColor),
-                ],
-              ),
-            ),
-            Container(
-              width: 60, height: 16,
-              decoration: BoxDecoration(
-                color: colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(4),
-              ),
-            ).animate(onPlay: (controller) => controller.repeat())
-              .shimmer(duration: 1200.ms, delay: (100 + i * 100).ms, color: shimmerColor),
-          ],
-        ),
-      )),
-    );
-  }
-}
-
-/// Empty state — more inviting illustration and clearer CTA.
-class _EmptyState extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 40),
-      child: Column(
-        children: [
-          // Decorative illustration container
-          Container(
-            width: 80,
-            height: 80,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: colorScheme.primary.withValues(alpha: 0.08),
-            ),
-            child: Icon(
-              LucideIcons.receiptText,
-              size: 36,
-              color: colorScheme.primary.withValues(alpha: 0.4),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'No transactions yet',
-            style: AppTheme.displayStyle(
-              size: 16,
-              weight: FontWeight.w600,
-              color: colorScheme.onSurface,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 32),
-            child: Text(
-              'Tap the + button below to add your first expense or income',
-              textAlign: TextAlign.center,
-              style: AppTheme.bodyStyle(
-                size: 13,
-                color: colorScheme.onSurfaceVariant,
-                height: 1.5,
-              ),
-            ),
-          ),
-        ],
-      ),
-    ).animate(target: AccessibilityUtils.shouldAnimate(context) ? null : 1.0).fadeIn(duration: AppConstants.animNormal).slideY(begin: 0.05);
-  }
 }

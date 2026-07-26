@@ -375,7 +375,11 @@ class _SpendCalendarState extends ConsumerState<SpendCalendar> {
           setState(() => _currentMonth = targetMonth);
         }
         // Reset the provider so re-tapping the same bar navigates again
-        ref.read(calendarFocusTargetProvider.notifier).state = null;
+        Future.microtask(() {
+          if (mounted) {
+            ref.read(calendarFocusTargetProvider.notifier).state = null;
+          }
+        });
       }
     });
 

@@ -38,7 +38,9 @@ class GoalNotifier extends StateNotifier<AsyncValue<void>> {
 
   Future<void> updateGoalProgress(String id, double amount) async {
     final db = ref.read(databaseProvider);
-    final goal = await (db.select(db.goals)..where((t) => t.id.equals(id))).getSingle();
+    final rows = await (db.select(db.goals)..where((t) => t.id.equals(id))).get();
+    final goal = rows.isNotEmpty ? rows.first : null;
+    if (goal == null) return;
     final newAmount = (goal.currentAmount + amount).clamp(0.0, double.infinity);
     await (db.update(db.goals)..where((t) => t.id.equals(id))).write(
       GoalsCompanion(currentAmount: Value(newAmount)),

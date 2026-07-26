@@ -171,14 +171,14 @@ final budgetNotifierProvider =
 final effectiveCategoryBudgetProvider =
     FutureProvider.family<({double baseAllocated, double effectiveAllocated, double spent, bool rollover}), String>(
         (ref, categoryId) async {
-  final thisMonthBudgets = await ref.read(thisMonthBudgetsProvider.future);
+  final thisMonthBudgets = await ref.watch(thisMonthBudgetsProvider.future);
   final budget = thisMonthBudgets.where((b) => b.categoryId == categoryId).firstOrNull;
 
   final baseAllocated = budget?.allocatedAmount ?? 0.0;
   final rollover = budget?.rollover ?? false;
 
   // Derive live used amount from this month's transactions
-  final thisMonthTxns = await ref.read(thisMonthTransactionsProvider.future);
+  final thisMonthTxns = await ref.watch(thisMonthTransactionsProvider.future);
   final spent = thisMonthTxns
       .where((t) => t.categoryId == categoryId && t.amount > 0)
       .fold<double>(0, (sum, t) => sum + t.amount);
@@ -186,10 +186,10 @@ final effectiveCategoryBudgetProvider =
   double carryover = 0.0;
   if (rollover) {
     // Check previous month budget and usage
-    final prevMonthBudgets = await ref.read(budgetsByMonthProvider(Formatters.previousMonthKey).future);
+    final prevMonthBudgets = await ref.watch(budgetsByMonthProvider(Formatters.previousMonthKey).future);
     final prevBudget = prevMonthBudgets.where((b) => b.categoryId == categoryId).firstOrNull;
     if (prevBudget != null) {
-      final prevMonthTxns = await ref.read(transactionsByMonthProvider(Formatters.previousMonthKey).future);
+      final prevMonthTxns = await ref.watch(transactionsByMonthProvider(Formatters.previousMonthKey).future);
       final prevSpent = prevMonthTxns
           .where((t) => t.categoryId == categoryId && t.amount > 0)
           .fold<double>(0, (sum, t) => sum + t.amount);
@@ -213,7 +213,7 @@ final effectiveCategoryBudgetProvider =
 /// Provider for the used budget ratio per category (using effective budget with rollover)
 final categoryBudgetUsageProvider =
     FutureProvider.family<double, String>((ref, categoryId) async {
-  final info = await ref.read(effectiveCategoryBudgetProvider(categoryId).future);
+  final info = await ref.watch(effectiveCategoryBudgetProvider(categoryId).future);
   if (info.effectiveAllocated <= 0) return 0.0;
   return (info.spent / info.effectiveAllocated).clamp(0, 2).toDouble();
 });

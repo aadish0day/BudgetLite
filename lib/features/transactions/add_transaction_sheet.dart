@@ -667,6 +667,7 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
         recurringInterval: _recurringInterval,
         recurringEndDate: _recurringEndDate,
         receiptImagePath: _receiptImagePath,
+        isIncome: _transactionType == 'income',
       );
 
       // Check budget thresholds after adding

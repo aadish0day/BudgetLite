@@ -23,15 +23,24 @@ import 'csv_import_sheet.dart';
 import 'auto_category_rules_sheet.dart';
 import '../sms/sms_review_queue_screen.dart';
 
-/// Global subscription for real-time SMS events.
-/// Managed at top level because SettingsScreen is a ConsumerWidget (not stateful).
-StreamSubscription<dynamic>? _smsSub;
-
-class SettingsScreen extends ConsumerWidget {
+class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends ConsumerState<SettingsScreen> {
+  StreamSubscription<SmsMessage>? _smsSub;
+
+  @override
+  void dispose() {
+    _smsSub?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final biometricLock = ref.watch(biometricLockEnabledProvider).valueOrNull ?? false;
     final smsParsing = ref.watch(smsParsingEnabledProvider).valueOrNull ?? false;
@@ -458,6 +467,8 @@ class SettingsScreen extends ConsumerWidget {
       }
     } else {
       await ref.read(settingsNotifierProvider.notifier).setSmsParsing(false);
+      _smsSub?.cancel();
+      _smsSub = null;
       await SmsListenerService().stopListening();
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -553,6 +564,7 @@ class SettingsScreen extends ConsumerWidget {
     );
     if (parsedTxn != null) {
       ref.read(smsReviewQueueProvider.notifier).addToQueue(parsedTxn);
+      ref.read(pendingSmsTransactionProvider.notifier).state = parsedTxn;
     }
   }
 
@@ -1096,7 +1108,10 @@ class _ManageCategoriesSheet extends ConsumerWidget {
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            TextButton(onPressed: () {
+              nameCtrl.dispose();
+              Navigator.pop(ctx);
+            }, child: const Text('Cancel')),
             FilledButton(
               onPressed: () async {
                 final name = nameCtrl.text.trim();
@@ -1114,14 +1129,17 @@ class _ManageCategoriesSheet extends ConsumerWidget {
                 );
                 ref.invalidate(categoriesProvider);
                 ref.invalidate(expenseCategoriesProvider);
-                if (ctx.mounted) Navigator.pop(ctx);
+                if (ctx.mounted) {
+                  nameCtrl.dispose();
+                  Navigator.pop(ctx);
+                }
               },
               child: const Text('Save'),
             ),
           ],
         ),
       ),
-    );
+    ).whenComplete(() => nameCtrl.dispose());
   }
 
   void _showEditCategoryDialog(BuildContext context, WidgetRef ref, Category category) {
@@ -1136,7 +1154,10 @@ class _ManageCategoriesSheet extends ConsumerWidget {
           decoration: const InputDecoration(labelText: 'Category Name'),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          TextButton(onPressed: () {
+            nameCtrl.dispose();
+            Navigator.pop(ctx);
+          }, child: const Text('Cancel')),
           FilledButton(
             onPressed: () async {
               final newName = nameCtrl.text.trim();
@@ -1146,7 +1167,10 @@ class _ManageCategoriesSheet extends ConsumerWidget {
                   .write(CategoriesCompanion(name: Value(newName)));
               ref.invalidate(categoriesProvider);
               ref.invalidate(expenseCategoriesProvider);
-              if (ctx.mounted) Navigator.pop(ctx);
+              if (ctx.mounted) {
+                nameCtrl.dispose();
+                Navigator.pop(ctx);
+              }
             },
             child: const Text('Save'),
           ),

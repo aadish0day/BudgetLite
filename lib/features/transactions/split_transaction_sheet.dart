@@ -27,10 +27,9 @@ class _SplitTransactionSheetState extends ConsumerState<SplitTransactionSheet> {
   late DateTime _selectedDate;
 
   // Split lines: each has a category + amount
-  final List<_SplitLine> _splits = [
-    _SplitLine(categoryId: 'food', amount: ''),
-    _SplitLine(categoryId: 'transport', amount: ''),
-  ];
+  final List<_SplitLine> _splits = [];
+
+  final List<TextEditingController> _splitCtrls = [];
 
   bool _isSubmitting = false;
 
@@ -39,11 +38,35 @@ class _SplitTransactionSheetState extends ConsumerState<SplitTransactionSheet> {
     super.initState();
     _paymentMethod = 'Cash';
     _selectedDate = DateTime.now();
+    final cats = ref.read(categoriesProvider).valueOrNull ?? [];
+    final expenseCats = cats.where((c) => c.type == 'expense').toList();
+    final defaults = expenseCats.take(2).map((c) => c.id).toList();
+    if (defaults.length >= 2) {
+      _splits.addAll([
+        _SplitLine(categoryId: defaults[0], amount: ''),
+        _SplitLine(categoryId: defaults[1], amount: ''),
+      ]);
+    } else {
+      _splits.add(_SplitLine(categoryId: defaults.isNotEmpty ? defaults[0] : 'other', amount: ''));
+    }
+    _syncSplitCtrls();
+  }
+
+  void _syncSplitCtrls() {
+    while (_splitCtrls.length < _splits.length) {
+      _splitCtrls.add(TextEditingController(text: _splits[_splitCtrls.length].amount));
+    }
+    while (_splitCtrls.length > _splits.length) {
+      _splitCtrls.removeLast().dispose();
+    }
   }
 
   @override
   void dispose() {
     _totalCtrl.dispose();
+    for (final c in _splitCtrls) {
+      c.dispose();
+    }
     super.dispose();
   }
 
@@ -62,12 +85,16 @@ class _SplitTransactionSheetState extends ConsumerState<SplitTransactionSheet> {
   void _addSplitLine() {
     setState(() {
       _splits.add(_SplitLine(categoryId: 'other', amount: ''));
+      _syncSplitCtrls();
     });
   }
 
   void _removeSplitLine(int index) {
     if (_splits.length <= 2) return; // keep at least 2 lines
-    setState(() => _splits.removeAt(index));
+    setState(() {
+      _splits.removeAt(index);
+      _syncSplitCtrls();
+    });
   }
 
   void _autoBalanceRemainder() {
@@ -168,8 +195,10 @@ class _SplitTransactionSheetState extends ConsumerState<SplitTransactionSheet> {
               ..._splits.asMap().entries.map((entry) {
                 final idx = entry.key;
                 final split = entry.value;
+                final ctrl = idx < _splitCtrls.length ? _splitCtrls[idx] : TextEditingController();
                 return _SplitLineRow(
                   split: split,
+                  controller: ctrl,
                   index: idx,
                   categories: expenseCats,
                   canRemove: _splits.length > 2,
@@ -349,14 +378,16 @@ class _SplitTransactionSheetState extends ConsumerState<SplitTransactionSheet> {
     final notifier = ref.read(transactionNotifierProvider.notifier);
 
     try {
+      final categories = ref.read(categoriesProvider).valueOrNull ?? [];
       for (final split in _splits) {
         final amt = double.tryParse(split.amount) ?? 0;
         if (amt <= 0) continue;
+        final catName = categories.where((c) => c.id == split.categoryId).firstOrNull?.name ?? split.categoryId;
 
         await notifier.addTransaction(
           amount: amt,
           categoryId: split.categoryId,
-          note: 'Split: ${split.categoryId}',
+          note: 'Split: $catName',
           date: _selectedDate,
           paymentMethod: _paymentMethod,
         );
@@ -394,6 +425,7 @@ class _SplitLine {
 
 class _SplitLineRow extends StatelessWidget {
   final _SplitLine split;
+  final TextEditingController controller;
   final int index;
   final List<Category> categories;
   final bool canRemove;
@@ -404,6 +436,7 @@ class _SplitLineRow extends StatelessWidget {
 
   const _SplitLineRow({
     required this.split,
+    required this.controller,
     required this.index,
     required this.categories,
     required this.canRemove,
@@ -467,7 +500,7 @@ class _SplitLineRow extends StatelessWidget {
             child: SizedBox(
               height: 40,
               child: TextField(
-                controller: TextEditingController(text: split.amount),
+                controller: controller,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 style: AppTheme.financialStyle(size: 14, weight: FontWeight.w600),
                 decoration: InputDecoration(

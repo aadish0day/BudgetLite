@@ -103,8 +103,8 @@ final dailyIncomeProvider = FutureProvider.family<
 
 /// Budget health for current month: utilization %, status, remaining
 final budgetHealthProvider = FutureProvider<BudgetHealth>((ref) async {
-  final budgets = await ref.read(thisMonthBudgetsProvider.future);
-  final transactions = await ref.read(thisMonthTransactionsProvider.future);
+  final budgets = await ref.watch(thisMonthBudgetsProvider.future);
+  final transactions = await ref.watch(thisMonthTransactionsProvider.future);
 
   final categorySpending = <String, double>{};
   for (final t in transactions.where((t) => t.amount > 0 && t.categoryId != 'transfer')) {
@@ -153,9 +153,9 @@ BudgetStatus _budgetStatus(double percent) {
 final spendingVelocityProvider = FutureProvider<SpendingVelocity>((ref) async {
   final now = DateTime.now();
 
-  final thisMonthTxns = await ref.read(thisMonthTransactionsProvider.future);
+  final thisMonthTxns = await ref.watch(thisMonthTransactionsProvider.future);
   final lastMonthKey = Formatters.formatMonthKey(DateTime(now.year, now.month - 1, 1));
-  final lastMonthTxns = await ref.read(transactionsByMonthProvider(lastMonthKey).future);
+  final lastMonthTxns = await ref.watch(transactionsByMonthProvider(lastMonthKey).future);
 
   final thisMonthSpent = thisMonthTxns
       .where((t) => t.amount > 0 && t.categoryId != 'transfer')
@@ -169,7 +169,7 @@ final spendingVelocityProvider = FutureProvider<SpendingVelocity>((ref) async {
   final dailyAvg = daysElapsed > 0 ? thisMonthSpent / daysElapsed : 0.0;
   final projectedMonthEnd = dailyAvg * daysInMonth;
 
-  final budgets = await ref.read(thisMonthBudgetsProvider.future);
+  final budgets = await ref.watch(thisMonthBudgetsProvider.future);
   final totalBudget = budgets.fold<double>(0.0, (s, b) => s + b.allocatedAmount);
   final budgetDailyTarget = totalBudget > 0 ? totalBudget / daysInMonth : 0.0;
   final pacingVsBudgetPercent = budgetDailyTarget > 0 ? (dailyAvg / budgetDailyTarget * 100) : 0.0;
@@ -196,7 +196,7 @@ final spendingInsightsProvider = FutureProvider<List<SpendingInsight>>((ref) asy
   final now = DateTime.now();
 
   // Get velocity data
-  final velocity = await ref.read(spendingVelocityProvider.future);
+  final velocity = await ref.watch(spendingVelocityProvider.future);
 
   // 1. Pacing insight
   if (velocity.totalBudget > 0) {
@@ -233,7 +233,7 @@ final spendingInsightsProvider = FutureProvider<List<SpendingInsight>>((ref) asy
   }
 
   // 3. No-spend streak (from contribution graph data)
-  final dailySpending = await ref.read(dailySpendingProvider((year: now.year, categoryId: null)).future);
+  final dailySpending = await ref.watch(dailySpendingProvider((year: now.year, categoryId: null)).future);
   final streak = _calculateCurrentStreak(dailySpending, now);
   if (streak >= 3) {
     insights.add(SpendingInsight(

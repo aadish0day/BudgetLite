@@ -128,8 +128,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     final notifier = ref.read(transactionNotifierProvider.notifier);
     final deletedTxn = t;
 
-    // Perform deletion asynchronously so Dismissible isn't removed before returning true
-    notifier.deleteTransaction(t.id);
+    await notifier.deleteTransaction(t.id);
 
     // Show undo snackbar
     messenger.showSnackBar(
@@ -140,6 +139,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
         action: SnackBarAction(
           label: 'Undo',
           onPressed: () async {
+            final wasIncome = deletedTxn.amount < 0;
             await notifier.addTransaction(
               amount: deletedTxn.amount.abs(),
               categoryId: deletedTxn.categoryId,
@@ -148,7 +148,9 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
               paymentMethod: deletedTxn.paymentMethod,
               isRecurring: deletedTxn.isRecurring,
               recurringInterval: deletedTxn.recurringInterval,
+              recurringEndDate: deletedTxn.recurringEndDate,
               receiptImagePath: deletedTxn.receiptImagePath,
+              isIncome: wasIncome,
             );
           },
         ),
@@ -257,20 +259,72 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                     hasFilters: _hasActiveFilters(),
                   );
                 }
+
+                // Group transactions by Date
+                final Map<String, List<Transaction>> grouped = {};
+                for (final t in filtered) {
+                  final dateKey = Formatters.formatDate(t.date);
+                  grouped.putIfAbsent(dateKey, () => []).add(t);
+                }
+
+                final groupKeys = grouped.keys.toList();
+
                 return ListView.builder(
                   padding: AppConstants.screenPadding,
-                  itemCount: filtered.length,
-                  itemBuilder: (context, index) {
-                    final t = filtered[index];
-                    return _TransactionCard(
-                      transaction: t,
-                      category: categories.where((c) => c.id == t.categoryId).firstOrNull,
-                      onTap: () => _editTransaction(t),
-                      onDelete: (transaction) => _deleteWithUndo(transaction),
+                  itemCount: groupKeys.length,
+                  itemBuilder: (context, groupIndex) {
+                    final dateKey = groupKeys[groupIndex];
+                    final groupTxns = grouped[dateKey]!;
+                    final dailyExpense = groupTxns.where((t) => t.amount > 0).fold<double>(0, (sum, t) => sum + t.amount);
+                    final dailyIncome = groupTxns.where((t) => t.amount < 0).fold<double>(0, (sum, t) => sum + t.amount.abs());
+                    final dailyNet = dailyIncome - dailyExpense;
+
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // ── Group Header with Date & Daily Net Summary ──
+                        Padding(
+                          padding: const EdgeInsets.only(top: 14, bottom: 8, left: 4, right: 4),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                dateKey,
+                                style: AppTheme.displayStyle(
+                                  size: 13,
+                                  weight: FontWeight.w700,
+                                  color: Theme.of(context).colorScheme.onSurface,
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: (dailyNet >= 0 ? AppColors.success : AppColors.error).withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  'Net: ${dailyNet >= 0 ? "+" : ""}${Formatters.formatCurrency(dailyNet)}',
+                                  style: AppTheme.financialStyle(
+                                    size: 11,
+                                    weight: FontWeight.w700,
+                                    color: dailyNet >= 0 ? AppColors.success : AppColors.error,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        ...groupTxns.map((t) => _TransactionCard(
+                              transaction: t,
+                              category: categories.where((c) => c.id == t.categoryId).firstOrNull,
+                              onTap: () => _editTransaction(t),
+                              onDelete: (transaction) => _deleteWithUndo(transaction),
+                            )),
+                      ],
                     ).animate(target: AccessibilityUtils.shouldAnimate(context) ? null : 1.0).fadeIn(
-                      duration: AppConstants.animNormal,
-                      delay: AppConstants.staggerDelay * index,
-                    );
+                          duration: AppConstants.animNormal,
+                          delay: AppConstants.staggerDelay * groupIndex,
+                        );
                   },
                 );
               },

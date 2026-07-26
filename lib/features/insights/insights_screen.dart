@@ -18,6 +18,10 @@ import '../../providers/insights_provider.dart';
 import '../../core/database/database.dart';
 import '../../providers/database_provider.dart';
 import '../../core/widgets/insight_cards.dart';
+import '../../core/widgets/metric_card.dart';
+import '../../core/widgets/section_title.dart';
+import '../../core/widgets/empty_state.dart';
+import '../../core/widgets/loading_skeleton.dart';
 import 'spend_calendar.dart';
 import 'pdf_report_generator.dart';
 import 'package:printing/printing.dart';
@@ -65,7 +69,7 @@ class InsightsScreen extends ConsumerWidget {
         ],
       ),
       body: transactionsAsync.when(
-        loading: () => const _InsightsSkeleton(),
+        loading: () => const LoadingSkeleton(),
         error: (_, _) => const Center(child: Text('Failed to load insights')),
         data: (_) => RefreshIndicator(
         onRefresh: () async {
@@ -101,7 +105,7 @@ class InsightsScreen extends ConsumerWidget {
             ),
             padding: AppConstants.cardPadding,
             child: categorySpending.isEmpty
-                ? _ChartEmptyState()
+                ? const ChartEmptyState()
                 : SizedBox(
                     height: 220,
                     child: Row(
@@ -423,9 +427,8 @@ class _DashboardTotals extends StatelessWidget {
 
     return Row(
       children: [
-        // Money In
         Expanded(
-          child: _DashboardCard(
+          child: MetricCard(
             label: 'Money In',
             value: Formatters.formatCurrency(income),
             icon: LucideIcons.plusCircle,
@@ -435,9 +438,8 @@ class _DashboardTotals extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 10),
-        // Spent
         Expanded(
-          child: _DashboardCard(
+          child: MetricCard(
             label: 'Spent',
             value: Formatters.formatCurrency(spent),
             icon: LucideIcons.trendingDown,
@@ -447,9 +449,8 @@ class _DashboardTotals extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 10),
-        // Left (income - spent, with warning when negative)
         Expanded(
-          child: _DashboardCardLeft(
+          child: MetricCard(
             label: 'Left',
             value: Formatters.formatCurrency(left.abs()),
             prefix: isNegative ? '-' : '',
@@ -580,159 +581,7 @@ class _BudgetHealthBanner extends ConsumerWidget {
   }
 }
 
-class _DashboardCard extends StatelessWidget {
-  final String label;
-  final String value;
-  final IconData icon;
-  final Color color;
-  final bool isDark;
-  final ColorScheme colorScheme;
 
-  const _DashboardCard({
-    required this.label,
-    required this.value,
-    required this.icon,
-    required this.color,
-    required this.isDark,
-    required this.colorScheme,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(AppConstants.cardRadius),
-        color: isDark ? AppColors.cardDark : AppColors.cardLight,
-        border: Border.all(
-          color: colorScheme.outline.withValues(alpha: 0.08),
-        ),
-      ),
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(10),
-              color: color.withValues(alpha: 0.12),
-            ),
-            child: Icon(icon, size: 18, color: color),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            value,
-            style: AppTheme.financialStyle(
-              size: 20,
-              weight: FontWeight.w700,
-              color: colorScheme.onSurface,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            label,
-            style: AppTheme.bodyStyle(
-              size: 12,
-              color: colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Left (remaining) card — shows warning when negative with context "₹X over this month"
-class _DashboardCardLeft extends StatelessWidget {
-  final String label;
-  final String value;
-  final String prefix;
-  final bool isNegative;
-  final IconData icon;
-  final Color color;
-  final ColorScheme colorScheme;
-  final bool isDark;
-  final String? subtitle;
-
-  const _DashboardCardLeft({
-    required this.label,
-    required this.value,
-    required this.prefix,
-    required this.isNegative,
-    required this.icon,
-    required this.color,
-    required this.colorScheme,
-    required this.isDark,
-    this.subtitle,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(AppConstants.cardRadius),
-        color: isDark ? AppColors.cardDark : AppColors.cardLight,
-        border: Border.all(
-          color: isNegative
-              ? AppColors.error.withValues(alpha: 0.3)
-              : colorScheme.outline.withValues(alpha: 0.08),
-        ),
-      ),
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(10),
-              color: color.withValues(alpha: 0.12),
-            ),
-            child: Icon(icon, size: 18, color: color),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            prefix + value,
-            style: AppTheme.financialStyle(
-              size: 20,
-              weight: FontWeight.w700,
-              color: isNegative ? AppColors.error : colorScheme.onSurface,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            label,
-            style: AppTheme.bodyStyle(
-              size: 12,
-              color: isNegative ? AppColors.error.withValues(alpha: 0.8) : colorScheme.onSurfaceVariant,
-              weight: isNegative ? FontWeight.w600 : FontWeight.w400,
-            ),
-          ),
-          if (subtitle != null) ...[
-            const SizedBox(height: 4),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(5),
-                color: AppColors.error.withValues(alpha: 0.1),
-              ),
-              child: Text(
-                subtitle!,
-                style: AppTheme.bodyStyle(
-                  size: 10,
-                  color: AppColors.error,
-                  weight: FontWeight.w500,
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
 
 // ── Month-over-Month Bar Chart ──
 class _MonthOverMonthChart extends ConsumerWidget {
@@ -996,7 +845,6 @@ class _TrendChart extends ConsumerWidget {
 
         var data = snapshot.data!;
 
-        // If cumulative, compute running totals
         if (isCumulative) {
           double running = 0;
           data = data.map((v) {
@@ -1008,82 +856,124 @@ class _TrendChart extends ConsumerWidget {
         final maxVal = data.reduce(max);
         final minVal = data.reduce(min);
         final range = maxVal - minVal > 0 ? maxVal - minVal : 1.0;
+        final avgMonthly = data.isEmpty ? 0.0 : (data.reduce((a, b) => a + b) / data.length);
 
-        return LineChart(
-          LineChartData(
-            gridData: FlGridData(
-              show: true,
-              drawHorizontalLine: true,
-              drawVerticalLine: false,
-              horizontalInterval: range / 4,
-              getDrawingHorizontalLine: (value) => FlLine(
-                color: colorScheme.outline.withValues(alpha: 0.08),
-                strokeWidth: 1,
+        return Column(
+          children: [
+            // Averages summary chip bar
+            Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+                borderRadius: BorderRadius.circular(10),
               ),
-            ),
-            titlesData: FlTitlesData(
-              leftTitles: AxisTitles(
-                sideTitles: SideTitles(showTitles: false),
-              ),
-              topTitles: AxisTitles(
-                sideTitles: SideTitles(showTitles: false),
-              ),
-              rightTitles: AxisTitles(
-                sideTitles: SideTitles(showTitles: false),
-              ),
-              bottomTitles: AxisTitles(
-                sideTitles: SideTitles(
-                  showTitles: true,
-                  interval: 1,
-                  getTitlesWidget: (value, meta) {
-                    final idx = value.toInt();
-                    if (idx < 0 || idx >= months.length) {
-                      return const SizedBox.shrink();
-                    }
-                    final date = DateTime(now.year, now.month - 5 + idx, 1);
-                    return Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: Text(
-                        Formatters.formatDateShort(date),
-                        style: AppTheme.bodyStyle(
-                          size: 10,
-                          color: colorScheme.onSurfaceVariant,
-                        ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Icon(LucideIcons.barChart2, size: 14, color: colorScheme.primary),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Monthly Avg: ${Formatters.formatCurrency(avgMonthly)}',
+                        style: AppTheme.bodyStyle(size: 11, weight: FontWeight.w600, color: colorScheme.onSurface),
                       ),
-                    );
-                  },
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      Container(width: 8, height: 8, decoration: const BoxDecoration(shape: BoxShape.circle, color: AppColors.primary)),
+                      const SizedBox(width: 4),
+                      Text('Spending', style: AppTheme.bodyStyle(size: 10, color: colorScheme.onSurfaceVariant)),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: LineChart(
+                LineChartData(
+                  gridData: FlGridData(
+                    show: true,
+                    drawHorizontalLine: true,
+                    drawVerticalLine: false,
+                    horizontalInterval: range / 4,
+                    getDrawingHorizontalLine: (value) => FlLine(
+                      color: colorScheme.outline.withValues(alpha: 0.08),
+                      strokeWidth: 1,
+                    ),
+                  ),
+                  lineTouchData: LineTouchData(
+                    touchTooltipData: LineTouchTooltipData(
+                      getTooltipColor: (spot) => colorScheme.surfaceContainerHigh,
+                      getTooltipItems: (touchedSpots) {
+                        return touchedSpots.map((spot) {
+                          return LineTooltipItem(
+                            Formatters.formatCurrency(spot.y),
+                            TextStyle(color: colorScheme.onSurface, fontWeight: FontWeight.bold, fontSize: 12),
+                          );
+                        }).toList();
+                      },
+                    ),
+                  ),
+                  titlesData: FlTitlesData(
+                    leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        interval: 1,
+                        getTitlesWidget: (value, meta) {
+                          final idx = value.toInt();
+                          if (idx < 0 || idx >= months.length) return const SizedBox.shrink();
+                          final date = DateTime(now.year, now.month - 5 + idx, 1);
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Text(
+                              DateFormat('MMM').format(date),
+                              style: AppTheme.bodyStyle(
+                                size: 10,
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                  borderData: FlBorderData(show: false),
+                  minY: 0,
+                  maxY: maxVal * 1.15,
+                  lineBarsData: [
+                    LineChartBarData(
+                      spots: List.generate(data.length, (i) => FlSpot(i.toDouble(), data[i])),
+                      isCurved: true,
+                      color: AppColors.primary,
+                      barWidth: 3,
+                      isStrokeCapRound: true,
+                      dotData: FlDotData(
+                        show: true,
+                        getDotPainter: (spot, percent, barData, index) {
+                          return FlDotCirclePainter(
+                            radius: 4,
+                            color: AppColors.primary,
+                            strokeWidth: 2,
+                            strokeColor: colorScheme.surface,
+                          );
+                        },
+                      ),
+                      belowBarData: BarAreaData(
+                        show: true,
+                        color: AppColors.primary.withValues(alpha: 0.1),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
-            borderData: FlBorderData(show: false),
-            minY: 0,
-            maxY: maxVal * 1.15,
-            lineBarsData: [
-              LineChartBarData(
-                spots: List.generate(data.length,
-                    (i) => FlSpot(i.toDouble(), data[i])),
-                isCurved: true,
-                color: AppColors.primary,
-                barWidth: 3,
-                isStrokeCapRound: true,
-                dotData: FlDotData(
-                  show: true,
-                  getDotPainter: (spot, percent, barData, index) {
-                    return FlDotCirclePainter(
-                      radius: 4,
-                      color: AppColors.primary,
-                      strokeWidth: 2,
-                      strokeColor: colorScheme.surface,
-                    );
-                  },
-                ),
-                belowBarData: BarAreaData(
-                  show: true,
-                  color: AppColors.primary.withValues(alpha: 0.08),
-                ),
-              ),
-            ],
-          ),
+          ],
         );
       },
     );
@@ -1117,8 +1007,8 @@ class _WeeklyChart extends StatelessWidget {
       } else if (t.date.isAfter(lastMonday) && t.date.isBefore(thisMonday)) {
         final dayIdx = t.date.weekday - 1;
         if (dayIdx >= 0 && dayIdx < 7) lastWeek[dayIdx] += t.amount;
-      }
-    }
+  }
+}
 
     final maxVal = [...thisWeek, ...lastWeek].reduce(max);
 
@@ -1673,7 +1563,7 @@ void _showCustomReportSheet(BuildContext context, WidgetRef ref) {
                   const SizedBox(height: 20),
 
                   // Date range picker
-                  _ReportSectionTitle('Date Range'),
+                  SectionTitle('Date Range'),
                   const SizedBox(height: 12),
                   InkWell(
                     onTap: () async {
@@ -1718,7 +1608,7 @@ void _showCustomReportSheet(BuildContext context, WidgetRef ref) {
                   const SizedBox(height: 20),
 
                   // Category filter
-                  _ReportSectionTitle('Categories'),
+                  SectionTitle('Categories'),
                   const SizedBox(height: 12),
                   FutureBuilder<List<Category>>(
                     future: ref.read(categoriesProvider.future),
@@ -1809,95 +1699,5 @@ Future<void> _generateAndSharePDF(BuildContext context, CustomReportData data) a
         ),
       );
     }
-  }
-}
-
-class _ReportSectionTitle extends StatelessWidget {
-  final String title;
-  const _ReportSectionTitle(this.title);
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Text(
-      title,
-      style: AppTheme.bodyStyle(
-        size: 12,
-        weight: FontWeight.w600,
-        color: colorScheme.onSurfaceVariant,
-        letterSpacing: 0.5,
-      ),
-    );
-  }
-}
-
-class _ChartEmptyState extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            LucideIcons.chartBar,
-            size: 40,
-            color: colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'No data to show',
-            style: AppTheme.bodyStyle(
-              size: 13,
-              color: colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _InsightsSkeleton extends StatelessWidget {
-  const _InsightsSkeleton();
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return ListView(
-      padding: AppConstants.screenPadding,
-      children: [
-        // Totals banner skeleton
-        Container(
-          height: 100,
-          decoration: BoxDecoration(
-            color: colorScheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(AppConstants.cardRadius),
-          ),
-        ).animate(onPlay: (c) => c.repeat())
-          .shimmer(duration: 1200.ms, color: colorScheme.primary.withValues(alpha: 0.08)),
-        const SizedBox(height: 20),
-        // Pie chart skeleton
-        Container(
-          height: 280,
-          decoration: BoxDecoration(
-            color: colorScheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(AppConstants.cardRadius),
-          ),
-        ).animate(onPlay: (c) => c.repeat())
-          .shimmer(duration: 1200.ms, delay: 200.ms, color: colorScheme.primary.withValues(alpha: 0.08)),
-        const SizedBox(height: 20),
-        // Bar chart skeleton
-        Container(
-          height: 220,
-          decoration: BoxDecoration(
-            color: colorScheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(AppConstants.cardRadius),
-          ),
-        ).animate(onPlay: (c) => c.repeat())
-          .shimmer(duration: 1200.ms, delay: 400.ms, color: colorScheme.primary.withValues(alpha: 0.08)),
-      ],
-    );
   }
 }

@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import '../core/database/database.dart';
 import '../core/utils/categorization_rule.dart';
+import '../core/utils/accessibility_utils.dart';
 import 'database_provider.dart';
 
 final settingsProvider = FutureProvider.family<String?, String>((ref, key) async {
@@ -246,32 +247,30 @@ class SettingsNotifier extends StateNotifier<AsyncValue<void>> {
   Future<void> setBudgetNotified(String categoryId, String level) async {
     final stored = await getSetting('budget_notified');
     final map = stored != null && stored.isNotEmpty
-        ? Map<String, dynamic>.from(const JsonDecoder().convert(stored) as Map)
+        ? AccessibilityUtils.decodeJson(stored)
         : <String, dynamic>{};
     map[categoryId] = level;
-    await setSetting('budget_notified', const JsonEncoder().convert(map));
+    await setSetting('budget_notified', AccessibilityUtils.encodeJson(map));
   }
 
-  /// Check if a budget threshold was already notified for a category this month.
   Future<bool> wasBudgetNotified(String categoryId, String level) async {
     final stored = await getSetting('budget_notified');
     if (stored == null || stored.isEmpty) return false;
     try {
-      final map = Map<String, dynamic>.from(const JsonDecoder().convert(stored) as Map);
+      final map = AccessibilityUtils.decodeJson(stored);
       return map[categoryId] == level;
     } catch (_) {
       return false;
     }
   }
 
-  /// Reset budget notifications for a category (when ratio drops below threshold).
   Future<void> resetBudgetNotified(String categoryId) async {
     final stored = await getSetting('budget_notified');
     if (stored == null || stored.isEmpty) return;
     try {
-      final map = Map<String, dynamic>.from(const JsonDecoder().convert(stored) as Map);
+      final map = AccessibilityUtils.decodeJson(stored);
       map.remove(categoryId);
-      await setSetting('budget_notified', const JsonEncoder().convert(map));
+      await setSetting('budget_notified', AccessibilityUtils.encodeJson(map));
     } catch (_) {}
   }
   Future<bool> getBalanceHidden() async {
@@ -313,10 +312,9 @@ class SettingsNotifier extends StateNotifier<AsyncValue<void>> {
         ? Set<String>.from(const JsonDecoder().convert(stored) as List)
         : <String>{};
     set.add(transactionId);
-    await setSetting('subscription_reviewed', const JsonEncoder().convert(set.toList()));
+    await setSetting('subscription_reviewed', jsonEncode(set.toList()));
   }
 
-  /// Check if a subscription transaction has been reviewed/used by the user.
   Future<bool> isSubscriptionReviewed(String transactionId) async {
     final stored = await getSetting('subscription_reviewed');
     if (stored == null || stored.isEmpty) return false;
@@ -328,14 +326,13 @@ class SettingsNotifier extends StateNotifier<AsyncValue<void>> {
     }
   }
 
-  /// Reset a subscription's review status (mark as not reviewed).
   Future<void> resetSubscriptionReview(String transactionId) async {
     final stored = await getSetting('subscription_reviewed');
     if (stored == null || stored.isEmpty) return;
     try {
       final set = Set<String>.from(const JsonDecoder().convert(stored) as List);
       set.remove(transactionId);
-      await setSetting('subscription_reviewed', const JsonEncoder().convert(set.toList()));
+      await setSetting('subscription_reviewed', jsonEncode(set.toList()));
     } catch (_) {}
   }
 }

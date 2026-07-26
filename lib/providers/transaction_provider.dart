@@ -9,6 +9,8 @@ import '../core/utils/sms_parser.dart';
 import '../core/utils/duplicate_detector.dart';
 import '../core/utils/notification_service.dart';
 import 'database_provider.dart';
+import 'insights_provider.dart';
+import 'budget_provider.dart';
 import 'settings_provider.dart';
 
 final transactionsProvider = StreamProvider.autoDispose<List<Transaction>>((ref) {
@@ -116,6 +118,10 @@ class TransactionNotifier extends StateNotifier<AsyncValue<void>> {
     ref.invalidate(thisMonthTransactionsProvider);
     ref.invalidate(totalSpentThisMonthProvider);
     ref.invalidate(totalIncomeThisMonthProvider);
+    ref.invalidate(budgetHealthProvider);
+    ref.invalidate(spendingVelocityProvider);
+    ref.invalidate(spendingInsightsProvider);
+    ref.invalidate(effectiveCategoryBudgetProvider(categoryId));
 
     _checkBudgetAlerts(categoryId, date);
   }
@@ -125,6 +131,12 @@ class TransactionNotifier extends StateNotifier<AsyncValue<void>> {
     await db.update(db.transactions).replace(transaction);
     ref.invalidate(transactionsProvider);
     ref.invalidate(thisMonthTransactionsProvider);
+    ref.invalidate(totalSpentThisMonthProvider);
+    ref.invalidate(totalIncomeThisMonthProvider);
+    ref.invalidate(budgetHealthProvider);
+    ref.invalidate(spendingVelocityProvider);
+    ref.invalidate(spendingInsightsProvider);
+    ref.invalidate(effectiveCategoryBudgetProvider(transaction.categoryId));
 
     _checkBudgetAlerts(transaction.categoryId, transaction.date);
   }
@@ -145,6 +157,12 @@ class TransactionNotifier extends StateNotifier<AsyncValue<void>> {
       await (db.delete(db.transactions)..where((t) => t.id.equals(id))).go();
       ref.invalidate(transactionsProvider);
       ref.invalidate(thisMonthTransactionsProvider);
+      ref.invalidate(totalSpentThisMonthProvider);
+      ref.invalidate(totalIncomeThisMonthProvider);
+      ref.invalidate(budgetHealthProvider);
+      ref.invalidate(spendingVelocityProvider);
+      ref.invalidate(spendingInsightsProvider);
+      ref.invalidate(effectiveCategoryBudgetProvider(transaction.categoryId));
 
       _checkBudgetAlerts(transaction.categoryId, transaction.date);
     }
@@ -192,6 +210,7 @@ class TransactionNotifier extends StateNotifier<AsyncValue<void>> {
     required String categoryId,
     required DateTime date,
     String? note,
+    bool? isIncome,
   }) async {
     final existingTxns = await ref.read(transactionsProvider.future);
     return DuplicateDetector.findDuplicates(
@@ -200,6 +219,7 @@ class TransactionNotifier extends StateNotifier<AsyncValue<void>> {
       categoryId: categoryId,
       date: date,
       note: note,
+      isIncome: isIncome,
     );
   }
 
@@ -256,11 +276,13 @@ class TransactionNotifier extends StateNotifier<AsyncValue<void>> {
             ? template.recurringEndDate!
             : now;
 
-        // Enumerate all due dates from startFrom up to the boundary (cap at 31)
+        // Enumerate all due dates from the template's original schedule date,
+        // starting from the first due date strictly after [startFrom].
         final dueDates = _enumerateDueDates(
           from: startFrom,
           interval: interval,
           upTo: upTo,
+          originalDate: template.date,
         );
 
         // Safety cap: at most 31 instances per template
@@ -300,22 +322,27 @@ class TransactionNotifier extends StateNotifier<AsyncValue<void>> {
     return postedCount;
   }
 
-  /// Enumerate all due dates for a recurring interval from [from] (exclusive)
-  /// up to [upTo] (inclusive). Starts from the template date and advances
-  /// one period at a time until all due dates in the range are found.
+  /// Enumerate all due dates for a recurring interval.
+  /// Enumerates from [originalDate] forward, including only dates strictly
+  /// after [from] and at or before [upTo]. If [originalDate] is not provided,
+  /// falls back to [from] for backward compatibility.
   List<DateTime> _enumerateDueDates({
     required DateTime from,
     required String interval,
     required DateTime upTo,
+    DateTime? originalDate,
   }) {
     final results = <DateTime>[];
+    final startSeed = originalDate ?? from;
 
-    // Find the first due date strictly after [from]
-    DateTime current = _advanceDate(from, interval);
-    if (current == from) return results; // unrecognized interval
+    // Find the first due date after [startSeed], then skip those ≤ [from]
+    DateTime current = _advanceDate(startSeed, interval);
+    if (current == startSeed) return results;
 
     while (!current.isAfter(upTo)) {
-      results.add(current);
+      if (current.isAfter(from)) {
+        results.add(current);
+      }
       final next = _advanceDate(current, interval);
       if (next == current) break;
       current = next;
@@ -443,11 +470,24 @@ class SmsReviewQueueNotifier extends StateNotifier<List<ParsedSmsTxn>> {
     await _persist();
   }
 
-  /// Confirm all pending items
+  /// Confirm all pending items in batch
   Future<void> confirmAll() async {
-    for (final txn in state.toList()) {
-      await confirmItem(txn.id);
+    final list = state.toList();
+    if (list.isEmpty) return;
+
+    final notifier = ref.read(transactionNotifierProvider.notifier);
+    for (final txn in list) {
+      await notifier.addTransaction(
+        amount: txn.amount,
+        categoryId: txn.categoryId,
+        note: txn.note,
+        date: txn.date,
+        paymentMethod: 'UPI',
+        isIncome: txn.isIncome,
+      );
     }
+    state = [];
+    await _persist();
   }
 
   /// Discard all pending items
@@ -463,12 +503,13 @@ class SmsReviewQueueNotifier extends StateNotifier<List<ParsedSmsTxn>> {
 /// Provider for all recurring transactions with computed next due dates
 final recurringTransactionsProvider =
     FutureProvider<List<RecurringPaymentInfo>>((ref) async {
-  final transactions = await ref.read(transactionsProvider.future);
-  final categories = await ref.read(categoriesProvider.future);
+  final transactions = await ref.watch(transactionsProvider.future);
+  final categories = await ref.watch(categoriesProvider.future);
   final settingsNotifier = ref.read(settingsNotifierProvider.notifier);
 
   final recurring = <RecurringPaymentInfo>[];
   final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
 
   for (final t in transactions.where((t) => t.isRecurring)) {
     final nextDate = NotificationService.calculateNextDueDate(
@@ -478,21 +519,16 @@ final recurringTransactionsProvider =
     if (nextDate != null) {
       final category = categories.where((c) => c.id == t.categoryId).firstOrNull;
 
-      // "Possibly unused" is an opt-in signal based on whether the user
-      // has manually marked this subscription as reviewed/used.
-      // A subscription that has NOT been reviewed yet is flagged.
-      // This is persisted in AppSettings (not SMS-based or time-based).
-      // All subscriptions start as "potentially unused" until the user
-      // explicitly marks them as reviewed.
       final isReviewed = await settingsNotifier.isSubscriptionReviewed(t.id);
-      final possiblyUnused = !isReviewed;
+      final nextDay = DateTime(nextDate.year, nextDate.month, nextDate.day);
+      final daysUntil = nextDay.difference(today).inDays;
 
       recurring.add(RecurringPaymentInfo(
         transaction: t,
         category: category,
         nextDate: nextDate,
-        daysUntil: nextDate.difference(now).inDays,
-        isPossiblyUnused: possiblyUnused,
+        daysUntil: daysUntil,
+        isPossiblyUnused: !isReviewed,
       ));
     }
   }

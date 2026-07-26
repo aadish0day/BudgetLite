@@ -22,7 +22,16 @@ class WhatIfSimulatorSheet extends ConsumerStatefulWidget {
 
 class _WhatIfSimulatorSheetState extends ConsumerState<WhatIfSimulatorSheet> {
   final Map<String, double> _reductions = {};
+  final Map<String, TextEditingController> _controllers = {};
   bool _hasInitialized = false;
+
+  @override
+  void dispose() {
+    for (final c in _controllers.values) {
+      c.dispose();
+    }
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -64,15 +73,17 @@ class _WhatIfSimulatorSheetState extends ConsumerState<WhatIfSimulatorSheet> {
                 child: Icon(LucideIcons.flaskConical, size: 18, color: colorScheme.primary),
               ),
               const SizedBox(width: 12),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('What-If Simulator',
-                    style: AppTheme.displayStyle(size: 18, weight: FontWeight.w600, color: colorScheme.onSurface)),
-                  const SizedBox(height: 2),
-                  Text('Adjust budgets to see impact on savings goals',
-                    style: AppTheme.bodyStyle(size: 11, color: colorScheme.onSurfaceVariant)),
-                ],
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('What-If Simulator',
+                      style: AppTheme.displayStyle(size: 18, weight: FontWeight.w600, color: colorScheme.onSurface)),
+                    const SizedBox(height: 2),
+                    Text('Adjust budgets to see impact on savings goals',
+                      style: AppTheme.bodyStyle(size: 11, color: colorScheme.onSurfaceVariant)),
+                  ],
+                ),
               ),
             ],
           ),
@@ -224,9 +235,9 @@ class _WhatIfSimulatorSheetState extends ConsumerState<WhatIfSimulatorSheet> {
   Widget _buildAdjustmentRow(
     Category cat, Budget budget, double reduction, Color catColor, ColorScheme colorScheme,
   ) {
-    final ctrl = TextEditingController(
+    final ctrl = _controllers.putIfAbsent(cat.id, () => TextEditingController(
       text: reduction > 0 ? reduction.toStringAsFixed(0) : '',
-    );
+    ));
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
@@ -322,7 +333,10 @@ class _WhatIfSimulatorSheetState extends ConsumerState<WhatIfSimulatorSheet> {
         : 0.0;
 
     // Fallback: if no actual savings, use the recommended pace
-    final daysLeft = goal.targetDate.difference(DateTime.now()).inDays;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final targetDay = DateTime(goal.targetDate.year, goal.targetDate.month, goal.targetDate.day);
+    final daysLeft = targetDay.difference(today).inDays;
     final yearlyPace = daysLeft > 0 ? remaining / max(1, daysLeft ~/ 30) : 0;
 
     final effectiveRate = currentMonthlyRate > 0 ? currentMonthlyRate : yearlyPace;
