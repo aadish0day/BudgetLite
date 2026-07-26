@@ -566,9 +566,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       keywordToCategory[rule.keyword.toLowerCase()] = rule.categoryId;
     }
 
-    int parsed = 0;
+    int totalSmsParsed = 0;
+    int newlyAddedToQueue = 0;
     final queueNotifier = ref.read(smsReviewQueueProvider.notifier);
-    final pendingBefore = queueNotifier.pendingCount;
     final includeMerchantNote = ref.read(smsAutoNoteEnabledProvider).valueOrNull ?? true;
 
     for (final sms in messages) {
@@ -579,15 +579,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         includeMerchantNote: includeMerchantNote,
       );
       if (parsedTxn != null) {
-        queueNotifier.addToQueue(parsedTxn);
-        parsed++;
+        totalSmsParsed++;
+        if (!queueNotifier.isProcessed(parsedTxn.id) && !queueNotifier.isAlreadyInQueue(parsedTxn.id)) {
+          await queueNotifier.addToQueue(parsedTxn);
+          newlyAddedToQueue++;
+        }
       }
     }
 
+    final messageText = newlyAddedToQueue > 0
+        ? 'Added $newlyAddedToQueue new transaction${newlyAddedToQueue == 1 ? "" : "s"} to review queue ($totalSmsParsed total UPI SMS scanned)'
+        : 'Scanned $totalSmsParsed UPI SMS — all were already processed or in review queue';
+
     messenger.showSnackBar(
       SnackBar(
-        content: Text('Found $parsed UPI transaction${parsed != 1 ? 's' : ''} '
-            '(${queueNotifier.pendingCount - pendingBefore} new in review queue)'),
+        content: Text(messageText),
         behavior: SnackBarBehavior.floating,
       ),
     );

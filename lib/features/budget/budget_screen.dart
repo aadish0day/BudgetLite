@@ -76,6 +76,7 @@ class _BudgetScreenState extends ConsumerState<BudgetScreen> {
           final overallRatio = totalBudget > 0 ? (spent / totalBudget).clamp(0.0, 1.0) : 0.0;
 
           return ListView(
+            physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
             padding: AppConstants.screenPadding,
             children: [
               // ── Bento Hero Card: Monthly Budget & Spending Pacing ──

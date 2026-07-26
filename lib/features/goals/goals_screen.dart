@@ -45,6 +45,7 @@ class GoalsScreen extends ConsumerWidget {
           if (goalList.isEmpty) return _EmptyGoals();
           final allAchieved = goalList.every((g) => g.currentAmount >= g.targetAmount);
           return ListView(
+            physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
             padding: AppConstants.screenPadding,
             children: [
               if (allAchieved)
@@ -339,7 +340,7 @@ class _GoalCard extends StatelessWidget {
                                 SnackBar(
                                   content: Text(
                                     isAchievedNow
-                                        ? '🎉 Goal Achieved! Added ₹${amount.toStringAsFixed(0)} to ${goal.name}!'
+                                        ? 'Goal Achieved! Added ₹${amount.toStringAsFixed(0)} to ${goal.name}!'
                                         : '₹${amount.toStringAsFixed(0)} added to ${goal.name}',
                                   ),
                                   backgroundColor: isAchievedNow ? AppColors.success : null,
@@ -453,7 +454,7 @@ class _GoalCard extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       isGoalExceeded
-                          ? 'Completed 🎉'
+                          ? 'Completed'
                           : daysLeft > 0
                               ? '$daysLeft days left • Target ${Formatters.formatDateShort(goal.targetDate)}'
                               : 'Target passed',

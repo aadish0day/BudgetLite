@@ -266,6 +266,40 @@ class NotificationService {
     await _plugin.cancelAll();
   }
 
+  /// Schedule a reminder notification to collect money owed by a person
+  Future<void> scheduleReimbursementReminder({
+    required int id,
+    required String person,
+    required double amount,
+    required DateTime scheduledDate,
+  }) async {
+    await _initializeIfNeeded();
+    final tzDate = tz.TZDateTime.from(scheduledDate, tz.local);
+    if (tzDate.isBefore(tz.TZDateTime.now(tz.local))) return;
+
+    const androidDetails = AndroidNotificationDetails(
+      'reimbursements_channel',
+      'Reimbursement Reminders',
+      channelDescription: 'Reminders to collect money owed to you',
+      importance: Importance.high,
+      priority: Priority.high,
+    );
+    const details = NotificationDetails(
+      android: androidDetails,
+      iOS: DarwinNotificationDetails(),
+    );
+
+    await _plugin.zonedSchedule(
+      id,
+      'Reimbursement Reminder',
+      'Collect ₹${amount.toStringAsFixed(0)} owed by $person',
+      tzDate,
+      details,
+      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+    );
+  }
+
   Future<void> _initializeIfNeeded() async {
     if (!_initialized) await initialize();
   }

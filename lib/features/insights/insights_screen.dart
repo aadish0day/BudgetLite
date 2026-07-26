@@ -80,7 +80,8 @@ class InsightsScreen extends ConsumerWidget {
           await Future.delayed(const Duration(milliseconds: 300));
         },
         child: ListView(
-        padding: AppConstants.screenPadding,
+          physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+          padding: AppConstants.screenPadding,
         children: [
           // ── Dashboard Totals: Money In | Spent | Left ──
           _DashboardTotals(income: incomeThisMonth, spent: totalSpentThisMonth),
@@ -101,6 +102,7 @@ class InsightsScreen extends ConsumerWidget {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(AppConstants.cardRadius),
               color: isDark ? AppColors.cardDark : AppColors.cardLight,
+              border: Border.all(color: colorScheme.outline.withValues(alpha: 0.08)),
               boxShadow: isDark ? AppColors.cardShadowDark : AppColors.cardShadowLight,
             ),
             padding: AppConstants.cardPadding,
@@ -111,26 +113,53 @@ class InsightsScreen extends ConsumerWidget {
                     child: Row(
                       children: [
                         Expanded(
-                          child: PieChart(
-                            PieChartData(
-                              sections: _buildPieSections(
-                                  categorySpending, categories, colorScheme),
-                              centerSpaceRadius: 40,
-                              sectionsSpace: 2,
-                              borderData: FlBorderData(show: false),
-                              pieTouchData: PieTouchData(
-                                touchCallback: (FlTouchEvent event, PieTouchResponse? response) {
-                                  if (event is FlTapUpEvent && response?.touchedSection != null) {
-                                    final touchedIndex = response!.touchedSection!.touchedSectionIndex;
-                                    if (touchedIndex >= 0 && touchedIndex < categorySpending.length) {
-                                      final categoryId = categorySpending.keys.elementAt(touchedIndex);
-                                      ref.read(transactionFilterProvider.notifier).state = categoryId;
-                                      ref.read(currentTabProvider.notifier).state = 1;
-                                    }
-                                  }
-                                },
+                          child: Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              PieChart(
+                                PieChartData(
+                                  sections: _buildPieSections(
+                                      categorySpending, categories, colorScheme),
+                                  centerSpaceRadius: 44,
+                                  sectionsSpace: 2.5,
+                                  borderData: FlBorderData(show: false),
+                                  pieTouchData: PieTouchData(
+                                    touchCallback: (FlTouchEvent event, PieTouchResponse? response) {
+                                      if (event is FlTapUpEvent && response?.touchedSection != null) {
+                                        final touchedIndex = response!.touchedSection!.touchedSectionIndex;
+                                        if (touchedIndex >= 0 && touchedIndex < categorySpending.length) {
+                                          final categoryId = categorySpending.keys.elementAt(touchedIndex);
+                                          ref.read(transactionFilterProvider.notifier).state = categoryId;
+                                          ref.read(currentTabProvider.notifier).state = 1;
+                                        }
+                                      }
+                                    },
+                                  ),
+                                ),
                               ),
-                            ),
+                              Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    'TOTAL',
+                                    style: AppTheme.bodyStyle(
+                                      size: 9,
+                                      weight: FontWeight.w700,
+                                      color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    Formatters.formatCurrency(totalSpent),
+                                    style: AppTheme.financialStyle(
+                                      size: 13,
+                                      weight: FontWeight.w700,
+                                      color: colorScheme.onSurface,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ),
                         ),
                         const SizedBox(width: 16),
@@ -145,26 +174,46 @@ class InsightsScreen extends ConsumerWidget {
                             final pct = totalSpent > 0
                                 ? (entry.value / totalSpent * 100)
                                 : 0.0;
+                            final catColor = Color(cat?.color ?? 0xFF6B7280);
                             return Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 3),
+                              padding: const EdgeInsets.symmetric(vertical: 4),
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Container(
-                                    width: 8,
-                                    height: 8,
+                                    width: 22,
+                                    height: 22,
                                     decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      color: Color(cat?.color ?? 0xFF6B7280),
+                                      borderRadius: BorderRadius.circular(6),
+                                      color: catColor.withValues(alpha: 0.14),
+                                    ),
+                                    child: Icon(
+                                      getCategoryIcon(cat?.icon ?? 'help'),
+                                      size: 12,
+                                      color: catColor,
                                     ),
                                   ),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    '${cat?.name ?? '?'} ${pct.toStringAsFixed(0)}%',
-                                    style: AppTheme.bodyStyle(
-                                      size: 11,
-                                      color: colorScheme.onSurfaceVariant,
-                                    ),
+                                  const SizedBox(width: 8),
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        cat?.name ?? 'Other',
+                                        style: AppTheme.bodyStyle(
+                                          size: 11,
+                                          weight: FontWeight.w600,
+                                          color: colorScheme.onSurface,
+                                        ),
+                                      ),
+                                      Text(
+                                        '${Formatters.formatCurrency(entry.value)} (${pct.toStringAsFixed(0)}%)',
+                                        style: AppTheme.bodyStyle(
+                                          size: 10,
+                                          color: colorScheme.onSurfaceVariant,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ],
                               ),
@@ -506,6 +555,19 @@ class _BudgetHealthBanner extends ConsumerWidget {
 
         final pct = health.percentUsed.clamp(0, 100).toDouble();
 
+        final now = DateTime.now();
+        final daysInMonth = DateTime(now.year, now.month + 1, 0).day;
+        final dayOfMonth = now.day.clamp(1, daysInMonth);
+        final dailyAllowance = health.totalBudget / daysInMonth;
+        final expectedSpent = dailyAllowance * dayOfMonth;
+        final velocityDelta = health.totalSpent - expectedSpent;
+
+        final isPacingGood = velocityDelta <= 0;
+        final pacingColor = isPacingGood ? AppColors.success : AppColors.warning;
+        final pacingText = isPacingGood
+            ? 'Pacing: On Track (₹${dailyAllowance.toStringAsFixed(0)}/day allowance)'
+            : 'Pacing: ₹${velocityDelta.toStringAsFixed(0)} ahead of schedule';
+
         return Container(
           margin: const EdgeInsets.only(top: 12),
           padding: const EdgeInsets.all(14),
@@ -563,17 +625,37 @@ class _BudgetHealthBanner extends ConsumerWidget {
                   valueColor: AlwaysStoppedAnimation<Color>(statusColor),
                 ),
               ),
-              const SizedBox(height: 6),
-              Text(
-                '${Formatters.formatCurrency(health.totalSpent)} spent of ${Formatters.formatCurrency(health.totalBudget)} total budget',
-                style: AppTheme.bodyStyle(
-                  size: 10,
-                  color: colorScheme.onSurfaceVariant,
-                ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Icon(
+                    isPacingGood ? LucideIcons.gauge : LucideIcons.zap,
+                    size: 11,
+                    color: pacingColor,
+                  ),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      pacingText,
+                      style: AppTheme.bodyStyle(
+                        size: 10,
+                        weight: FontWeight.w500,
+                        color: pacingColor,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    '${Formatters.formatCurrency(health.totalSpent)} / ${Formatters.formatCurrency(health.totalBudget)}',
+                    style: AppTheme.bodyStyle(
+                      size: 10,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
-        );
+        ).animate(target: AccessibilityUtils.shouldAnimate(context) ? null : 1.0).fadeIn(duration: AppConstants.animFast).slideY(begin: 0.1, end: 0);
       },
       loading: () => const SizedBox.shrink(),
       error: (_, _) => const SizedBox.shrink(),
@@ -634,6 +716,7 @@ class _MonthOverMonthChart extends ConsumerWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(AppConstants.cardRadius),
             color: isDark ? AppColors.cardDark : AppColors.cardLight,
+            border: Border.all(color: colorScheme.outline.withValues(alpha: 0.08)),
             boxShadow: isDark ? AppColors.cardShadowDark : AppColors.cardShadowLight,
           ),
           padding: AppConstants.cardPadding,

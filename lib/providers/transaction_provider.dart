@@ -618,3 +618,33 @@ class RecurringPaymentInfo {
   double get annualCost => monthlyCost * 12;
 }
 
+/// Provider for pending reimbursements (transactions marked with [Owed by: ...] or #reimburse)
+final pendingReimbursementsProvider = StreamProvider<List<Transaction>>((ref) {
+  final asyncTxns = ref.watch(transactionsProvider);
+  return asyncTxns.when(
+    data: (txns) {
+      final pending = txns.where((t) {
+        final note = (t.note ?? '').toLowerCase();
+        final payee = (t.payee ?? '').toLowerCase();
+        return (note.contains('[owed by:') || note.contains('#reimburse') || payee.contains('[owed by:'));
+      }).toList();
+      return Stream.value(pending);
+    },
+    error: (err, stack) => Stream.error(err, stack),
+    loading: () => const Stream.empty(),
+  );
+});
+
+/// Total pending reimbursement amount owed to user
+final totalPendingReimbursementProvider = StreamProvider<double>((ref) {
+  final asyncPending = ref.watch(pendingReimbursementsProvider);
+  return asyncPending.when(
+    data: (txns) {
+      final total = txns.fold<double>(0, (sum, t) => sum + t.amount.abs());
+      return Stream.value(total);
+    },
+    error: (err, stack) => Stream.error(err, stack),
+    loading: () => const Stream.empty(),
+  );
+});
+

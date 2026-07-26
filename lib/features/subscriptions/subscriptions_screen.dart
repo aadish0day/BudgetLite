@@ -122,6 +122,7 @@ class _SubscriptionAuditScreenState extends ConsumerState<SubscriptionAuditScree
     }
 
     return ListView(
+      physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
       padding: AppConstants.screenPadding,
       children: [
         // ── Stats header ──

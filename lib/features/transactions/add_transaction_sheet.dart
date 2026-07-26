@@ -34,6 +34,7 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
   final _amountCtrl = TextEditingController();
   final _noteCtrl = TextEditingController();
   final _tagsCtrl = TextEditingController();
+  final _owedByCtrl = TextEditingController();
 
   late String _transactionType;
   late String _selectedCategory;
@@ -43,6 +44,7 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
   late String? _recurringInterval;
   DateTime? _recurringEndDate;
   String? _receiptImagePath;
+  bool _isReimbursementPending = false;
   int? _pressedCategoryIdx;
   bool get _isEditing => widget.transaction != null;
 
@@ -89,18 +91,21 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
     _amountCtrl.dispose();
     _noteCtrl.dispose();
     _tagsCtrl.dispose();
+    _owedByCtrl.dispose();
     super.dispose();
   }
 
   static const List<String> _quickTags = [
+    'Reimburse',
+    'Parents',
+    'Friends',
+    'Urgent',
+    'Subscription',
     'Office',
     'Travel',
     'Food',
     'Personal',
-    'Urgent',
     'Bills',
-    'Subscription',
-    'Medical',
     'Shopping',
   ];
 
@@ -296,7 +301,7 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
                 TextFormField(
                   controller: _amountCtrl,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  autofocus: true,
+                  autofocus: !_isEditing,
                   style: AppTheme.financialStyle(size: 18, weight: FontWeight.w600),
                   decoration: InputDecoration(
                     labelText: 'Amount',
@@ -466,6 +471,80 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
                       maxLines: 1,
                     ),
                   ],
+                ),
+                // ── Reimbursement / Owed to Me Section ──
+                Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    color: _isReimbursementPending
+                        ? colorScheme.primary.withValues(alpha: 0.08)
+                        : colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                    border: Border.all(
+                      color: _isReimbursementPending
+                          ? colorScheme.primary.withValues(alpha: 0.3)
+                          : colorScheme.outline.withValues(alpha: 0.1),
+                    ),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  child: Column(
+                    children: [
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                        title: Row(
+                          children: [
+                            Icon(
+                              LucideIcons.handCoins,
+                              size: 16,
+                              color: _isReimbursementPending ? colorScheme.primary : colorScheme.onSurfaceVariant,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Paid for someone else (Reimbursement)',
+                                style: AppTheme.bodyStyle(
+                                  size: 13,
+                                  weight: FontWeight.w600,
+                                  color: colorScheme.onSurface,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        subtitle: Text(
+                          'Track money owed to you by parents/friends',
+                          style: AppTheme.bodyStyle(size: 11, color: colorScheme.onSurfaceVariant),
+                        ),
+                        value: _isReimbursementPending,
+                        onChanged: (val) => setState(() => _isReimbursementPending = val),
+                      ),
+                      if (_isReimbursementPending) ...[
+                        const SizedBox(height: 6),
+                        TextFormField(
+                          controller: _owedByCtrl,
+                          decoration: InputDecoration(
+                            labelText: 'Owed By (e.g. Parents, Friends, Rahul)',
+                            prefixIcon: const Icon(LucideIcons.user, size: 16),
+                            contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: ['Parents', 'Friends', 'Roommate'].map((name) {
+                            return Padding(
+                              padding: const EdgeInsets.only(right: 6),
+                              child: ActionChip(
+                                label: Text(name),
+                                labelStyle: AppTheme.bodyStyle(size: 11, weight: FontWeight.w500),
+                                onPressed: () => setState(() => _owedByCtrl.text = name),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                        const SizedBox(height: 4),
+                      ],
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 16),
 
@@ -830,9 +909,17 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
   }
 
   String? _buildMergedNote(String note, String tags) {
-    if (note.isEmpty && tags.isEmpty) return null;
+    var resultNote = note.trim();
+    if (_isReimbursementPending) {
+      final person = _owedByCtrl.text.trim().isEmpty ? 'Parents' : _owedByCtrl.text.trim();
+      final tagStr = '[Owed by: $person]';
+      if (!resultNote.contains('[Owed by:')) {
+        resultNote = resultNote.isEmpty ? tagStr : '$resultNote $tagStr';
+      }
+    }
+    if (resultNote.isEmpty && tags.isEmpty) return null;
     final buffer = StringBuffer();
-    if (note.isNotEmpty) buffer.write(note);
+    if (resultNote.isNotEmpty) buffer.write(resultNote);
     if (tags.isNotEmpty) {
       if (buffer.isNotEmpty) buffer.write(' ');
       buffer.write('[$tags]');

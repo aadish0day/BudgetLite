@@ -238,6 +238,7 @@ class _MainShellState extends ConsumerState<_MainShell> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final isDark = colorScheme.brightness == Brightness.dark;
     final rawTab = ref.watch(currentTabProvider);
     final isBudgetEnabled = ref.watch(budgetModuleEnabledProvider).valueOrNull ?? true;
     final shouldAnimate = AccessibilityUtils.shouldAnimate(context);
@@ -337,25 +338,94 @@ class _MainShellState extends ConsumerState<_MainShell> {
                 child: screens[currentTab],
               )
             : screens[currentTab],
-        bottomNavigationBar: Container(
-          decoration: BoxDecoration(
-            border: Border(
-              top: BorderSide(
-                color: colorScheme.outline.withValues(alpha: 0.08),
-                width: 0.5,
+        bottomNavigationBar: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+            child: Container(
+              height: 64,
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(24),
+                color: isDark
+                    ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.9)
+                    : colorScheme.surface.withValues(alpha: 0.95),
+                border: Border.all(
+                  color: colorScheme.outline.withValues(alpha: 0.12),
+                  width: 1,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.08),
+                    blurRadius: 20,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
               ),
-            ),
-          ),
-          child: BottomNavigationBar(
-            currentIndex: currentTab,
-            onTap: (i) {
-              HapticFeedback.selectionClick();
-              ref.read(currentTabProvider.notifier).state = i;
-            },
-            type: BottomNavigationBarType.fixed,
-            items: List.generate(
-              screens.length,
-              (i) => _bottomNavItem(navIcons[i].$1, navIcons[i].$2, navLabels[i], currentTab, i),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: List.generate(screens.length, (i) {
+                  final isSelected = currentTab == i;
+                  final icon = navIcons[i].$1;
+                  final label = navLabels[i];
+
+                  return Flexible(
+                    child: GestureDetector(
+                      onTap: () {
+                        HapticFeedback.lightImpact();
+                        ref.read(currentTabProvider.notifier).state = i;
+                      },
+                      behavior: HitTestBehavior.opaque,
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 250),
+                        curve: Curves.easeOutCubic,
+                        padding: EdgeInsets.symmetric(
+                          horizontal: isSelected ? 10 : 6,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(16),
+                          color: isSelected
+                              ? colorScheme.primary.withValues(alpha: 0.14)
+                              : Colors.transparent,
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            AnimatedScale(
+                              scale: isSelected ? 1.15 : 1.0,
+                              duration: const Duration(milliseconds: 200),
+                              child: Icon(
+                                icon,
+                                size: 20,
+                                color: isSelected
+                                    ? colorScheme.primary
+                                    : colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            AnimatedDefaultTextStyle(
+                              duration: const Duration(milliseconds: 200),
+                              style: AppTheme.bodyStyle(
+                                size: 10,
+                                weight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                                color: isSelected
+                                    ? colorScheme.primary
+                                    : colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                              ),
+                              child: Text(
+                                label,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+              ),
             ),
           ),
         ),

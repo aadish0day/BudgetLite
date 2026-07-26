@@ -270,6 +270,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                 final groupKeys = grouped.keys.toList();
 
                 return ListView.builder(
+                  physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
                   padding: AppConstants.screenPadding,
                   itemCount: groupKeys.length,
                   itemBuilder: (context, groupIndex) {
@@ -757,6 +758,7 @@ class _TransactionCard extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(AppConstants.cardRadiusSmall),
             color: isDark ? AppColors.cardDark : AppColors.cardLight,
+            border: Border.all(color: colorScheme.outline.withValues(alpha: 0.08)),
             boxShadow: isDark ? AppColors.cardShadowDark : AppColors.cardShadowLight,
           ),
           padding: const EdgeInsets.all(14),

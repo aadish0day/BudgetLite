@@ -223,10 +223,12 @@ class _SpendCalendarState extends ConsumerState<SpendCalendar> {
                                       crossAxisAlignment: CrossAxisAlignment.end,
                                       children: [
                                         Text(
-                                          '-${Formatters.formatCurrency(t.amount)}',
+                                          t.amount < 0
+                                              ? '+${Formatters.formatCurrency(t.amount.abs())}'
+                                              : '-${Formatters.formatCurrency(t.amount)}',
                                           style: AppTheme.financialStyle(
                                             size: 14, weight: FontWeight.w600,
-                                            color: AppColors.error,
+                                            color: t.amount < 0 ? AppColors.success : AppColors.error,
                                           ),
                                         ),
                                         const SizedBox(height: 2),
@@ -383,11 +385,9 @@ class _SpendCalendarState extends ConsumerState<SpendCalendar> {
       }
     });
 
-    if (allTransactions.isEmpty) return const SizedBox.shrink();
-
     // ── STRICT EXPENSE FILTERING ──
-    // Filter out income categories so income transactions are never tallied as spend!
-    final expenseCatIds = categories.where((c) => c.type == 'expense').map((c) => c.id).toSet();
+    // Exclude transfers and income categories so income transactions are never tallied as spend!
+    final incomeCatIds = categories.where((c) => c.type == 'income').map((c) => c.id).toSet();
 
     final daysInMonth = DateTime(_currentMonth.year, _currentMonth.month + 1, 0).day;
     final dailyTxns = <int, List<Transaction>>{};
@@ -395,7 +395,8 @@ class _SpendCalendarState extends ConsumerState<SpendCalendar> {
 
     for (final t in allTransactions) {
       if (t.date.year == _currentMonth.year && t.date.month == _currentMonth.month) {
-        if (t.amount > 0 && expenseCatIds.contains(t.categoryId)) {
+        final isExpense = t.amount > 0 && t.categoryId != 'transfer' && !incomeCatIds.contains(t.categoryId);
+        if (isExpense) {
           if (_filterCategoryId == null || t.categoryId == _filterCategoryId) {
             dailyTxns.putIfAbsent(t.date.day, () => []);
             dailyTxns[t.date.day]!.add(t);
@@ -714,7 +715,7 @@ class _SpendCalendarState extends ConsumerState<SpendCalendar> {
 
                               return Expanded(
                                 child: GestureDetector(
-                                  onTap: isValid && hasSpend
+                                  onTap: isValid
                                       ? () => _showDaySheet(context,
                                           DateTime(_currentMonth.year, _currentMonth.month, dayNum),
                                           dayTransactions, categories, accounts)
@@ -773,12 +774,10 @@ class _SpendCalendarState extends ConsumerState<SpendCalendar> {
                                                   ),
                                                 )
                                               else
-                                                Text(
-                                                  '🍃',
-                                                  style: TextStyle(
-                                                    fontSize: 8,
-                                                    color: colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
-                                                  ),
+                                                Icon(
+                                                  LucideIcons.sparkles,
+                                                  size: 9,
+                                                  color: AppColors.success.withValues(alpha: 0.7),
                                                 ),
                                             ],
                                           ),

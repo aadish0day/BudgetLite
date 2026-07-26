@@ -27,7 +27,8 @@ class TransactionRow extends ConsumerWidget {
     final catColor = Color(category?.color ?? 0xFF6B7280);
     final isBalanceHidden = ref.watch(balanceHiddenProvider).valueOrNull ?? false;
 
-    return Container(
+    return RepaintBoundary(
+      child: Container(
       decoration: BoxDecoration(
         border: Border(
           bottom: BorderSide(
@@ -135,6 +136,7 @@ class TransactionRow extends ConsumerWidget {
           ),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 }

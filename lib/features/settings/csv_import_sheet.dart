@@ -588,7 +588,8 @@ class _CsvImportSheetState extends ConsumerState<CsvImportSheet> {
               padding: const EdgeInsets.symmetric(horizontal: 24),
               children: [
                 _MappingDropdown(
-                  label: '📅 Date column',
+                  label: 'Date column',
+                  icon: LucideIcons.calendar,
                   value: _mappedDateColumn,
                   headers: _csvHeaders,
                   onChanged: (v) => setState(() => _mappedDateColumn = v),
@@ -596,7 +597,8 @@ class _CsvImportSheetState extends ConsumerState<CsvImportSheet> {
                 ),
                 const SizedBox(height: 10),
                 _MappingDropdown(
-                  label: '📝 Description column',
+                  label: 'Description column',
+                  icon: LucideIcons.fileText,
                   value: _mappedDescColumn,
                   headers: _csvHeaders,
                   onChanged: (v) => setState(() => _mappedDescColumn = v),
@@ -604,7 +606,8 @@ class _CsvImportSheetState extends ConsumerState<CsvImportSheet> {
                 ),
                 const SizedBox(height: 10),
                 _MappingDropdown(
-                  label: '💸 Debit / Withdrawal column',
+                  label: 'Debit / Withdrawal column',
+                  icon: LucideIcons.arrowUpRight,
                   value: _mappedDebitColumn,
                   headers: _csvHeaders,
                   onChanged: (v) => setState(() => _mappedDebitColumn = v),
@@ -612,7 +615,8 @@ class _CsvImportSheetState extends ConsumerState<CsvImportSheet> {
                 ),
                 const SizedBox(height: 10),
                 _MappingDropdown(
-                  label: '💰 Credit / Deposit column',
+                  label: 'Credit / Deposit column',
+                  icon: LucideIcons.arrowDownLeft,
                   value: _mappedCreditColumn,
                   headers: _csvHeaders,
                   onChanged: (v) => setState(() => _mappedCreditColumn = v),
@@ -620,7 +624,8 @@ class _CsvImportSheetState extends ConsumerState<CsvImportSheet> {
                 ),
                 const SizedBox(height: 10),
                 _MappingDropdown(
-                  label: '🔢 Amount column (if single)',
+                  label: 'Amount column (if single)',
+                  icon: LucideIcons.hash,
                   value: _mappedAmountColumn,
                   headers: _csvHeaders,
                   onChanged: (v) => setState(() => _mappedAmountColumn = v),
@@ -890,6 +895,7 @@ class _CsvImportSheetState extends ConsumerState<CsvImportSheet> {
 /// Dropdown for selecting which CSV header maps to a field.
 class _MappingDropdown extends StatelessWidget {
   final String label;
+  final IconData? icon;
   final String? value;
   final List<String> headers;
   final ValueChanged<String?> onChanged;
@@ -897,6 +903,7 @@ class _MappingDropdown extends StatelessWidget {
 
   const _MappingDropdown({
     required this.label,
+    this.icon,
     required this.value,
     required this.headers,
     required this.onChanged,
@@ -920,7 +927,15 @@ class _MappingDropdown extends StatelessWidget {
         child: DropdownButton<String>(
           value: value,
           isExpanded: true,
-          hint: Text(label, style: AppTheme.bodyStyle(size: 13)),
+          hint: Row(
+            children: [
+              if (icon != null) ...[
+                Icon(icon, size: 14, color: colorScheme.primary),
+                const SizedBox(width: 8),
+              ],
+              Text(label, style: AppTheme.bodyStyle(size: 13)),
+            ],
+          ),
           style: AppTheme.bodyStyle(size: 13, color: colorScheme.onSurface),
           dropdownColor: colorScheme.surface,
           items: [
