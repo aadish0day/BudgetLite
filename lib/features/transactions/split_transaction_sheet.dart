@@ -93,7 +93,7 @@ class _SplitTransactionSheetState extends ConsumerState<SplitTransactionSheet> {
     if (_splits.length <= 2) return; // keep at least 2 lines
     setState(() {
       _splits.removeAt(index);
-      _syncSplitCtrls();
+      _splitCtrls.removeAt(index).dispose();
     });
   }
 
@@ -195,7 +195,7 @@ class _SplitTransactionSheetState extends ConsumerState<SplitTransactionSheet> {
               ..._splits.asMap().entries.map((entry) {
                 final idx = entry.key;
                 final split = entry.value;
-                final ctrl = idx < _splitCtrls.length ? _splitCtrls[idx] : TextEditingController();
+                final ctrl = _splitCtrls[idx];
                 return _SplitLineRow(
                   split: split,
                   controller: ctrl,

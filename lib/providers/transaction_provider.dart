@@ -21,7 +21,7 @@ final transactionsProvider = StreamProvider.autoDispose<List<Transaction>>((ref)
 });
 
 final transactionsByMonthProvider =
-    StreamProvider.family<List<Transaction>, String>((ref, monthKey) {
+    StreamProvider.autoDispose.family<List<Transaction>, String>((ref, monthKey) {
   final db = ref.watch(databaseProvider);
   final parts = monthKey.split('-');
   final year = int.parse(parts[0]);
@@ -33,7 +33,7 @@ final transactionsByMonthProvider =
       .watch();
 });
 
-final thisMonthTransactionsProvider = StreamProvider<List<Transaction>>((ref) {
+final thisMonthTransactionsProvider = StreamProvider.autoDispose<List<Transaction>>((ref) {
   final asyncTxns = ref.watch(transactionsByMonthProvider(Formatters.monthKey));
   return asyncTxns.when(
     data: (txns) => Stream.value(txns),
@@ -43,7 +43,7 @@ final thisMonthTransactionsProvider = StreamProvider<List<Transaction>>((ref) {
 });
 
 /// Total spending this month.
-final totalSpentThisMonthProvider = StreamProvider<double>((ref) {
+final totalSpentThisMonthProvider = StreamProvider.autoDispose<double>((ref) {
   final asyncTxns = ref.watch(thisMonthTransactionsProvider);
   return asyncTxns.when(
     data: (txns) {
@@ -56,7 +56,7 @@ final totalSpentThisMonthProvider = StreamProvider<double>((ref) {
 });
 
 /// Total income this month.
-final totalIncomeThisMonthProvider = StreamProvider<double>((ref) {
+final totalIncomeThisMonthProvider = StreamProvider.autoDispose<double>((ref) {
   final asyncTxns = ref.watch(thisMonthTransactionsProvider);
   return asyncTxns.when(
     data: (txns) {
@@ -385,7 +385,7 @@ class TransactionNotifier extends StateNotifier<AsyncValue<void>> {
 }
 
 final transactionNotifierProvider =
-    StateNotifierProvider<TransactionNotifier, AsyncValue<void>>((ref) {
+    StateNotifierProvider.autoDispose<TransactionNotifier, AsyncValue<void>>((ref) {
   return TransactionNotifier(ref);
 });
 
@@ -621,7 +621,7 @@ class RecurringPaymentInfo {
 }
 
 /// Provider for pending reimbursements (transactions marked with [Owed by: ...] or #reimburse)
-final pendingReimbursementsProvider = StreamProvider<List<Transaction>>((ref) {
+final pendingReimbursementsProvider = StreamProvider.autoDispose<List<Transaction>>((ref) {
   final asyncTxns = ref.watch(transactionsProvider);
   return asyncTxns.when(
     data: (txns) {
@@ -638,7 +638,7 @@ final pendingReimbursementsProvider = StreamProvider<List<Transaction>>((ref) {
 });
 
 /// Total pending reimbursement amount owed to user
-final totalPendingReimbursementProvider = StreamProvider<double>((ref) {
+final totalPendingReimbursementProvider = StreamProvider.autoDispose<double>((ref) {
   final asyncPending = ref.watch(pendingReimbursementsProvider);
   return asyncPending.when(
     data: (txns) {

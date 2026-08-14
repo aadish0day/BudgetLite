@@ -324,7 +324,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                       ],
                     ).animate(target: AccessibilityUtils.shouldAnimate(context) ? null : 1.0).fadeIn(
                           duration: AppConstants.animNormal,
-                          delay: AppConstants.staggerDelay * groupIndex,
+                          delay: AppConstants.staggerDelay * (groupIndex > 10 ? 10 : groupIndex),
                         );
                   },
                 );

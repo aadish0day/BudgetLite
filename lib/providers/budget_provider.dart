@@ -10,18 +10,18 @@ import 'transaction_provider.dart';
 import 'database_provider.dart';
 import 'settings_provider.dart';
 
-final budgetsProvider = StreamProvider<List<Budget>>((ref) {
+final budgetsProvider = StreamProvider.autoDispose<List<Budget>>((ref) {
   final db = ref.watch(databaseProvider);
   return db.select(db.budgets).watch();
 });
 
 final budgetsByMonthProvider =
-    StreamProvider.family<List<Budget>, String>((ref, monthKey) {
+    StreamProvider.autoDispose.family<List<Budget>, String>((ref, monthKey) {
   final db = ref.watch(databaseProvider);
   return (db.select(db.budgets)..where((t) => t.month.equals(monthKey))).watch();
 });
 
-final thisMonthBudgetsProvider = StreamProvider<List<Budget>>((ref) {
+final thisMonthBudgetsProvider = StreamProvider.autoDispose<List<Budget>>((ref) {
   final asyncBudgets = ref.watch(budgetsByMonthProvider(Formatters.monthKey));
   return asyncBudgets.when(
     data: (budgets) => Stream.value(budgets),
@@ -30,7 +30,7 @@ final thisMonthBudgetsProvider = StreamProvider<List<Budget>>((ref) {
   );
 });
 
-final monthlyIncomeProvider = StreamProvider<double>((ref) {
+final monthlyIncomeProvider = StreamProvider.autoDispose<double>((ref) {
   final asyncIncome = ref.watch(totalIncomeThisMonthProvider);
   return asyncIncome.when(
     data: (income) => Stream.value(income),
@@ -39,7 +39,7 @@ final monthlyIncomeProvider = StreamProvider<double>((ref) {
   );
 });
 
-final totalBudgetThisMonthProvider = StreamProvider<double>((ref) {
+final totalBudgetThisMonthProvider = StreamProvider.autoDispose<double>((ref) {
   final asyncBudgets = ref.watch(thisMonthBudgetsProvider);
   return asyncBudgets.when(
     data: (budgets) {
@@ -51,7 +51,7 @@ final totalBudgetThisMonthProvider = StreamProvider<double>((ref) {
   );
 });
 
-final remainingBudgetProvider = StreamProvider<double>((ref) {
+final remainingBudgetProvider = StreamProvider.autoDispose<double>((ref) {
   final incomeAsync = ref.watch(monthlyIncomeProvider);
   final spentAsync = ref.watch(totalSpentThisMonthProvider);
   final income = incomeAsync.valueOrNull ?? 0.0;
@@ -161,7 +161,7 @@ class BudgetNotifier extends StateNotifier<AsyncValue<void>> {
 }
 
 final budgetNotifierProvider =
-    StateNotifierProvider<BudgetNotifier, AsyncValue<void>>((ref) {
+    StateNotifierProvider.autoDispose<BudgetNotifier, AsyncValue<void>>((ref) {
   return BudgetNotifier(ref);
 });
 
@@ -169,7 +169,7 @@ final budgetNotifierProvider =
 /// If rollover is ON: effectiveAllocated = baseAllocated + max(0, previousAllocated - previousUsed). Overspend does NOT carry as negative.
 /// If rollover is OFF: effectiveAllocated = baseAllocated.
 final effectiveCategoryBudgetProvider =
-    FutureProvider.family<({double baseAllocated, double effectiveAllocated, double spent, bool rollover}), String>(
+    FutureProvider.autoDispose.family<({double baseAllocated, double effectiveAllocated, double spent, bool rollover}), String>(
         (ref, categoryId) async {
   final thisMonthBudgets = await ref.watch(thisMonthBudgetsProvider.future);
   final budget = thisMonthBudgets.where((b) => b.categoryId == categoryId).firstOrNull;
@@ -212,7 +212,7 @@ final effectiveCategoryBudgetProvider =
 
 /// Provider for the used budget ratio per category (using effective budget with rollover)
 final categoryBudgetUsageProvider =
-    FutureProvider.family<double, String>((ref, categoryId) async {
+    FutureProvider.autoDispose.family<double, String>((ref, categoryId) async {
   final info = await ref.watch(effectiveCategoryBudgetProvider(categoryId).future);
   if (info.effectiveAllocated <= 0) return 0.0;
   return (info.spent / info.effectiveAllocated).clamp(0, 2).toDouble();

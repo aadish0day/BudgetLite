@@ -457,8 +457,8 @@ class _CsvImportSheetState extends ConsumerState<CsvImportSheet> {
         allowedExtensions: ['csv', 'CSV'],
       );
 
-      if (result != null && result.files.single.path != null) {
-        final filePath = result.files.single.path!;
+      if (result.isNotEmpty && result.first.path != null) {
+        final filePath = result.first.path!;
         _currentFilePath = filePath;
 
         // Read headers from the CSV file

@@ -40,7 +40,7 @@ dependencies:
   csv: ^6.0.0
   pdf: ^3.11.1
   printing: ^5.13.2
-  share_plus: ^12.0.2
+  share_plus: ^13.3.0
 
   # Utilities
   intl: ^0.20.2
@@ -49,7 +49,7 @@ dependencies:
   local_auth: ^3.0.2
   image_picker: ^1.2.3
   permission_handler: ^12.0.3
-  file_picker: ^11.0.2
+  file_picker: ^12.0.0
   quick_actions: ^1.0.7
 
 dev_dependencies:

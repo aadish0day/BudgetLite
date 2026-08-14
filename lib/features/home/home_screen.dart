@@ -284,7 +284,7 @@ class HomeScreen extends ConsumerWidget {
           ),
         ],
       ),
-    );
+    ).whenComplete(() => controller.dispose());
   }
 }
 

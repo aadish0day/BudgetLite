@@ -5,7 +5,7 @@ import '../core/database/database.dart';
 import 'database_provider.dart';
 import 'transaction_provider.dart';
 
-final goalsProvider = StreamProvider<List<Goal>>((ref) {
+final goalsProvider = StreamProvider.autoDispose<List<Goal>>((ref) {
   final db = ref.watch(databaseProvider);
   return (db.select(db.goals)
         ..orderBy([(t) => OrderingTerm(expression: t.createdAt, mode: OrderingMode.desc)]))
@@ -66,6 +66,6 @@ class GoalNotifier extends StateNotifier<AsyncValue<void>> {
 }
 
 final goalNotifierProvider =
-    StateNotifierProvider<GoalNotifier, AsyncValue<void>>((ref) {
+    StateNotifierProvider.autoDispose<GoalNotifier, AsyncValue<void>>((ref) {
   return GoalNotifier(ref);
 });

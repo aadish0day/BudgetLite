@@ -744,8 +744,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       final result = await FilePicker.pickFiles(
         type: FileType.any,
       );
-      if (result != null && result.files.single.path != null) {
-        final path = result.files.single.path!;
+      if (result.isNotEmpty && result.first.path != null) {
+        final path = result.first.path!;
         if (!path.endsWith('.db')) {
           if (context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -1199,7 +1199,6 @@ class _ManageCategoriesSheet extends ConsumerWidget {
           ),
           actions: [
             TextButton(onPressed: () {
-              nameCtrl.dispose();
               Navigator.pop(ctx);
             }, child: const Text('Cancel')),
             FilledButton(
@@ -1220,7 +1219,6 @@ class _ManageCategoriesSheet extends ConsumerWidget {
                 ref.invalidate(categoriesProvider);
                 ref.invalidate(expenseCategoriesProvider);
                 if (ctx.mounted) {
-                  nameCtrl.dispose();
                   Navigator.pop(ctx);
                 }
               },
@@ -1245,7 +1243,6 @@ class _ManageCategoriesSheet extends ConsumerWidget {
         ),
         actions: [
           TextButton(onPressed: () {
-            nameCtrl.dispose();
             Navigator.pop(ctx);
           }, child: const Text('Cancel')),
           FilledButton(
@@ -1258,7 +1255,6 @@ class _ManageCategoriesSheet extends ConsumerWidget {
               ref.invalidate(categoriesProvider);
               ref.invalidate(expenseCategoriesProvider);
               if (ctx.mounted) {
-                nameCtrl.dispose();
                 Navigator.pop(ctx);
               }
             },
@@ -1266,7 +1262,7 @@ class _ManageCategoriesSheet extends ConsumerWidget {
           ),
         ],
       ),
-    );
+    ).whenComplete(() => nameCtrl.dispose());
   }
 
   Future<void> _deleteCategorySafely(BuildContext context, WidgetRef ref, Category category, List<Category> allCategories) async {

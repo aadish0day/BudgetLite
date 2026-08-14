@@ -8,7 +8,7 @@ import 'budget_provider.dart';
 
 /// Monthly income totals (amount < 0)
 final incomeByMonthProvider =
-    FutureProvider.family<double, String>((ref, monthKey) async {
+    FutureProvider.autoDispose.family<double, String>((ref, monthKey) async {
   final db = ref.read(databaseProvider);
   final year = int.parse(monthKey.split('-')[0]);
   final month = int.parse(monthKey.split('-')[1]);
@@ -23,7 +23,7 @@ final incomeByMonthProvider =
 
 /// Monthly spending totals (amount > 0, excluding transfers)
 final spendingByMonthProvider =
-    FutureProvider.family<double, String>((ref, monthKey) async {
+    FutureProvider.autoDispose.family<double, String>((ref, monthKey) async {
   final db = ref.read(databaseProvider);
   final year = int.parse(monthKey.split('-')[0]);
   final month = int.parse(monthKey.split('-')[1]);
@@ -38,14 +38,14 @@ final spendingByMonthProvider =
 
 /// Monthly net (income - spending)
 final netByMonthProvider =
-    FutureProvider.family<double, String>((ref, monthKey) async {
-  final income = await ref.read(incomeByMonthProvider(monthKey).future);
-  final spending = await ref.read(spendingByMonthProvider(monthKey).future);
+    FutureProvider.autoDispose.family<double, String>((ref, monthKey) async {
+  final income = await ref.watch(incomeByMonthProvider(monthKey).future);
+  final spending = await ref.watch(spendingByMonthProvider(monthKey).future);
   return income - spending;
 });
 
 /// Transactions within a date range, optionally filtered by categories
-final transactionsByDateRangeProvider = FutureProvider.family<
+final transactionsByDateRangeProvider = FutureProvider.autoDispose.family<
     List<Transaction>,
     ({DateTime start, DateTime end, Set<String>? categoryIds})>(
   (ref, params) async {
@@ -65,7 +65,7 @@ final transactionsByDateRangeProvider = FutureProvider.family<
 
 /// Daily spending totals for a given year (for calendar/contribution graph)
 /// Returns `Map<DateTime(day only), double>`
-final dailySpendingProvider = FutureProvider.family<
+final dailySpendingProvider = FutureProvider.autoDispose.family<
     Map<DateTime, double>,
     ({int year, String? categoryId})>((ref, params) async {
   final db = ref.read(databaseProvider);
@@ -86,7 +86,7 @@ final dailySpendingProvider = FutureProvider.family<
 });
 
 /// Daily income totals for a given year
-final dailyIncomeProvider = FutureProvider.family<
+final dailyIncomeProvider = FutureProvider.autoDispose.family<
     Map<DateTime, double>,
     int>((ref, year) async {
   final db = ref.read(databaseProvider);
@@ -102,7 +102,7 @@ final dailyIncomeProvider = FutureProvider.family<
 });
 
 /// Budget health for current month: utilization %, status, remaining
-final budgetHealthProvider = FutureProvider<BudgetHealth>((ref) async {
+final budgetHealthProvider = FutureProvider.autoDispose<BudgetHealth>((ref) async {
   final budgets = await ref.watch(thisMonthBudgetsProvider.future);
   final transactions = await ref.watch(thisMonthTransactionsProvider.future);
 
@@ -150,7 +150,7 @@ BudgetStatus _budgetStatus(double percent) {
 }
 
 /// Spending velocity & pacing insights
-final spendingVelocityProvider = FutureProvider<SpendingVelocity>((ref) async {
+final spendingVelocityProvider = FutureProvider.autoDispose<SpendingVelocity>((ref) async {
   final now = DateTime.now();
 
   final thisMonthTxns = await ref.watch(thisMonthTransactionsProvider.future);
@@ -191,7 +191,7 @@ final spendingVelocityProvider = FutureProvider<SpendingVelocity>((ref) async {
 });
 
 /// Smart insights computed from spending patterns
-final spendingInsightsProvider = FutureProvider<List<SpendingInsight>>((ref) async {
+final spendingInsightsProvider = FutureProvider.autoDispose<List<SpendingInsight>>((ref) async {
   final insights = <SpendingInsight>[];
   final now = DateTime.now();
 
@@ -380,10 +380,10 @@ Future<List<CategoryDelta>> _calculateCategoryDeltas(Ref ref, DateTime now) asyn
 }
 
 /// Custom report data for date range + categories
-final customReportProvider = FutureProvider.family<CustomReportData,
+final customReportProvider = FutureProvider.autoDispose.family<CustomReportData,
     ({DateTime start, DateTime end, Set<String> categoryIds})>((ref, params) async {
-  final transactions = await ref.read(transactionsByDateRangeProvider(params).future);
-  final categories = await ref.read(categoriesProvider.future);
+  final transactions = await ref.watch(transactionsByDateRangeProvider(params).future);
+  final categories = await ref.watch(categoriesProvider.future);
 
   final income = transactions.where((t) => t.amount < 0).fold<double>(0.0, (s, t) => s + t.amount.abs());
   final spent = transactions.where((t) => t.amount > 0 && t.categoryId != 'transfer').fold<double>(0.0, (s, t) => s + t.amount);

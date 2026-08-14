@@ -129,7 +129,11 @@ class SmsService(private val activity: Activity, private val engine: FlutterEngi
 
     private fun stopListening(result: Result) {
         smsReceiver?.let {
-            activity.unregisterReceiver(it)
+            try {
+                activity.unregisterReceiver(it)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error unregistering smsReceiver", e)
+            }
             smsReceiver = null
         }
         stopSmsRetriever(object : Result {
@@ -173,7 +177,11 @@ class SmsService(private val activity: Activity, private val engine: FlutterEngi
     /** Stop SMS Retriever */
     private fun stopSmsRetriever(result: Result) {
         consentReceiver?.let {
-            activity.unregisterReceiver(it)
+            try {
+                activity.unregisterReceiver(it)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error unregistering consentReceiver", e)
+            }
             consentReceiver = null
         }
         isUsingRetriever = false
@@ -186,64 +194,68 @@ class SmsService(private val activity: Activity, private val engine: FlutterEngi
             return
         }
 
-        val messages = mutableListOf<Map<String, Any>>()
-        val uri = Telephony.Sms.Inbox.CONTENT_URI
-        // UPI-related sender addresses
-        val upiAddresses = listOf(
-            "UPI-GPAY", "UPI-GPay", "UPI-Gpay", "Google Pay", "GPAY",
-            "UPI-PHONEPE", "UPI-PhonePe", "UPI-Phonepe", "PhonePe", "PHONEPE",
-            "UPI-PAYTM", "UPI-Paytm", "Paytm", "PAYTM",
-            "KotakUPI", "HDFCBK", "ICICIUPI", "AXISUPI",
-            "YESUPI", "SBUPI", "BOBUPI", "PNBUPI",
-            "UPI", "upi"
-        )
-        val upiKeywords = listOf(
-            "gpay", "google pay", "phonepe", "paytm",
-            "upi", "unified payments interface",
-            "ybl", "pay", "vpa"
-        )
-
-        val projection = arrayOf(
-            Telephony.Sms.Inbox.BODY,
-            Telephony.Sms.Inbox.ADDRESS,
-            Telephony.Sms.Inbox.DATE
-        )
-        val selection = "${Telephony.Sms.Inbox.ADDRESS} LIKE ? OR ${Telephony.Sms.Inbox.BODY} LIKE ? OR ${Telephony.Sms.Inbox.BODY} LIKE ?"
-        val selectionArgs = arrayOf(
-            "%UPI%",                           // UPI-sender addresses
-            "%Rs.%",                           // contains amount format
-            "%₹%",                             // contains rupee symbol
-        )
-
-        try {
-            val cursor: Cursor? = activity.contentResolver.query(
-                uri, projection, selection, selectionArgs,
-                "${Telephony.Sms.Inbox.DATE} DESC LIMIT 100"
+        Thread {
+            val messages = mutableListOf<Map<String, Any>>()
+            val uri = Telephony.Sms.Inbox.CONTENT_URI
+            // UPI-related sender addresses
+            val upiAddresses = listOf(
+                "UPI-GPAY", "UPI-GPay", "UPI-Gpay", "Google Pay", "GPAY",
+                "UPI-PHONEPE", "UPI-PhonePe", "UPI-Phonepe", "PhonePe", "PHONEPE",
+                "UPI-PAYTM", "UPI-Paytm", "Paytm", "PAYTM",
+                "KotakUPI", "HDFCBK", "ICICIUPI", "AXISUPI",
+                "YESUPI", "SBUPI", "BOBUPI", "PNBUPI",
+                "UPI", "upi"
             )
-            cursor?.use { c ->
-                while (c.moveToNext()) {
-                    val body = c.getString(c.getColumnIndexOrThrow(Telephony.Sms.Inbox.BODY)) ?: continue
-                    val address = c.getString(c.getColumnIndexOrThrow(Telephony.Sms.Inbox.ADDRESS)) ?: ""
-                    val timestamp = c.getLong(c.getColumnIndexOrThrow(Telephony.Sms.Inbox.DATE))
-                    val lowerBody = body.lowercase()
-                    // Filter to only UPI/direction-related messages
-                    val isUpi = upiAddresses.any { address.contains(it, ignoreCase = true) } ||
-                                upiKeywords.any { lowerBody.contains(it) } ||
-                                lowerBody.contains("credited") ||
-                                lowerBody.contains("debited") ||
-                                lowerBody.contains("debit") ||
-                                lowerBody.contains("spent") ||
-                                lowerBody.contains("paid")
-                    if (isUpi) {
-                        messages.add(mapOf("body" to body, "timestamp" to timestamp))
+            val upiKeywords = listOf(
+                "gpay", "google pay", "phonepe", "paytm",
+                "upi", "unified payments interface",
+                "ybl", "pay", "vpa"
+            )
+
+            val projection = arrayOf(
+                Telephony.Sms.Inbox.BODY,
+                Telephony.Sms.Inbox.ADDRESS,
+                Telephony.Sms.Inbox.DATE
+            )
+            val selection = "${Telephony.Sms.Inbox.ADDRESS} LIKE ? OR ${Telephony.Sms.Inbox.BODY} LIKE ? OR ${Telephony.Sms.Inbox.BODY} LIKE ?"
+            val selectionArgs = arrayOf(
+                "%UPI%",                           // UPI-sender addresses
+                "%Rs.%",                           // contains amount format
+                "%₹%",                             // contains rupee symbol
+            )
+
+            try {
+                val cursor: Cursor? = activity.contentResolver.query(
+                    uri, projection, selection, selectionArgs,
+                    "${Telephony.Sms.Inbox.DATE} DESC LIMIT 100"
+                )
+                cursor?.use { c ->
+                    while (c.moveToNext()) {
+                        val body = c.getString(c.getColumnIndexOrThrow(Telephony.Sms.Inbox.BODY)) ?: continue
+                        val address = c.getString(c.getColumnIndexOrThrow(Telephony.Sms.Inbox.ADDRESS)) ?: ""
+                        val timestamp = c.getLong(c.getColumnIndexOrThrow(Telephony.Sms.Inbox.DATE))
+                        val lowerBody = body.lowercase()
+                        // Filter to only UPI/direction-related messages
+                        val isUpi = upiAddresses.any { address.contains(it, ignoreCase = true) } ||
+                                    upiKeywords.any { lowerBody.contains(it) } ||
+                                    lowerBody.contains("credited") ||
+                                    lowerBody.contains("debited") ||
+                                    lowerBody.contains("debit") ||
+                                    lowerBody.contains("spent") ||
+                                    lowerBody.contains("paid")
+                        if (isUpi) {
+                            messages.add(mapOf("body" to body, "timestamp" to timestamp))
+                        }
                     }
                 }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error scanning inbox", e)
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error scanning inbox", e)
-        }
 
-        result.success(messages)
+            activity.runOnUiThread {
+                result.success(messages)
+            }
+        }.start()
     }
 
     fun emitSmsReceived(body: String, timestamp: Long) {
