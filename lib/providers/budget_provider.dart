@@ -132,8 +132,13 @@ class BudgetNotifier extends StateNotifier<AsyncValue<void>> {
         );
       }
     } else if (ratio >= 0.8) {
-      final alreadyNotified = await settings.wasBudgetNotified(categoryId, 'approaching');
-      if (!alreadyNotified) {
+      // An 'over' notification implies 'approaching' was already shown —
+      // checking only the exact level caused the approaching alert to re-fire
+      // (and the stored level to bounce) whenever spend dipped below 100%
+      // after an over-budget alert.
+      final notifiedApproaching = await settings.wasBudgetNotified(categoryId, 'approaching');
+      final notifiedOver = await settings.wasBudgetNotified(categoryId, 'over');
+      if (!notifiedApproaching && !notifiedOver) {
         await settings.setBudgetNotified(categoryId, 'approaching');
         messenger.showSnackBar(
           SnackBar(

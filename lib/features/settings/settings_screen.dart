@@ -568,7 +568,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
 
     int totalSmsParsed = 0;
-    int addedCount = 0;
     final queueNotifier = ref.read(smsReviewQueueProvider.notifier);
     final includeMerchantNote = ref.read(smsAutoNoteEnabledProvider).valueOrNull ?? true;
 
@@ -583,7 +582,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         totalSmsParsed++;
         if (!queueNotifier.isAlreadyInQueue(parsedTxn.id)) {
           await queueNotifier.addToQueue(parsedTxn, force: true);
-          addedCount++;
         }
       }
     }

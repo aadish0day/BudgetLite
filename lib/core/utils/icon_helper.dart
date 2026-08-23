@@ -36,6 +36,8 @@ IconData getCategoryIcon(String iconName) {
     'sports_esports': LucideIcons.gamepad2,
     'game': LucideIcons.gamepad2,
     'gaming': LucideIcons.gamepad2,
+    'gamepad_2': LucideIcons.gamepad2,
+    'gamepad2': LucideIcons.gamepad2,
     'work_outline': LucideIcons.briefcaseBusiness,
     'work': LucideIcons.briefcaseBusiness,
     'income': LucideIcons.landmark,

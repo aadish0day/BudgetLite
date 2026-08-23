@@ -23,6 +23,7 @@ class ContributionGraph extends ConsumerStatefulWidget {
 }
 
 class _ContributionGraphState extends ConsumerState<ContributionGraph> {
+  OverlayEntry? _tooltipEntry;
   late int _selectedYear;
   String? _filterCategoryId;
 
@@ -37,6 +38,12 @@ class _ContributionGraphState extends ConsumerState<ContributionGraph> {
     _selectedYear = DateTime.now().year;
   }
 
+  @override
+  void dispose() {
+    _tooltipEntry?.remove();
+    super.dispose();
+  }
+
   void _goToPrevYear() {
     setState(() => _selectedYear--);
   }
@@ -48,7 +55,9 @@ class _ContributionGraphState extends ConsumerState<ContributionGraph> {
   /// Build the per-day spend map for the selected year.
   Map<DateTime, double> _buildDailySpend(List<Transaction> allTransactions) {
     final daily = <DateTime, double>{};
-    for (final t in allTransactions.where((t) => t.amount > 0)) {
+    // Exclude transfers — balance-neutral, consistent with the calendar and
+    // every other spending view.
+    for (final t in allTransactions.where((t) => t.amount > 0 && t.categoryId != 'transfer')) {
       if (t.date.year != _selectedYear) continue;
       if (_filterCategoryId != null && t.categoryId != _filterCategoryId) continue;
 
@@ -308,11 +317,17 @@ class _ContributionGraphState extends ConsumerState<ContributionGraph> {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = colorScheme.brightness == Brightness.dark;
     final overlay = Overlay.of(context);
+
+    // Only one tooltip at a time
+    _tooltipEntry?.remove();
     late OverlayEntry entry;
 
     entry = OverlayEntry(
       builder: (ctx) => GestureDetector(
-        onTap: () => entry.remove(),
+        onTap: () {
+          _tooltipEntry = null;
+          entry.remove();
+        },
         child: Material(
           color: Colors.transparent,
           child: Center(
@@ -385,6 +400,7 @@ class _ContributionGraphState extends ConsumerState<ContributionGraph> {
     );
 
     overlay.insert(entry);
+    _tooltipEntry = entry;
   }
 
   @override

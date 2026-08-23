@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:drift/drift.dart';
@@ -131,6 +132,7 @@ class SettingsNotifier extends StateNotifier<AsyncValue<void>> {
         'categoryId': t.categoryId,
         'accountId': t.accountId,
         'note': t.note,
+        'payee': t.payee,
         'date': t.date.toIso8601String(),
         'paymentMethod': t.paymentMethod,
         'isRecurring': t.isRecurring,
@@ -193,6 +195,7 @@ class SettingsNotifier extends StateNotifier<AsyncValue<void>> {
           categoryId: m['categoryId'] as String,
           accountId: m['accountId'] as String,
           note: Value(m['note'] as String?),
+          payee: Value(m['payee'] as String?),
           date: DateTime.parse(m['date'] as String),
           paymentMethod: Value(m['paymentMethod'] as String? ?? 'cash'),
           isRecurring: Value(m['isRecurring'] as bool? ?? false),
@@ -240,6 +243,21 @@ class SettingsNotifier extends StateNotifier<AsyncValue<void>> {
     if (!await source.exists()) throw Exception('Backup file not found');
 
     final dest = File(p.join(dbFolder.path, 'budget_lite.db'));
+
+    // Close the live connection BEFORE overwriting the file — copying over an
+    // open SQLite database (with possibly unflushed WAL/SHM pages) risks
+    // corruption. Stale sidecar files must also go.
+    final oldDb = ref.read(databaseProvider);
+    await oldDb.close();
+    for (final suffix in ['-wal', '-shm']) {
+      final sidecar = File('${dest.path}$suffix');
+      if (await sidecar.exists()) {
+        try {
+          await sidecar.delete();
+        } catch (_) {}
+      }
+    }
+
     await source.copy(dest.path);
     ref.invalidate(databaseProvider);
   }
@@ -323,9 +341,16 @@ class SettingsNotifier extends StateNotifier<AsyncValue<void>> {
   /// Stores a set of reviewed transaction IDs in AppSettings.
   Future<void> markSubscriptionReviewed(String transactionId) async {
     final stored = await getSetting('subscription_reviewed');
-    final set = stored != null && stored.isNotEmpty
-        ? Set<String>.from(const JsonDecoder().convert(stored) as List)
-        : <String>{};
+    Set<String> set;
+    if (stored != null && stored.isNotEmpty) {
+      try {
+        set = Set<String>.from(const JsonDecoder().convert(stored) as List);
+      } catch (_) {
+        set = <String>{};
+      }
+    } else {
+      set = <String>{};
+    }
     set.add(transactionId);
     await setSetting('subscription_reviewed', jsonEncode(set.toList()));
   }
@@ -411,6 +436,8 @@ final autoCategorizationRulesProvider =
 );
 
 class AutoCategorizationRulesNotifier extends Notifier<List<CategorizationRule>> {
+  final Completer<void> _loaded = Completer<void>();
+
   @override
   List<CategorizationRule> build() {
     _loadRules();
@@ -418,28 +445,36 @@ class AutoCategorizationRulesNotifier extends Notifier<List<CategorizationRule>>
   }
 
   Future<void> _loadRules() async {
-    final settings = ref.read(settingsNotifierProvider.notifier);
-    final stored = await settings.getSetting('auto_category_rules');
-    if (stored != null && stored.isNotEmpty) {
-      try {
-        final list = (const JsonDecoder().convert(stored) as List)
-            .map((e) => CategorizationRule.fromJson(
-                Map<String, dynamic>.from(e as Map)))
-            .toList();
-        if (list.isNotEmpty) {
-          state = list;
-        }
-      } catch (_) {}
+    try {
+      final settings = ref.read(settingsNotifierProvider.notifier);
+      final stored = await settings.getSetting('auto_category_rules');
+      if (stored != null && stored.isNotEmpty) {
+        try {
+          final list = (const JsonDecoder().convert(stored) as List)
+              .map((e) => CategorizationRule.fromJson(
+                  Map<String, dynamic>.from(e as Map)))
+              .toList();
+          if (list.isNotEmpty) {
+            state = list;
+          }
+        } catch (_) {}
+      }
+    } finally {
+      if (!_loaded.isCompleted) _loaded.complete();
     }
   }
 
   Future<void> _persist() async {
+    await _loaded.future;
     final settings = ref.read(settingsNotifierProvider.notifier);
     final jsonStr = const JsonEncoder().convert(state.map((r) => r.toJson()).toList());
     await settings.setSetting('auto_category_rules', jsonStr);
   }
 
   Future<void> setRules(List<CategorizationRule> rules) async {
+    // Wait for the initial load first, otherwise a late-arriving _loadRules()
+    // could clobber freshly saved rules with stale storage contents.
+    await _loaded.future;
     state = rules;
     await _persist();
   }

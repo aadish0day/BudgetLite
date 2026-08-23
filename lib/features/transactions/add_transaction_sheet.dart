@@ -833,13 +833,18 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
     );
   }
 
-  void _showReceiptViewer(BuildContext context) {
+  Future<void> _showReceiptViewer(BuildContext context) async {
     if (_receiptImagePath == null) return;
-    Navigator.of(context).push(
+    final deleteRequested = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
         builder: (_) => _FullReceiptViewer(imagePath: _receiptImagePath!),
       ),
     );
+    // The viewer's trash button pops with `true` — actually remove the
+    // receipt instead of silently keeping it attached.
+    if (deleteRequested == true && mounted) {
+      setState(() => _receiptImagePath = null);
+    }
   }
 
   void _submit() async {

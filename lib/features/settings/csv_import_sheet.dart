@@ -789,6 +789,7 @@ class _CsvImportSheetState extends ConsumerState<CsvImportSheet> {
     setState(() => _importing = true);
     final db = ref.read(databaseProvider);
     final existingTxns = ref.read(transactionsProvider).valueOrNull ?? [];
+    final importedKeys = <String>{}; // dedupe identical rows within this file
     int imported = 0;
     int skipped = 0;
 
@@ -840,17 +841,24 @@ class _CsvImportSheetState extends ConsumerState<CsvImportSheet> {
         note: row.description,
       );
 
-      if (dupCheck.isNotEmpty) {
+      final dupKey =
+          '${row.date.year}-${row.date.month}-${row.date.day}|'
+          '${row.amount.toStringAsFixed(2)}|${row.description.toLowerCase()}';
+      if (dupCheck.isNotEmpty || importedKeys.contains(dupKey)) {
         skipped++;
         continue;
       }
+      importedKeys.add(dupKey);
 
       // Import the transaction
       try {
         final uuid = const Uuid().v4();
-        final finalAmount = categoryId == 'income'
+        // CsvImporter already signs amounts correctly (credits negative =
+        // income). Only flip to negative when keyword matching detects an
+        // income row that arrived with a positive sign.
+        final finalAmount = categoryId == 'income' && row.amount > 0
             ? -row.amount.abs()
-            : row.amount.abs();
+            : row.amount;
 
         await db.into(db.transactions).insert(TransactionsCompanion.insert(
           id: uuid,

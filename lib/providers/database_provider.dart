@@ -9,17 +9,17 @@ final databaseProvider = Provider<AppDatabase>((ref) {
 });
 
 final categoriesProvider = FutureProvider.autoDispose<List<Category>>((ref) async {
-  final db = ref.read(databaseProvider);
+  final db = ref.watch(databaseProvider);
   return db.select(db.categories).get();
 });
 
 final accountsProvider = FutureProvider.autoDispose<List<Account>>((ref) async {
-  final db = ref.read(databaseProvider);
+  final db = ref.watch(databaseProvider);
   return db.select(db.accounts).get();
 });
 
 final expenseCategoriesProvider = FutureProvider.autoDispose<List<Category>>((ref) async {
-  final db = ref.read(databaseProvider);
+  final db = ref.watch(databaseProvider);
   return (db.select(db.categories)..where((tbl) => tbl.type.equals('expense')))
       .get();
 });
@@ -27,7 +27,7 @@ final expenseCategoriesProvider = FutureProvider.autoDispose<List<Category>>((re
 /// Stream-based provider for the default account's initial/starting balance.
 /// Updates live whenever the balance is changed via the edit dialog.
 final initialBalanceProvider = StreamProvider.autoDispose<double>((ref) {
-  final db = ref.read(databaseProvider);
+  final db = ref.watch(databaseProvider);
   return db.watchDefaultAccount().map((account) => account.balance);
 });
 

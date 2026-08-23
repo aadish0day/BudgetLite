@@ -19,7 +19,6 @@ import 'core/utils/notification_service.dart';
 import 'providers/settings_provider.dart';
 import 'providers/transaction_provider.dart';
 import 'providers/navigation_provider.dart';
-import 'core/services/sms_listener_service.dart';
 import 'main.dart' show quickActionCallbackProvider, setupQuickActions;
 
 class BudgetLiteApp extends ConsumerWidget {
@@ -440,16 +439,6 @@ class _MainShellState extends ConsumerState<_MainShell> {
               )
             : null,
       ),
-    );
-  }
-
-  BottomNavigationBarItem _bottomNavItem(
-      IconData outlined, IconData filled, String label, int currentTab, int index) {
-    final isSelected = currentTab == index;
-    return BottomNavigationBarItem(
-      icon: Icon(isSelected ? filled : outlined),
-      activeIcon: Icon(filled),
-      label: label,
     );
   }
 

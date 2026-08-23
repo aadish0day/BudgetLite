@@ -37,6 +37,7 @@ class InsightsScreen extends ConsumerWidget {
     final categories = ref.watch(categoriesProvider).valueOrNull ?? [];
     final transactionsAsync = ref.watch(thisMonthTransactionsProvider);
     final transactions = transactionsAsync.valueOrNull ?? [];
+    final allTransactions = ref.watch(transactionsProvider).valueOrNull ?? [];
     final budgets = ref.watch(thisMonthBudgetsProvider).valueOrNull ?? [];
     final incomeThisMonth = ref.watch(totalIncomeThisMonthProvider).valueOrNull ?? 0.0;
     final totalSpentThisMonth = ref.watch(totalSpentThisMonthProvider).valueOrNull ?? 0.0;
@@ -166,8 +167,10 @@ class InsightsScreen extends ConsumerWidget {
                         Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           crossAxisAlignment: CrossAxisAlignment.start,
-                          children:
-                              categorySpending.entries.take(5).map((entry) {
+                          children: (categorySpending.entries.toList()
+                                ..sort((a, b) => b.value.compareTo(a.value)))
+                              .take(5)
+                              .map((entry) {
                             final cat = categories
                                 .where((c) => c.id == entry.key)
                                 .firstOrNull;
@@ -371,7 +374,9 @@ class InsightsScreen extends ConsumerWidget {
           ],
 
           // ── Weekly Trends ──
-          if (transactions.isNotEmpty) ...[
+          // Uses ALL transactions — "last week" usually spans the previous
+          // month, which this month's dataset cannot see.
+          if (allTransactions.isNotEmpty) ...[
             Text(
               'This Week vs Last Week',
               style: AppTheme.displayStyle(
@@ -390,7 +395,7 @@ class InsightsScreen extends ConsumerWidget {
               padding: AppConstants.cardPadding,
               child: SizedBox(
                 height: 200,
-                child: _WeeklyChart(transactions: transactions),
+                child: _WeeklyChart(transactions: allTransactions),
               ),
             ).animate(target: AccessibilityUtils.shouldAnimate(context) ? null : 1.0).fadeIn(duration: AppConstants.animSlow, delay: 150.ms),
             const SizedBox(height: 24),
@@ -1073,8 +1078,11 @@ class _WeeklyChart extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final now = DateTime.now();
 
-    // This week (Monday to Sunday)
-    final thisMonday = now.subtract(Duration(days: now.weekday - 1));
+    // This week (Monday to Sunday). Normalize boundaries to local midnight —
+    // keeping `now`'s time-of-day pushed earlier-this-week transactions into
+    // last week's bars.
+    final today = DateTime(now.year, now.month, now.day);
+    final thisMonday = today.subtract(Duration(days: today.weekday - 1));
     final lastMonday = thisMonday.subtract(const Duration(days: 7));
     final thisWeekEnd = thisMonday.add(const Duration(days: 7));
 
@@ -1084,10 +1092,10 @@ class _WeeklyChart extends StatelessWidget {
 
     // Exclude transfer entries from weekly chart (transfers are balance-neutral)
     for (final t in transactions.where((t) => t.amount > 0 && t.categoryId != 'transfer')) {
-      if (t.date.isAfter(thisMonday) && t.date.isBefore(thisWeekEnd)) {
+      if (!t.date.isBefore(thisMonday) && t.date.isBefore(thisWeekEnd)) {
         final dayIdx = t.date.weekday - 1; // 0 = Monday
         if (dayIdx >= 0 && dayIdx < 7) thisWeek[dayIdx] += t.amount;
-      } else if (t.date.isAfter(lastMonday) && t.date.isBefore(thisMonday)) {
+      } else if (!t.date.isBefore(lastMonday) && t.date.isBefore(thisMonday)) {
         final dayIdx = t.date.weekday - 1;
         if (dayIdx >= 0 && dayIdx < 7) lastWeek[dayIdx] += t.amount;
   }
@@ -1336,8 +1344,11 @@ class _SmartInsightsSection extends ConsumerWidget {
     if (target == null) return;
 
     if (target == 'budget') {
-      ref.read(budgetHighlightProvider.notifier).state = 'income';
-      ref.read(currentTabProvider.notifier).state = 2;
+      final tab = budgetTabIndex(ref);
+      if (tab != null) {
+        ref.read(budgetHighlightProvider.notifier).state = 'income';
+        ref.read(currentTabProvider.notifier).state = tab;
+      }
     } else if (target == 'calendar') {
       // Scroll to bottom of the list where SpendCalendar lives
       Scrollable.of(context).position.animateTo(

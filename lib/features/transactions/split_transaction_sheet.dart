@@ -91,10 +91,13 @@ class _SplitTransactionSheetState extends ConsumerState<SplitTransactionSheet> {
 
   void _removeSplitLine(int index) {
     if (_splits.length <= 2) return; // keep at least 2 lines
+    final removedCtrl = _splitCtrls.removeAt(index);
     setState(() {
       _splits.removeAt(index);
-      _splitCtrls.removeAt(index).dispose();
     });
+    // Dispose after the frame — the focused TextField may still touch the
+    // controller during this frame before the rebuild.
+    WidgetsBinding.instance.addPostFrameCallback((_) => removedCtrl.dispose());
   }
 
   void _autoBalanceRemainder() {

@@ -12,9 +12,13 @@ final incomeByMonthProvider =
   final db = ref.read(databaseProvider);
   final year = int.parse(monthKey.split('-')[0]);
   final month = int.parse(monthKey.split('-')[1]);
+  // Compare against local month-boundary instants instead of extracting
+  // year/month components — drift stores DateTimes as UTC instants and
+  // component extraction reads UTC parts, which mis-buckets transactions
+  // created between midnight and the UTC offset in timezones ahead of UTC.
   final transactions = await (db.select(db.transactions)
-        ..where((t) => t.date.year.equals(year))
-        ..where((t) => t.date.month.equals(month)))
+        ..where((t) => t.date.isBiggerOrEqualValue(DateTime(year, month)))
+        ..where((t) => t.date.isSmallerThanValue(DateTime(year, month + 1))))
       .get();
   return transactions
       .where((t) => t.amount < 0)
@@ -28,8 +32,8 @@ final spendingByMonthProvider =
   final year = int.parse(monthKey.split('-')[0]);
   final month = int.parse(monthKey.split('-')[1]);
   final transactions = await (db.select(db.transactions)
-        ..where((t) => t.date.year.equals(year))
-        ..where((t) => t.date.month.equals(month)))
+        ..where((t) => t.date.isBiggerOrEqualValue(DateTime(year, month)))
+        ..where((t) => t.date.isSmallerThanValue(DateTime(year, month + 1))))
       .get();
   return transactions
       .where((t) => t.amount > 0 && t.categoryId != 'transfer')
@@ -50,9 +54,13 @@ final transactionsByDateRangeProvider = FutureProvider.autoDispose.family<
     ({DateTime start, DateTime end, Set<String>? categoryIds})>(
   (ref, params) async {
     final db = ref.read(databaseProvider);
+    // Treat `end` as a calendar date and include the entire day (date pickers
+    // return midnight, which would otherwise exclude that day's transactions).
+    final endExclusive =
+        DateTime(params.end.year, params.end.month, params.end.day + 1);
     var query = db.select(db.transactions)
       ..where((t) => t.date.isBiggerOrEqualValue(params.start))
-      ..where((t) => t.date.isSmallerOrEqualValue(params.end))
+      ..where((t) => t.date.isSmallerThanValue(endExclusive))
       ..orderBy([(t) => drift.OrderingTerm(expression: t.date, mode: drift.OrderingMode.desc)]);
 
     if (params.categoryIds != null && params.categoryIds!.isNotEmpty) {
@@ -70,7 +78,8 @@ final dailySpendingProvider = FutureProvider.autoDispose.family<
     ({int year, String? categoryId})>((ref, params) async {
   final db = ref.read(databaseProvider);
   var query = db.select(db.transactions)
-    ..where((t) => t.date.year.equals(params.year));
+    ..where((t) => t.date.isBiggerOrEqualValue(DateTime(params.year)))
+    ..where((t) => t.date.isSmallerThanValue(DateTime(params.year + 1)));
 
   if (params.categoryId != null) {
     query = query..where((t) => t.categoryId.equals(params.categoryId!));
@@ -91,7 +100,8 @@ final dailyIncomeProvider = FutureProvider.autoDispose.family<
     int>((ref, year) async {
   final db = ref.read(databaseProvider);
   final transactions = await (db.select(db.transactions)
-        ..where((t) => t.date.year.equals(year)))
+        ..where((t) => t.date.isBiggerOrEqualValue(DateTime(year)))
+        ..where((t) => t.date.isSmallerThanValue(DateTime(year + 1))))
       .get();
   final daily = <DateTime, double>{};
   for (final t in transactions.where((t) => t.amount < 0)) {

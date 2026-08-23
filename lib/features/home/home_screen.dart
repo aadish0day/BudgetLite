@@ -275,7 +275,20 @@ class HomeScreen extends ConsumerWidget {
           ),
           FilledButton(
             onPressed: () {
-              final value = double.tryParse(controller.text.trim()) ?? 0;
+              final text = controller.text.trim();
+              final value = double.tryParse(text);
+              // Reject empty/garbage input — garbage previously reset the
+              // balance to 0 with no feedback.
+              if (text.isEmpty || value == null || value < 0) {
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                  const SnackBar(
+                    content: Text('Enter a valid amount'),
+                    behavior: SnackBarBehavior.floating,
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+                return;
+              }
               final db = ref.read(databaseProvider);
               updateInitialBalance(db, value);
               Navigator.of(ctx).pop();
@@ -581,7 +594,10 @@ class _QuickBudgetSetup extends ConsumerWidget {
           ),
           const SizedBox(height: 16),
           FilledButton.icon(
-            onPressed: () => ref.read(currentTabProvider.notifier).state = 2,
+            onPressed: () {
+              final tab = budgetTabIndex(ref);
+              if (tab != null) ref.read(currentTabProvider.notifier).state = tab;
+            },
             icon: const Icon(LucideIcons.plus, size: 18),
             label: const Text('Set Up Budget'),
           ),
@@ -619,7 +635,10 @@ class _BudgetOverview extends ConsumerWidget {
                 ),
               ),
               GestureDetector(
-                onTap: () => ref.read(currentTabProvider.notifier).state = 2,
+                onTap: () {
+                  final tab = budgetTabIndex(ref);
+                  if (tab != null) ref.read(currentTabProvider.notifier).state = tab;
+                },
                 child: Text(
                   'Details',
                   style: AppTheme.bodyStyle(

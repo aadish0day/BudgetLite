@@ -154,8 +154,12 @@ class SmsParser {
         rawMerchant.toLowerCase().contains('google pay') ||
         rawMerchant.toLowerCase().contains('phonepe') ||
         rawMerchant.toLowerCase().contains('paytm')) {
+      const walletTokens = {'gpay', 'google', 'pay', 'phonepe', 'paytm'};
       final parts = rawMerchant.split(RegExp(r'\s+'));
-      rawMerchant = parts.where((p) => !p.toLowerCase().contains('pay') && !p.toLowerCase().contains('gpay') && !p.toLowerCase().contains('phonepe')).join(' ');
+      rawMerchant = parts
+          .where((p) => !walletTokens
+              .contains(p.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '')))
+          .join(' ');
       if (rawMerchant.trim().isEmpty) rawMerchant = 'UPI transaction';
     }
 
@@ -163,12 +167,23 @@ class SmsParser {
     String categoryId = 'other';
     bool userRuleMatched = false;
     if (keywordToCategory != null && keywordToCategory.isNotEmpty) {
+      final cleanMerchant = rawMerchant.toLowerCase();
       for (final entry in keywordToCategory.entries) {
-        if (rawMerchant.toLowerCase().contains(entry.key)) {
-          categoryId = entry.value;
-          userRuleMatched = true;
-          break;
+        // A rule's keyword field may hold a whole comma-separated list
+        // ("zomato, swiggy, kfc") — match against each individual keyword,
+        // not the entire list as one string.
+        final keywords = entry.key
+            .split(',')
+            .map((k) => k.trim().toLowerCase())
+            .where((k) => k.isNotEmpty);
+        for (final keyword in keywords) {
+          if (cleanMerchant.contains(keyword)) {
+            categoryId = entry.value;
+            userRuleMatched = true;
+            break;
+          }
         }
+        if (userRuleMatched) break;
       }
     }
     if (!userRuleMatched) {
@@ -203,18 +218,33 @@ class SmsParser {
     int minute = 0;
     int second = 0;
 
-    final timeMatch = RegExp(r'(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(am|pm)?', caseSensitive: false).firstMatch(body);
+    final timeMatch = RegExp(r'(?<!\d)(\d{1,2}):(\d{2})(?::(\d{2}))?(?::\d{2})?\s*(am|pm)?', caseSensitive: false).firstMatch(body);
     if (timeMatch != null) {
-      hour = int.parse(timeMatch.group(1)!);
-      minute = int.parse(timeMatch.group(2)!);
-      if (timeMatch.group(3) != null) {
-        second = int.parse(timeMatch.group(3)!);
+      final h = int.parse(timeMatch.group(1)!);
+      final m = int.parse(timeMatch.group(2)!);
+      final s = int.tryParse(timeMatch.group(3) ?? '') ?? 0;
+      if (h >= 0 && h <= 23 && m >= 0 && m <= 59 && s >= 0 && s <= 59) {
+        hour = h;
+        minute = m;
+        second = s;
+        final ampm = timeMatch.group(4)?.toLowerCase();
+        if (ampm == 'pm' && hour < 12) {
+          hour += 12;
+        } else if (ampm == 'am' && hour == 12) {
+          hour = 0;
+        }
       }
-      final ampm = timeMatch.group(4)?.toLowerCase();
-      if (ampm == 'pm' && hour < 12) {
-        hour += 12;
-      } else if (ampm == 'am' && hour == 12) {
-        hour = 0;
+    }
+
+    // YYYY-MM-DD or YYYY/MM/DD (must run before DMY, which would
+    // otherwise match "26-08-22" inside "2026-08-22")
+    final ymd = RegExp(r'(\d{4})[/-](\d{1,2})[/-](\d{1,2})').firstMatch(body);
+    if (ymd != null) {
+      final year = int.parse(ymd.group(1)!);
+      final month = int.parse(ymd.group(2)!);
+      final day = int.parse(ymd.group(3)!);
+      if (month >= 1 && month <= 12 && day >= 1 && day <= DateTime(year, month + 1, 0).day) {
+        return DateTime(year, month, day, hour, minute, second);
       }
     }
 
@@ -246,19 +276,6 @@ class SmsParser {
       if (month != null && day >= 1 && day <= DateTime(year, month + 1, 0).day) {
         return DateTime(year, month, day, hour, minute, second);
       }
-    }
-
-    // YYYY-MM-DD
-    final ymd = RegExp(r'(\d{4})[/-](\d{1,2})[/-](\d{1,2})').firstMatch(body);
-    if (ymd != null) {
-      return DateTime(
-        int.parse(ymd.group(1)!),
-        int.parse(ymd.group(2)!),
-        int.parse(ymd.group(3)!),
-        hour,
-        minute,
-        second,
-      );
     }
 
     return null;

@@ -8,6 +8,7 @@ import '../../core/theme/colors.dart';
 import '../../core/utils/constants.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/utils/icon_helper.dart';
+import '../../core/utils/notification_service.dart';
 import '../../core/utils/accessibility_utils.dart';
 import '../../providers/transaction_provider.dart';
 import '../../providers/settings_provider.dart';
@@ -755,6 +756,14 @@ void markRecurringAsPaid(BuildContext context, WidgetRef ref, RecurringPaymentIn
   final notifier = ref.read(transactionNotifierProvider.notifier);
   final messenger = ScaffoldMessenger.of(context);
   final original = payment.transaction;
+  final wasIncome = original.amount < 0;
+
+  // Advance the recurring template to its next due date so the current
+  // period holds exactly one ledger entry for this payment.
+  final nextDue = NotificationService.calculateNextDueDate(
+    lastDate: original.date,
+    interval: original.recurringInterval,
+  );
 
   unawaited(
     notifier.addTransaction(
@@ -764,14 +773,16 @@ void markRecurringAsPaid(BuildContext context, WidgetRef ref, RecurringPaymentIn
       date: DateTime.now(),
       paymentMethod: original.paymentMethod,
       isRecurring: false,
+      isIncome: wasIncome,
     ).then((_) {
+      if (nextDue == null) return;
       final updated = Transaction(
         id: original.id,
         amount: original.amount,
         categoryId: original.categoryId,
         accountId: 'default',
         note: original.note,
-        date: DateTime.now(),
+        date: nextDue,
         paymentMethod: original.paymentMethod,
         isRecurring: original.isRecurring,
         isRecurringInstance: original.isRecurringInstance,

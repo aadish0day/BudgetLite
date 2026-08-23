@@ -17,9 +17,22 @@ class CategorizationRule {
       );
 
   /// Build a regex from the comma-separated keywords for matching.
-  /// Handles both `', '` and `','` formats.
-  RegExp toRegExp() =>
-      RegExp(keyword.split(',').map((s) => s.trim()).join('|'), caseSensitive: false);
+  /// Handles both `', '` and `','` formats. Keywords are escaped so
+  /// metacharacters can't crash the regex or widen matching, and empty
+  /// segments are dropped (an empty alternation branch matches everything).
+  RegExp toRegExp() {
+    final parts = keyword
+        .split(',')
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .map(RegExp.escape)
+        .toList();
+    if (parts.isEmpty) {
+      // No usable keywords — a regex that can never match.
+      return RegExp(r'(?!x)x');
+    }
+    return RegExp(parts.join('|'), caseSensitive: false);
+  }
 
   /// Static default rules shown on first use.
   static List<CategorizationRule> defaults() => [

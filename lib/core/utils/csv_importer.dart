@@ -169,12 +169,21 @@ class CsvImporter {
             mapping.amountColumn != null &&
             mapping.amountColumn! < row.length) {
           final amtStr = row[mapping.amountColumn!].trim();
-          final amtVal = _parseAmount(amtStr);
-          if (amtVal != null && amtVal != 0) {
-            // In standard bank CSVs, negative amounts represent Debits (Expense)
-            // and positive amounts represent Credits (Income).
-            // BudgetLite stores Expenses as positive and Income as negative.
-            amount = -amtVal;
+          // An explicit CR/DR suffix states the direction outright; otherwise
+          // fall back to the numeric sign (bank convention: negative = debit).
+          final parsed = _parseAmountWithDirection(amtStr);
+          if (parsed != null && parsed.$1 != 0) {
+            final (magnitude, isCredit) = parsed;
+            if (isCredit == true) {
+              amount = -magnitude.abs(); // credit = income
+            } else if (isCredit == false) {
+              amount = magnitude.abs(); // debit = expense
+            } else {
+              // In standard bank CSVs, negative amounts represent Debits
+              // (Expense) and positive amounts represent Credits (Income).
+              // BudgetLite stores Expenses as positive and Income as negative.
+              amount = -parsed.$1;
+            }
           }
         }
 
@@ -261,6 +270,9 @@ class CsvImporter {
   }
 
   /// Parse a date string in various common formats.
+  ///
+  /// [dateFormat] (e.g. "DD/MM/YYYY", "MM/DD/YYYY") controls whether
+  /// ambiguous numeric dates are read day-first or month-first.
   static DateTime? _parseDate(String input, String? dateFormat) {
     final trimmed = input.trim();
     if (trimmed.isEmpty) return null;
@@ -268,63 +280,88 @@ class CsvImporter {
     final isoDate = DateTime.tryParse(trimmed);
     if (isoDate != null) return isoDate;
 
-    // Try DD/MM/YYYY or DD-MM-YYYY
+    // Honor an explicit dateFormat for ambiguous numeric dates.
+    final preferMonthFirst =
+        dateFormat != null && RegExp(r'^\s*M', caseSensitive: false).hasMatch(dateFormat);
+
+    if (preferMonthFirst) {
+      final mdy = _tryParseMdy(trimmed);
+      if (mdy != null) return mdy;
+      return _tryParseDmy(trimmed) ?? _tryParseDMonY(trimmed);
+    }
+    final dmy = _tryParseDmy(trimmed);
+    if (dmy != null) return dmy;
+    return _tryParseMdy(trimmed) ?? _tryParseDMonY(trimmed);
+  }
+
+  static DateTime? _tryParseDmy(String trimmed) {
     final dmy = RegExp(r'^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$').firstMatch(trimmed);
-    if (dmy != null) {
-      final day = int.parse(dmy.group(1)!);
-      final month = int.parse(dmy.group(2)!);
-      final year = int.parse(dmy.group(3)!);
-      if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
-        return DateTime(year, month, day);
-      }
+    if (dmy == null) return null;
+    final day = int.parse(dmy.group(1)!);
+    final month = int.parse(dmy.group(2)!);
+    final year = int.parse(dmy.group(3)!);
+    if (month >= 1 && month <= 12 && day >= 1 && day <= DateTime(year, month + 1, 0).day) {
+      return DateTime(year, month, day);
     }
+    return null;
+  }
 
-    // Try MM/DD/YYYY (US format)
+  static DateTime? _tryParseMdy(String trimmed) {
     final mdy = RegExp(r'^(\d{1,2})[/](\d{1,2})[/](\d{4})$').firstMatch(trimmed);
-    if (mdy != null) {
-      final month = int.parse(mdy.group(1)!);
-      final day = int.parse(mdy.group(2)!);
-      final year = int.parse(mdy.group(3)!);
-      if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
-        return DateTime(year, month, day);
-      }
+    if (mdy == null) return null;
+    final month = int.parse(mdy.group(1)!);
+    final day = int.parse(mdy.group(2)!);
+    final year = int.parse(mdy.group(3)!);
+    if (month >= 1 && month <= 12 && day >= 1 && day <= DateTime(year, month + 1, 0).day) {
+      return DateTime(year, month, day);
     }
+    return null;
+  }
 
-    // Try DD-Mon-YYYY (e.g., "22-Jan-2026")
+  static DateTime? _tryParseDMonY(String trimmed) {
     final dMonY = RegExp(
       r'^(\d{1,2})[-/](\w{3})[-/](\d{4})$',
       caseSensitive: false,
     ).firstMatch(trimmed);
-    if (dMonY != null) {
-      final month = _monthAbbrToInt(dMonY.group(2)!);
-      final day = int.parse(dMonY.group(1)!);
-      final year = int.parse(dMonY.group(3)!);
-      if (month != null && day >= 1 && day <= 31) {
-        return DateTime(year, month, day);
-      }
+    if (dMonY == null) return null;
+    final month = _monthAbbrToInt(dMonY.group(2)!);
+    final day = int.parse(dMonY.group(1)!);
+    final year = int.parse(dMonY.group(3)!);
+    if (month != null && day >= 1 && day <= DateTime(year, month + 1, 0).day) {
+      return DateTime(year, month, day);
     }
-
     return null;
   }
 
-  /// Parse an amount string that may include commas, currency symbols, or parentheses (for negative).
-  static double? _parseAmount(String input) {
-    // Remove currency symbols, spaces, and commas (except decimal comma)
+  /// Parse an amount string that may include commas, currency symbols, or
+  /// parentheses (for negative). Returns the magnitude plus direction when an
+  /// explicit CR/DR suffix is present (`isCredit`), otherwise `null`.
+  static (double, bool?)? _parseAmountWithDirection(String input) {
     var clean = input
         .replaceAll(RegExp(r'[₹$€£¥,\s]'), '')
         .replaceAll('(', '-')
         .replaceAll(')', '');
 
-    // Handle Indian number format: 1,23,456.78 → already stripped commas
-    // Handle trailing CR/DR
-    if (clean.endsWith('dr') || clean.endsWith('dr.')) {
-      clean = clean.replaceAll(RegExp(r'dr\.?$', caseSensitive: false), '');
-    } else if (clean.endsWith('cr') || clean.endsWith('cr.')) {
-      clean = clean.replaceAll(RegExp(r'cr\.?$', caseSensitive: false), '');
-      clean = '-$clean'; // credit = negative for our convention
+    bool? isCredit;
+    final drMatch = RegExp(r'dr\.?$', caseSensitive: false).firstMatch(clean);
+    final crMatch = RegExp(r'cr\.?$', caseSensitive: false).firstMatch(clean);
+    if (drMatch != null) {
+      clean = clean.substring(0, drMatch.start);
+      isCredit = false; // debit
+    } else if (crMatch != null) {
+      clean = clean.substring(0, crMatch.start);
+      isCredit = true; // credit
     }
 
-    return double.tryParse(clean);
+    final value = double.tryParse(clean);
+    if (value == null) return null;
+    return (value, isCredit);
+  }
+
+  /// Parse an amount string, stripping currency symbols, separators and
+  /// CR/DR suffixes. Sign is preserved only from an explicit minus/parentheses.
+  static double? _parseAmount(String input) {
+    return _parseAmountWithDirection(input)?.$1;
   }
 
 

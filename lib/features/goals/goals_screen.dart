@@ -334,6 +334,7 @@ class _GoalCard extends StatelessWidget {
                               final isAchievedNow = (goal.currentAmount + amount) >= goal.targetAmount;
                               await ref.read(goalNotifierProvider.notifier)
                                   .updateGoalProgress(goal.id, amount);
+                              if (!context.mounted) return;
                               _safeDisposeCtrl();
                               Navigator.pop(ctx);
                               ScaffoldMessenger.of(context).showSnackBar(

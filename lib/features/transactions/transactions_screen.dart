@@ -192,7 +192,11 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final transactions = ref.watch(thisMonthTransactionsProvider);
+    // A custom date range can span other months — search ALL transactions in
+    // that case; otherwise stay on the cheaper current-month stream.
+    final hasDateFilter = _startDate != null || _endDate != null;
+    final transactions =
+        ref.watch(hasDateFilter ? transactionsProvider : thisMonthTransactionsProvider);
     final categories = ref.watch(categoriesProvider).valueOrNull ?? [];
     return Scaffold(
       appBar: AppBar(

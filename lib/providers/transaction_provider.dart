@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -26,9 +27,12 @@ final transactionsByMonthProvider =
   final parts = monthKey.split('-');
   final year = int.parse(parts[0]);
   final month = int.parse(parts[1]);
+  // Compare against local month-boundary instants rather than extracting
+  // UTC year/month components, which mis-buckets transactions created
+  // between midnight and the local UTC offset on the 1st of the month.
   return (db.select(db.transactions)
-        ..where((t) => t.date.year.equals(year))
-        ..where((t) => t.date.month.equals(month))
+        ..where((t) => t.date.isBiggerOrEqualValue(DateTime(year, month)))
+        ..where((t) => t.date.isSmallerThanValue(DateTime(year, month + 1)))
         ..orderBy([(t) => OrderingTerm(expression: t.date, mode: OrderingMode.desc)]))
       .watch();
 });
@@ -42,12 +46,15 @@ final thisMonthTransactionsProvider = StreamProvider.autoDispose<List<Transactio
   );
 });
 
-/// Total spending this month.
+/// Total spending this month (excludes transfers — they are balance-neutral,
+/// consistent with the Insights screen).
 final totalSpentThisMonthProvider = StreamProvider.autoDispose<double>((ref) {
   final asyncTxns = ref.watch(thisMonthTransactionsProvider);
   return asyncTxns.when(
     data: (txns) {
-      final spent = txns.where((t) => t.amount > 0).fold<double>(0, (sum, t) => sum + t.amount);
+      final spent = txns
+          .where((t) => t.amount > 0 && t.categoryId != 'transfer')
+          .fold<double>(0, (sum, t) => sum + t.amount);
       return Stream.value(spent);
     },
     error: (err, stack) => Stream.error(err, stack),
@@ -189,8 +196,9 @@ class TransactionNotifier extends StateNotifier<AsyncValue<void>> {
 
       final txns = await (db.select(db.transactions)
             ..where((t) => t.categoryId.equals(categoryId))
-            ..where((t) => t.date.year.equals(date.year))
-            ..where((t) => t.date.month.equals(date.month)))
+            ..where((t) => t.date.isBiggerOrEqualValue(DateTime(date.year, date.month)))
+            ..where((t) =>
+                t.date.isSmallerThanValue(DateTime(date.year, date.month + 1))))
           .get();
 
       final spent = txns.where((t) => t.amount > 0).fold<double>(0, (sum, t) => sum + t.amount);
@@ -263,20 +271,20 @@ class TransactionNotifier extends StateNotifier<AsyncValue<void>> {
         final interval = template.recurringInterval;
         if (interval == null) continue;
 
-        // Respect end date — skip templates past their end date
-        if (template.recurringEndDate != null && template.recurringEndDate!.isBefore(now)) {
-          continue;
-        }
-
         // Start enumerating from the later of template.date and lastCheck
         final startFrom = lastCheck != null && lastCheck.isAfter(template.date)
             ? lastCheck
             : template.date;
 
-        // Determine end boundary: now or endDate, whichever is earlier
+        // Determine end boundary: now or endDate, whichever is earlier.
+        // Templates whose end date has passed must still post any instances
+        // that fell due between [startFrom] and their end date.
         final upTo = template.recurringEndDate != null && template.recurringEndDate!.isBefore(now)
             ? template.recurringEndDate!
             : now;
+
+        // Nothing left to post for an expired series
+        if (!upTo.isAfter(startFrom)) continue;
 
         // Enumerate all due dates from the template's original schedule date,
         // starting from the first due date strictly after [startFrom].
@@ -404,39 +412,48 @@ class SmsReviewQueueNotifier extends StateNotifier<List<ParsedSmsTxn>> {
 
   final Ref ref;
   final Set<String> _processedIds = {};
+  final Completer<void> _loaded = Completer<void>();
 
   Future<void> _loadQueue() async {
-    final settings = ref.read(settingsNotifierProvider.notifier);
-    
-    // Load persisted set of processed/discarded/confirmed SMS IDs
-    final storedProcessed = await settings.getSetting('processed_sms_ids');
-    if (storedProcessed != null && storedProcessed.isNotEmpty) {
-      _processedIds.addAll(storedProcessed.split('|||'));
-    }
+    try {
+      final settings = ref.read(settingsNotifierProvider.notifier);
 
-    final stored = await settings.getSetting('pending_sms_queue');
-    if (stored != null && stored.isNotEmpty) {
-      try {
-        final list = stored.split('|||').map((json) {
-          try {
-            return ParsedSmsTxn.fromJson(
-              Map<String, dynamic>.from(
-                const JsonDecoder().convert(json) as Map,
-              ),
-            );
-          } catch (_) {
-            return null;
+      // Load persisted set of processed/discarded/confirmed SMS IDs
+      final storedProcessed = await settings.getSetting('processed_sms_ids');
+      if (storedProcessed != null && storedProcessed.isNotEmpty) {
+        _processedIds.addAll(storedProcessed.split('|||'));
+      }
+
+      final stored = await settings.getSetting('pending_sms_queue');
+      if (stored != null && stored.isNotEmpty) {
+        try {
+          final list = stored.split('|||').map((json) {
+            try {
+              return ParsedSmsTxn.fromJson(
+                Map<String, dynamic>.from(
+                  const JsonDecoder().convert(json) as Map,
+                ),
+              );
+            } catch (_) {
+              return null;
+            }
+          }).whereType<ParsedSmsTxn>().toList();
+          if (list.isNotEmpty) {
+            // Filter out any items that were already processed in past sessions
+            state = list.where((t) => !_processedIds.contains(t.id)).toList();
           }
-        }).whereType<ParsedSmsTxn>().toList();
-        if (list.isNotEmpty) {
-          // Filter out any items that were already processed in past sessions
-          state = list.where((t) => !_processedIds.contains(t.id)).toList();
-        }
-      } catch (_) {}
+        } catch (_) {}
+      }
+    } finally {
+      // Unblock _persist() only once initial state is loaded, otherwise a
+      // fast addToQueue/clear would overwrite the persisted queue with the
+      // still-empty in-memory state.
+      if (!_loaded.isCompleted) _loaded.complete();
     }
   }
 
   Future<void> _persist() async {
+    await _loaded.future;
     final settings = ref.read(settingsNotifierProvider.notifier);
     final jsonStr = state.map((t) => const JsonEncoder().convert(t.toJson())).join('|||');
     await settings.setSetting('pending_sms_queue', jsonStr);

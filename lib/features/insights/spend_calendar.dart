@@ -30,12 +30,21 @@ class _SpendCalendarState extends ConsumerState<SpendCalendar> {
   late DateTime _currentMonth;
   DateTime? _previousMonth;
   String? _filterCategoryId;
+  OverlayEntry? _previewEntry;
 
   @override
   void initState() {
     super.initState();
     final now = DateTime.now();
     _currentMonth = DateTime(now.year, now.month, 1);
+  }
+
+  @override
+  void dispose() {
+    // Remove any open day-preview overlay when the widget goes away —
+    // otherwise it survives navigation and stacks under the next screen.
+    _previewEntry?.remove();
+    super.dispose();
   }
 
   void _goToNextMonth() {
@@ -267,11 +276,17 @@ class _SpendCalendarState extends ConsumerState<SpendCalendar> {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = colorScheme.brightness == Brightness.dark;
     final overlay = Overlay.of(context);
+
+    // Only one preview at a time
+    _previewEntry?.remove();
     late OverlayEntry entry;
 
     entry = OverlayEntry(
       builder: (ctx) => GestureDetector(
-        onTap: () => entry.remove(),
+        onTap: () {
+          _previewEntry = null;
+          entry.remove();
+        },
         child: Material(
           color: Colors.transparent,
           child: Center(
@@ -358,6 +373,7 @@ class _SpendCalendarState extends ConsumerState<SpendCalendar> {
     );
 
     overlay.insert(entry);
+    _previewEntry = entry;
   }
 
   @override

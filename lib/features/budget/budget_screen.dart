@@ -515,7 +515,20 @@ class _BudgetSlotState extends State<_BudgetSlot> {
             ),
             IconButton(
               onPressed: () {
-                final amount = double.tryParse(_ctrl.text) ?? 0;
+                final text = _ctrl.text.trim();
+                final amount = double.tryParse(text);
+                // Reject empty/garbage/negative input instead of silently
+                // saving 0 — a typo would wipe the category's allocation.
+                if (text.isEmpty || amount == null || amount < 0) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: const Text('Enter a valid amount (0 or more)'),
+                      behavior: SnackBarBehavior.floating,
+                      duration: const Duration(seconds: 2),
+                    ),
+                  );
+                  return;
+                }
                 widget.onSave(amount, _rollover);
               },
               icon: Icon(

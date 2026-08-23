@@ -42,19 +42,40 @@ class GoalNotifier extends StateNotifier<AsyncValue<void>> {
     final goal = rows.isNotEmpty ? rows.first : null;
     if (goal == null) return;
     final newAmount = (goal.currentAmount + amount).clamp(0.0, double.infinity);
-    await (db.update(db.goals)..where((t) => t.id.equals(id))).write(
-      GoalsCompanion(currentAmount: Value(newAmount)),
-    );
 
     if (amount > 0) {
+      // Record the ledger entry first — if it fails, the goal balance stays
+      // consistent with the transaction history.
+      const savingsCategoryId = 'savings';
+      final savingsCat = await (db.select(db.categories)
+            ..where((c) => c.id.equals(savingsCategoryId)))
+          .getSingleOrNull();
+      if (savingsCat == null) {
+        // Seed data has no 'savings' category; create it on first use so
+        // contributions don't reference a dangling categoryId.
+        await db.into(db.categories).insert(CategoriesCompanion.insert(
+              id: savingsCategoryId,
+              name: 'Savings',
+              icon: const Value('savings'),
+              color: const Value(0xFF14B8A6),
+              type: const Value('expense'),
+              sortOrder: const Value(90),
+            ));
+        ref.invalidate(categoriesProvider);
+        ref.invalidate(expenseCategoriesProvider);
+      }
       final txnNotifier = ref.read(transactionNotifierProvider.notifier);
       await txnNotifier.addTransaction(
         amount: amount,
-        categoryId: 'savings',
+        categoryId: savingsCategoryId,
         note: 'Contribution to Goal: ${goal.name}',
         date: DateTime.now(),
       );
     }
+
+    await (db.update(db.goals)..where((t) => t.id.equals(id))).write(
+      GoalsCompanion(currentAmount: Value(newAmount)),
+    );
     ref.invalidate(goalsProvider);
   }
 

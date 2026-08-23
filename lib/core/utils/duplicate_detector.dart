@@ -6,7 +6,7 @@ import '../database/database.dart';
 /// - Same amount (within a small tolerance of 0.01)
 /// - Same category
 /// - Date within 2 days
-/// - Similar note text (optional, boosts confidence)
+/// Note text is not compared — bank narrations differ from user notes.
 class DuplicateDetector {
   /// Check if a new transaction would be a duplicate of existing ones.
   static List<Transaction> findDuplicates({
@@ -36,36 +36,21 @@ class DuplicateDetector {
       // Check amount within tolerance
       if ((t.amount.abs() - amount.abs()).abs() > amountTolerance) continue;
 
-      // Check date proximity
-      final daysDiff = t.date.difference(date).inDays.abs();
+      // Check calendar-day proximity (not .inHours ~/ 24, which truncates
+      // and lets e.g. Jan 1 08:00 → Jan 4 07:00 pass as "2 days apart")
+      final dayA = DateTime(t.date.year, t.date.month, t.date.day);
+      final dayB = DateTime(date.year, date.month, date.day);
+      final daysDiff = dayA.difference(dayB).inDays.abs();
       if (daysDiff > maxDaysApart) continue;
 
-      if (note != null && note.isNotEmpty && t.note != null && t.note!.isNotEmpty) {
-        if (!_notesAreSimilar(note, t.note!)) continue;
-      }
+      // Note text is intentionally NOT a hard criterion: bank narrations
+      // routinely differ from user-entered notes on genuinely identical
+      // transactions, so requiring similarity here caused false negatives.
+      // Amount + category + direction + date-window are the real signals.
 
       matches.add(t);
     }
 
     return matches;
-  }
-
-  /// Simple note similarity check — case-insensitive partial word match.
-  static bool _notesAreSimilar(String a, String b) {
-    final aLower = a.toLowerCase().trim();
-    final bLower = b.toLowerCase().trim();
-
-    // Direct substring match
-    if (aLower.contains(bLower) || bLower.contains(aLower)) return true;
-
-    // Check if any significant word overlaps
-    final wordsA = aLower.split(RegExp(r'[\s,._\-/]+')).where((w) => w.length > 2).toSet();
-    final wordsB = bLower.split(RegExp(r'[\s,._\-/]+')).where((w) => w.length > 2).toSet();
-    final overlap = wordsA.intersection(wordsB);
-
-    // Require at least 2 common words or 50% overlap
-    return overlap.length >= 2 ||
-        (wordsA.isNotEmpty && wordsB.isNotEmpty &&
-         overlap.length / (wordsA.length < wordsB.length ? wordsA.length : wordsB.length) >= 0.5);
   }
 }

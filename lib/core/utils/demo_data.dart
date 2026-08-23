@@ -41,14 +41,15 @@ class DemoDataSeeder {
           note: Value(merchant),
           date: DateTime(date.year, date.month, date.day, random.nextInt(12) + 8, random.nextInt(60)),
           paymentMethod: Value(['Cash', 'UPI', 'Debit Card', 'Credit Card', 'Net Banking', 'Wallet'][random.nextInt(6)]),
-          isRecurring: Value(catId == 'bills'),
-          recurringInterval: Value(catId == 'bills' ? 'monthly' : null),
+          // Historical one-offs must NOT be flagged recurring — that would
+          // turn dozens of past payments into templates whose due instances
+          // flood the ledger with "(auto)" rows after seeding.
         ));
       }
     }
 
     // Add past income entries for history (last 12 weeks) — one-off transactions only
-    for (int weekOffset = 1; weekOffset < 12; weekOffset++) {
+    for (int weekOffset = 1; weekOffset <= 12; weekOffset++) {
       final pocketDate = now.subtract(Duration(days: 7 * weekOffset));
       batch.add(TransactionsCompanion.insert(
         id: 'demo_income_weekly_$weekOffset',
@@ -61,21 +62,41 @@ class DemoDataSeeder {
       ));
     }
 
+    // A few explicit subscription templates so the Subscriptions screen has
+    // sensible demo content without mass-flagged historical transactions.
+    final subTemplates = [
+      ('demo_sub_netflix', 'Netflix', 'bills', 250.0, 6),
+      ('demo_sub_spotify', 'Spotify', 'bills', 119.0, 11),
+      ('demo_sub_jio', 'Jio Recharge', 'bills', 239.0, 21),
+    ];
+    for (final (id, name, catId, amount, daysAgo) in subTemplates) {
+      final d = now.subtract(Duration(days: daysAgo));
+      batch.add(TransactionsCompanion.insert(
+        id: id,
+        amount: amount,
+        categoryId: catId,
+        accountId: 'default',
+        note: Value(name),
+        date: DateTime(d.year, d.month, d.day, 10, 0),
+        paymentMethod: const Value('UPI'),
+        isRecurring: const Value(true),
+        recurringInterval: const Value('monthly'),
+      ));
+    }
+
     // Set budgets for categories
     final budgetAmounts = <String, double>{'food': 3000, 'transport': 1000, 'shopping': 2000, 'bills': 1000, 'entertainment': 1000};
+    final monthKey = '${now.year}-${now.month.toString().padLeft(2, '0')}';
     for (final entry in budgetAmounts.entries) {
-      final existing = await (db.select(db.budgets)
-            ..where((t) => t.categoryId.equals(entry.key))
-            ..where((t) => t.month.equals('${now.year}-${now.month.toString().padLeft(2, '0')}')))
-          .get();
-      if (existing.isEmpty) {
-        await db.into(db.budgets).insert(BudgetsCompanion.insert(
-          id: 'demo_budget_${entry.key}',
-          categoryId: entry.key,
-          month: '${now.year}-${now.month.toString().padLeft(2, '0')}',
-          allocatedAmount: entry.value,
-        ));
-      }
+      // Upsert on the primary key — a plain insert crashes when demo data was
+      // seeded before a month boundary (same fixed id, existence check only
+      // matched the current month).
+      await db.into(db.budgets).insertOnConflictUpdate(BudgetsCompanion.insert(
+        id: 'demo_budget_${entry.key}',
+        categoryId: entry.key,
+        month: monthKey,
+        allocatedAmount: entry.value,
+      ));
     }
 
     // Insert all transactions

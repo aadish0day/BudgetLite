@@ -1,4 +1,5 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz_data;
 import '../database/database.dart' show Transaction;
@@ -18,7 +19,7 @@ class NotificationService {
   Future<void> initialize({void Function(String? payload)? onNotificationTap}) async {
     if (_initialized) return;
 
-    _initTimezones();
+    await _initTimezones();
 
     const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
     const iosSettings = DarwinInitializationSettings(
@@ -88,10 +89,42 @@ class NotificationService {
     }
   }
 
-  void _initTimezones() {
+  Future<void> _initTimezones() async {
     if (!_timezoneInitialized) {
       tz_data.initializeTimeZones();
+      // tz.local defaults to UTC unless an explicit location is set — without
+      // this, scheduled reminders fire at UTC wall-clock times (hours off for
+      // anyone outside UTC).
+      try {
+        final info = await FlutterTimezone.getLocalTimezone();
+        final name = info.identifier;
+        try {
+          tz.setLocalLocation(tz.getLocation(name));
+        } catch (_) {
+          // Unknown/aliased identifier — fall back to a fixed-offset zone.
+          tz.setLocalLocation(_fixedOffsetLocation(DateTime.now().timeZoneOffset));
+        }
+      } catch (_) {
+        // Platform lookup failed — leave tz.local at its default.
+      }
       _timezoneInitialized = true;
+    }
+  }
+
+  /// Best-effort fixed-offset location for offsets the IANA DB names via
+  /// Etc/GMT zones (sign-inverted: Etc/GMT-5 == UTC+5). Only used when the
+  /// platform-reported identifier can't be resolved.
+  tz.Location _fixedOffsetLocation(Duration offset) {
+    final totalMinutes = offset.inMinutes ~/ 15 * 15; // snap to 15m
+    final sign = totalMinutes < 0 ? '+' : '-';
+    final absMinutes = totalMinutes.abs();
+    final hours = absMinutes ~/ 60;
+    final minutes = absMinutes % 60;
+    final suffix = minutes == 0 ? '$sign$hours' : '$sign$hours:$minutes';
+    try {
+      return tz.getLocation('Etc/GMT$suffix');
+    } catch (_) {
+      return tz.UTC;
     }
   }
 
@@ -133,7 +166,7 @@ class NotificationService {
     final now = DateTime.now();
     if (scheduledDate.isBefore(now)) return;
 
-    _initTimezones();
+    await _initTimezones();
     final location = tz.local;
     final tzDate = tz.TZDateTime.from(scheduledDate, location);
 
@@ -172,7 +205,7 @@ class NotificationService {
     required DateTime nextDueDate,
   }) async {
     await _initializeIfNeeded();
-    _initTimezones();
+    await _initTimezones();
 
     final location = tz.local;
     final tzDate = tz.TZDateTime.from(nextDueDate, location);
@@ -194,7 +227,10 @@ class NotificationService {
     final note = transaction.note ?? 'Payment';
     final amount = '₹${transaction.amount.abs().toStringAsFixed(0)}';
 
-    // One-time notification for the next due date
+    // One-time notification for the next due date. Deliberately NOT using
+    // matchDateTimeComponents — that would make the OS repeat the reminder
+    // forever, ignoring recurringEndDate and outliving the transaction.
+    // rescheduleAll() re-schedules the following occurrence on each app open.
     if (nextDueDate.isAfter(DateTime.now())) {
       await _plugin.zonedSchedule(
         notificationId,
@@ -203,30 +239,11 @@ class NotificationService {
         tzDate,
         details,
         androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-        matchDateTimeComponents: _matchComponentForInterval(transaction.recurringInterval),
+        matchDateTimeComponents: null,
         uiLocalNotificationDateInterpretation:
             UILocalNotificationDateInterpretation.absoluteTime,
         payload: transaction.id,
       );
-    }
-  }
-
-  DateTimeComponents? _matchComponentForInterval(String? interval) {
-    switch (interval) {
-      case 'daily':
-        return DateTimeComponents.time;
-      case 'weekly':
-        return DateTimeComponents.dayOfWeekAndTime;
-      case 'biweekly':
-        return null; // No built-in biweekly, will be handled by separate scheduling
-      case 'monthly':
-        return DateTimeComponents.dayOfMonthAndTime;
-      case 'quarterly':
-        return null; // Scheduled manually
-      case 'yearly':
-        return null; // No built-in yearly repeat in flutter_local_notifications; rescheduleAll handles re-scheduling
-      default:
-        return null;
     }
   }
 
@@ -235,7 +252,9 @@ class NotificationService {
     await _initializeIfNeeded();
     await _plugin.cancelAll();
 
-    int id = 100;
+    // Use a high ID range so these never collide with budget-alert IDs
+    // (which are hash-based values below 200000).
+    int id = 300000;
     for (final t in transactions.where((t) => t.isRecurring)) {
       final nextDate = calculateNextDueDate(
         lastDate: t.date,
@@ -274,6 +293,7 @@ class NotificationService {
     required DateTime scheduledDate,
   }) async {
     await _initializeIfNeeded();
+    await _initTimezones();
     final tzDate = tz.TZDateTime.from(scheduledDate, tz.local);
     if (tzDate.isBefore(tz.TZDateTime.now(tz.local))) return;
 
@@ -337,8 +357,11 @@ class NotificationService {
         return null;
     }
 
-    // If the calculated next date is in the past, keep advancing
-    while (next.isBefore(now)) {
+    // If the calculated next date is before today, keep advancing. Compare
+    // against the start of today (not `now`) so an occurrence due later
+    // today still counts as "today" even after its original time passed.
+    final startOfToday = DateTime(now.year, now.month, now.day);
+    while (next.isBefore(startOfToday)) {
       switch (interval) {
         case 'daily':
           next = next.add(const Duration(days: 1));

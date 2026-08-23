@@ -23,8 +23,9 @@ class YearInReview extends ConsumerWidget {
     if (allTransactions.isEmpty) return const SizedBox.shrink();
 
     final now = DateTime.now();
-    final yearStart = DateTime(now.year, 1, 1);
-    final yearTxns = allTransactions.where((t) => t.date.isAfter(yearStart) || t.date.year == now.year).toList();
+    // Only transactions dated within the current year — future-dated entries
+    // (date pickers allow years ahead) previously leaked into these stats.
+    final yearTxns = allTransactions.where((t) => t.date.year == now.year).toList();
 
     if (yearTxns.isEmpty) return const SizedBox.shrink();
 
