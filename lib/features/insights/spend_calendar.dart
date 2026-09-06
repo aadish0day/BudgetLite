@@ -1,17 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:intl/intl.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../core/database/database.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/colors.dart';
 import '../../core/utils/constants.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/utils/icon_helper.dart';
-import '../../core/database/database.dart';
-import '../../providers/transaction_provider.dart';
 import '../../providers/database_provider.dart';
+import '../../providers/transaction_provider.dart';
 
 /// Provider that allows the bar chart to set a target month for the calendar.
 /// When set to a non-null DateTime (month), SpendCalendar will navigate to that month.
@@ -36,7 +36,7 @@ class _SpendCalendarState extends ConsumerState<SpendCalendar> {
   void initState() {
     super.initState();
     final now = DateTime.now();
-    _currentMonth = DateTime(now.year, now.month, 1);
+    _currentMonth = DateTime(now.year, now.month);
   }
 
   @override
@@ -49,12 +49,18 @@ class _SpendCalendarState extends ConsumerState<SpendCalendar> {
 
   void _goToNextMonth() {
     _previousMonth = _currentMonth;
-    setState(() => _currentMonth = DateTime(_currentMonth.year, _currentMonth.month + 1, 1));
+    setState(
+      () =>
+          _currentMonth = DateTime(_currentMonth.year, _currentMonth.month + 1),
+    );
   }
 
   void _goToPrevMonth() {
     _previousMonth = _currentMonth;
-    setState(() => _currentMonth = DateTime(_currentMonth.year, _currentMonth.month - 1, 1));
+    setState(
+      () =>
+          _currentMonth = DateTime(_currentMonth.year, _currentMonth.month - 1),
+    );
   }
 
   void _showDaySheet(
@@ -64,7 +70,6 @@ class _SpendCalendarState extends ConsumerState<SpendCalendar> {
     List<Category> categories,
     List<Account> accounts,
   ) {
-
     final total = transactions.fold<double>(0, (s, t) => s + t.amount);
 
     showModalBottomSheet(
@@ -90,10 +95,13 @@ class _SpendCalendarState extends ConsumerState<SpendCalendar> {
                   // Drag handle
                   Center(
                     child: Container(
-                      width: 40, height: 4,
+                      width: 40,
+                      height: 4,
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(2),
-                        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
+                        color: colorScheme.onSurfaceVariant.withValues(
+                          alpha: 0.3,
+                        ),
                       ),
                     ),
                   ),
@@ -106,7 +114,6 @@ class _SpendCalendarState extends ConsumerState<SpendCalendar> {
                         child: Text(
                           Formatters.formatDate(date),
                           style: AppTheme.displayStyle(
-                            size: 18, weight: FontWeight.w600,
                             color: colorScheme.onSurface,
                           ),
                         ),
@@ -117,13 +124,15 @@ class _SpendCalendarState extends ConsumerState<SpendCalendar> {
                           Text(
                             'Total spent',
                             style: AppTheme.bodyStyle(
-                              size: 11, color: colorScheme.onSurfaceVariant,
+                              size: 11,
+                              color: colorScheme.onSurfaceVariant,
                             ),
                           ),
                           Text(
                             Formatters.formatCurrency(total),
                             style: AppTheme.financialStyle(
-                              size: 20, weight: FontWeight.w700,
+                              size: 20,
+                              weight: FontWeight.w700,
                               color: colorScheme.onSurface,
                             ),
                           ),
@@ -132,14 +141,18 @@ class _SpendCalendarState extends ConsumerState<SpendCalendar> {
                     ],
                   ),
                   const SizedBox(height: 8),
-                  Container(height: 1, color: colorScheme.outline.withValues(alpha: 0.15)),
+                  Container(
+                    height: 1,
+                    color: colorScheme.outline.withValues(alpha: 0.15),
+                  ),
                   const SizedBox(height: 12),
 
                   // Transaction count
                   Text(
                     '${transactions.length} transaction${transactions.length != 1 ? 's' : ''}',
                     style: AppTheme.bodyStyle(
-                      size: 12, color: colorScheme.onSurfaceVariant,
+                      size: 12,
+                      color: colorScheme.onSurfaceVariant,
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -151,12 +164,19 @@ class _SpendCalendarState extends ConsumerState<SpendCalendar> {
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(LucideIcons.receiptText, size: 40,
-                                    color: colorScheme.onSurfaceVariant.withValues(alpha: 0.3)),
+                                Icon(
+                                  LucideIcons.receiptText,
+                                  size: 40,
+                                  color: colorScheme.onSurfaceVariant
+                                      .withValues(alpha: 0.3),
+                                ),
                                 const SizedBox(height: 12),
-                                Text('No transactions on this day',
-                                    style: AppTheme.bodyStyle(
-                                        size: 14, color: colorScheme.onSurfaceVariant)),
+                                Text(
+                                  'No transactions on this day',
+                                  style: AppTheme.bodyStyle(
+                                    color: colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
                               ],
                             ),
                           )
@@ -166,40 +186,55 @@ class _SpendCalendarState extends ConsumerState<SpendCalendar> {
                             separatorBuilder: (_, _) => Container(
                               height: 1,
                               margin: const EdgeInsets.symmetric(vertical: 2),
-                              color: colorScheme.outline.withValues(alpha: 0.06),
+                              color: colorScheme.outline.withValues(
+                                alpha: 0.06,
+                              ),
                             ),
                             itemBuilder: (ctx, index) {
                               final t = transactions[index];
-                              final cat = categories.where((c) => c.id == t.categoryId).firstOrNull;
-                              final acc = accounts.where((a) => a.id == t.accountId).firstOrNull;
+                              final cat = categories
+                                  .where((c) => c.id == t.categoryId)
+                                  .firstOrNull;
+                              final acc = accounts
+                                  .where((a) => a.id == t.accountId)
+                                  .firstOrNull;
                               final catColor = Color(cat?.color ?? 0xFF6B7280);
-                              final timeStr = DateFormat('h:mm a').format(t.date);
+                              final timeStr = DateFormat(
+                                'h:mm a',
+                              ).format(t.date);
 
                               return Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 8),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 8,
+                                ),
                                 child: Row(
                                   children: [
                                     // Category icon
                                     Container(
-                                      width: 40, height: 40,
+                                      width: 40,
+                                      height: 40,
                                       decoration: BoxDecoration(
                                         borderRadius: BorderRadius.circular(10),
                                         color: catColor.withValues(alpha: 0.12),
                                       ),
                                       child: Icon(
                                         getCategoryIcon(cat?.icon ?? ''),
-                                        size: 18, color: catColor,
+                                        size: 18,
+                                        color: catColor,
                                       ),
                                     ),
                                     const SizedBox(width: 12),
                                     Expanded(
                                       child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
                                         children: [
                                           Text(
-                                            t.note != null && t.note!.isNotEmpty ? t.note! : (cat?.name ?? 'Unknown'),
+                                            t.note != null && t.note!.isNotEmpty
+                                                ? t.note!
+                                                : (cat?.name ?? 'Unknown'),
                                             style: AppTheme.bodyStyle(
-                                              size: 14, weight: FontWeight.w500,
+                                              weight: FontWeight.w500,
                                               color: colorScheme.onSurface,
                                             ),
                                             maxLines: 1,
@@ -211,16 +246,29 @@ class _SpendCalendarState extends ConsumerState<SpendCalendar> {
                                               Text(
                                                 cat?.name ?? 'Unknown',
                                                 style: AppTheme.bodyStyle(
-                                                  size: 11, color: colorScheme.onSurfaceVariant,
+                                                  size: 11,
+                                                  color: colorScheme
+                                                      .onSurfaceVariant,
                                                 ),
                                               ),
                                               const SizedBox(width: 6),
-                                              Text('•', style: TextStyle(fontSize: 10, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.4))),
+                                              Text(
+                                                '•',
+                                                style: TextStyle(
+                                                  fontSize: 10,
+                                                  color: colorScheme
+                                                      .onSurfaceVariant
+                                                      .withValues(alpha: 0.4),
+                                                ),
+                                              ),
                                               const SizedBox(width: 6),
                                               Text(
                                                 timeStr,
                                                 style: AppTheme.bodyStyle(
-                                                  size: 11, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                                                  size: 11,
+                                                  color: colorScheme
+                                                      .onSurfaceVariant
+                                                      .withValues(alpha: 0.7),
                                                 ),
                                               ),
                                             ],
@@ -229,29 +277,42 @@ class _SpendCalendarState extends ConsumerState<SpendCalendar> {
                                       ),
                                     ),
                                     Column(
-                                      crossAxisAlignment: CrossAxisAlignment.end,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.end,
                                       children: [
                                         Text(
                                           t.amount < 0
                                               ? '+${Formatters.formatCurrency(t.amount.abs())}'
                                               : '-${Formatters.formatCurrency(t.amount)}',
                                           style: AppTheme.financialStyle(
-                                            size: 14, weight: FontWeight.w600,
-                                            color: t.amount < 0 ? AppColors.success : AppColors.error,
+                                            size: 14,
+                                            color: t.amount < 0
+                                                ? AppColors.success
+                                                : AppColors.error,
                                           ),
                                         ),
                                         const SizedBox(height: 2),
                                         Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 6,
+                                            vertical: 2,
+                                          ),
                                           decoration: BoxDecoration(
-                                            borderRadius: BorderRadius.circular(4),
-                                            color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
+                                            borderRadius: BorderRadius.circular(
+                                              4,
+                                            ),
+                                            color: colorScheme
+                                                .surfaceContainerHighest
+                                                .withValues(alpha: 0.6),
                                           ),
                                           child: Text(
-                                            acc?.name ?? t.paymentMethod.toUpperCase(),
+                                            acc?.name ??
+                                                t.paymentMethod.toUpperCase(),
                                             style: AppTheme.bodyStyle(
-                                              size: 9, weight: FontWeight.w600,
-                                              color: colorScheme.onSurfaceVariant,
+                                              size: 9,
+                                              weight: FontWeight.w600,
+                                              color:
+                                                  colorScheme.onSurfaceVariant,
                                             ),
                                           ),
                                         ),
@@ -272,7 +333,12 @@ class _SpendCalendarState extends ConsumerState<SpendCalendar> {
     );
   }
 
-  void _showDayPreview(BuildContext context, DateTime date, double total, String? topCategory) {
+  void _showDayPreview(
+    BuildContext context,
+    DateTime date,
+    double total,
+    String? topCategory,
+  ) {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = colorScheme.brightness == Brightness.dark;
     final overlay = Overlay.of(context);
@@ -292,80 +358,92 @@ class _SpendCalendarState extends ConsumerState<SpendCalendar> {
           child: Center(
             child: GestureDetector(
               onTap: () {}, // prevent dismiss when tapping the popup itself
-              child: Container(
-                width: 220,
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(16),
-                  color: isDark ? AppColors.elevatedDark : AppColors.cardLight,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.15),
-                      blurRadius: 24,
-                      offset: const Offset(0, 8),
-                    ),
-                  ],
-                  border: Border.all(
-                    color: colorScheme.outline.withValues(alpha: 0.1),
-                  ),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      Formatters.formatDate(date),
-                      style: AppTheme.displayStyle(
-                        size: 16, weight: FontWeight.w600,
-                        color: colorScheme.onSurface,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      'Total spent',
-                      style: AppTheme.bodyStyle(
-                        size: 11, color: colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      Formatters.formatCurrency(total),
-                      style: AppTheme.financialStyle(
-                        size: 28, weight: FontWeight.w700,
-                        color: colorScheme.onSurface,
-                      ),
-                    ),
-                    if (topCategory != null) ...[
-                      const SizedBox(height: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(8),
-                          color: colorScheme.primary.withValues(alpha: 0.1),
+              child:
+                  Container(
+                    width: 220,
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(16),
+                      color: isDark
+                          ? AppColors.elevatedDark
+                          : AppColors.cardLight,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(
+                            alpha: isDark ? 0.4 : 0.15,
+                          ),
+                          blurRadius: 24,
+                          offset: const Offset(0, 8),
                         ),
-                        child: Text(
-                          'Top: $topCategory',
-                          style: AppTheme.bodyStyle(
-                            size: 12, weight: FontWeight.w500,
-                            color: colorScheme.primary,
+                      ],
+                      border: Border.all(
+                        color: colorScheme.outline.withValues(alpha: 0.1),
+                      ),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          Formatters.formatDate(date),
+                          style: AppTheme.displayStyle(
+                            size: 16,
+                            color: colorScheme.onSurface,
                           ),
                         ),
-                      ),
-                    ],
-                    const SizedBox(height: 16),
-                    Text(
-                      'Tap anywhere to close',
-                      style: AppTheme.bodyStyle(
-                        size: 10, color: colorScheme.onSurfaceVariant,
-                      ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'Total spent',
+                          style: AppTheme.bodyStyle(
+                            size: 11,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          Formatters.formatCurrency(total),
+                          style: AppTheme.financialStyle(
+                            size: 28,
+                            weight: FontWeight.w700,
+                            color: colorScheme.onSurface,
+                          ),
+                        ),
+                        if (topCategory != null) ...[
+                          const SizedBox(height: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(8),
+                              color: colorScheme.primary.withValues(alpha: 0.1),
+                            ),
+                            child: Text(
+                              'Top: $topCategory',
+                              style: AppTheme.bodyStyle(
+                                size: 12,
+                                weight: FontWeight.w500,
+                                color: colorScheme.primary,
+                              ),
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 16),
+                        Text(
+                          'Tap anywhere to close',
+                          style: AppTheme.bodyStyle(
+                            size: 10,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-              ).animate().scale(
-                begin: const Offset(0.85, 0.85),
-                end: const Offset(1, 1),
-                duration: 200.ms,
-                curve: Curves.easeOutBack,
-              ),
+                  ).animate().scale(
+                    begin: const Offset(0.85, 0.85),
+                    end: const Offset(1, 1),
+                    duration: 200.ms,
+                    curve: Curves.easeOutBack,
+                  ),
             ),
           ),
         ),
@@ -387,7 +465,7 @@ class _SpendCalendarState extends ConsumerState<SpendCalendar> {
     // Listen for calendar focus target from the bar chart (must be inside build)
     ref.listen<DateTime?>(calendarFocusTargetProvider, (_, next) {
       if (next != null && mounted) {
-        final targetMonth = DateTime(next.year, next.month, 1);
+        final targetMonth = DateTime(next.year, next.month);
         if (targetMonth != _currentMonth) {
           _previousMonth = _currentMonth;
           setState(() => _currentMonth = targetMonth);
@@ -403,15 +481,26 @@ class _SpendCalendarState extends ConsumerState<SpendCalendar> {
 
     // ── STRICT EXPENSE FILTERING ──
     // Exclude transfers and income categories so income transactions are never tallied as spend!
-    final incomeCatIds = categories.where((c) => c.type == 'income').map((c) => c.id).toSet();
+    final incomeCatIds = categories
+        .where((c) => c.type == 'income')
+        .map((c) => c.id)
+        .toSet();
 
-    final daysInMonth = DateTime(_currentMonth.year, _currentMonth.month + 1, 0).day;
+    final daysInMonth = DateTime(
+      _currentMonth.year,
+      _currentMonth.month + 1,
+      0,
+    ).day;
     final dailyTxns = <int, List<Transaction>>{};
     double monthTotal = 0;
 
     for (final t in allTransactions) {
-      if (t.date.year == _currentMonth.year && t.date.month == _currentMonth.month) {
-        final isExpense = t.amount > 0 && t.categoryId != 'transfer' && !incomeCatIds.contains(t.categoryId);
+      if (t.date.year == _currentMonth.year &&
+          t.date.month == _currentMonth.month) {
+        final isExpense =
+            t.amount > 0 &&
+            t.categoryId != 'transfer' &&
+            !incomeCatIds.contains(t.categoryId);
         if (isExpense) {
           if (_filterCategoryId == null || t.categoryId == _filterCategoryId) {
             dailyTxns.putIfAbsent(t.date.day, () => []);
@@ -436,7 +525,10 @@ class _SpendCalendarState extends ConsumerState<SpendCalendar> {
     }
 
     // Calendar grid setup
-    final firstWeekday = DateTime(_currentMonth.year, _currentMonth.month, 1).weekday;
+    final firstWeekday = DateTime(
+      _currentMonth.year,
+      _currentMonth.month,
+    ).weekday;
     // Convert weekday: in Dart, 1=Mon...7=Sun; we want 0=Sun...6=Sat
     final startOffset = firstWeekday % 7;
     final totalCells = startOffset + daysInMonth;
@@ -448,39 +540,56 @@ class _SpendCalendarState extends ConsumerState<SpendCalendar> {
         // ── Header row: icon + title + Today button ──
         Row(
           children: [
-            Icon(LucideIcons.calendarDays, size: 16, color: colorScheme.primary),
+            Icon(
+              LucideIcons.calendarDays,
+              size: 16,
+              color: colorScheme.primary,
+            ),
             const SizedBox(width: 6),
             Text(
               'Spend Calendar',
               style: AppTheme.displayStyle(
-                size: 16, weight: FontWeight.w600, color: colorScheme.onSurface,
+                size: 16,
+                color: colorScheme.onSurface,
               ),
             ),
             const Spacer(),
-            if (_currentMonth.year != DateTime.now().year || _currentMonth.month != DateTime.now().month)
+            if (_currentMonth.year != DateTime.now().year ||
+                _currentMonth.month != DateTime.now().month)
               InkWell(
                 borderRadius: BorderRadius.circular(20),
                 onTap: () {
                   _previousMonth = _currentMonth;
                   final now = DateTime.now();
-                  setState(() => _currentMonth = DateTime(now.year, now.month, 1));
+                  setState(() => _currentMonth = DateTime(now.year, now.month));
                 },
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(20),
                     color: colorScheme.primary.withValues(alpha: 0.12),
-                    border: Border.all(color: colorScheme.primary.withValues(alpha: 0.3)),
+                    border: Border.all(
+                      color: colorScheme.primary.withValues(alpha: 0.3),
+                    ),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(LucideIcons.calendarCheck, size: 14, color: colorScheme.primary),
+                      Icon(
+                        LucideIcons.calendarCheck,
+                        size: 14,
+                        color: colorScheme.primary,
+                      ),
                       const SizedBox(width: 4),
                       Text(
                         'Today',
                         style: AppTheme.bodyStyle(
-                          size: 12, weight: FontWeight.w600, color: colorScheme.primary,
+                          size: 12,
+                          weight: FontWeight.w600,
+                          color: colorScheme.primary,
                         ),
                       ),
                     ],
@@ -506,7 +615,9 @@ class _SpendCalendarState extends ConsumerState<SpendCalendar> {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(AppConstants.cardRadius),
               color: isDark ? AppColors.cardDark : AppColors.cardLight,
-              boxShadow: isDark ? AppColors.cardShadowDark : AppColors.cardShadowLight,
+              boxShadow: isDark
+                  ? AppColors.cardShadowDark
+                  : AppColors.cardShadowLight,
             ),
             padding: AppConstants.cardPadding,
             child: Column(
@@ -530,41 +641,54 @@ class _SpendCalendarState extends ConsumerState<SpendCalendar> {
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                            color: colorScheme.surfaceContainerHighest
+                                .withValues(alpha: 0.5),
                           ),
-                          child: Icon(LucideIcons.chevronLeft, size: 18, color: colorScheme.onSurfaceVariant),
+                          child: Icon(
+                            LucideIcons.chevronLeft,
+                            size: 18,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
                         ),
                       ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
                             AnimatedSwitcher(
                               duration: 200.ms,
-                              transitionBuilder: (child, animation) => FadeTransition(
-                                opacity: animation,
-                                child: child,
-                              ),
+                              transitionBuilder: (child, animation) =>
+                                  FadeTransition(
+                                    opacity: animation,
+                                    child: child,
+                                  ),
                               child: Text(
                                 Formatters.formatMonth(_currentMonth),
-                                key: ValueKey('month_${_currentMonth.month}_${_currentMonth.year}'),
+                                key: ValueKey(
+                                  'month_${_currentMonth.month}_${_currentMonth.year}',
+                                ),
                                 style: AppTheme.displayStyle(
-                                  size: 16, weight: FontWeight.w600, color: colorScheme.onSurface,
+                                  size: 16,
+                                  color: colorScheme.onSurface,
                                 ),
                               ),
                             ),
                             AnimatedSwitcher(
                               duration: 200.ms,
-                              transitionBuilder: (child, animation) => FadeTransition(
-                                opacity: animation,
-                                child: child,
-                              ),
+                              transitionBuilder: (child, animation) =>
+                                  FadeTransition(
+                                    opacity: animation,
+                                    child: child,
+                                  ),
                               child: Text(
                                 'Spent ${Formatters.formatCurrency(monthTotal)}',
-                                key: ValueKey('total_${_currentMonth.month}_${_currentMonth.year}'),
+                                key: ValueKey(
+                                  'total_${_currentMonth.month}_${_currentMonth.year}',
+                                ),
                                 style: AppTheme.bodyStyle(
-                                  size: 11, weight: FontWeight.w600, color: colorScheme.onSurfaceVariant,
+                                  size: 11,
+                                  weight: FontWeight.w600,
+                                  color: colorScheme.onSurfaceVariant,
                                 ),
                               ),
                             ),
@@ -578,9 +702,14 @@ class _SpendCalendarState extends ConsumerState<SpendCalendar> {
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                            color: colorScheme.surfaceContainerHighest
+                                .withValues(alpha: 0.5),
                           ),
-                          child: Icon(LucideIcons.chevronRight, size: 18, color: colorScheme.onSurfaceVariant),
+                          child: Icon(
+                            LucideIcons.chevronRight,
+                            size: 18,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
                         ),
                       ),
                     ],
@@ -592,23 +721,27 @@ class _SpendCalendarState extends ConsumerState<SpendCalendar> {
                   duration: 350.ms,
                   switchInCurve: Curves.easeOutCubic,
                   transitionBuilder: (child, animation) {
-                    final isForward = _previousMonth != null && _currentMonth.isAfter(_previousMonth!);
+                    final isForward =
+                        _previousMonth != null &&
+                        _currentMonth.isAfter(_previousMonth!);
                     return SlideTransition(
-                      position: Tween<Offset>(
-                        begin: Offset(isForward ? 0.2 : -0.2, 0.0),
-                        end: Offset.zero,
-                      ).animate(CurvedAnimation(
-                        parent: animation,
-                        curve: Curves.easeOutCubic,
-                      )),
-                      child: FadeTransition(
-                        opacity: animation,
-                        child: child,
-                      ),
+                      position:
+                          Tween<Offset>(
+                            begin: Offset(isForward ? 0.2 : -0.2, 0),
+                            end: Offset.zero,
+                          ).animate(
+                            CurvedAnimation(
+                              parent: animation,
+                              curve: Curves.easeOutCubic,
+                            ),
+                          ),
+                      child: FadeTransition(opacity: animation, child: child),
                     );
                   },
                   child: Column(
-                    key: ValueKey('body_${_currentMonth.year}_${_currentMonth.month}'),
+                    key: ValueKey(
+                      'body_${_currentMonth.year}_${_currentMonth.month}',
+                    ),
                     children: [
                       const SizedBox(height: 14),
 
@@ -627,17 +760,24 @@ class _SpendCalendarState extends ConsumerState<SpendCalendar> {
                               }),
                             ),
                             const SizedBox(width: 6),
-                            ...categories.where((c) => c.type == 'expense').map((cat) => Padding(
-                              padding: const EdgeInsets.only(right: 6),
-                              child: _FilterChip(
-                                label: cat.name,
-                                selected: _filterCategoryId == cat.id,
-                                color: Color(cat.color),
-                                onTap: () => setState(() {
-                                  _filterCategoryId = _filterCategoryId == cat.id ? null : cat.id;
-                                }),
-                              ),
-                            )),
+                            ...categories
+                                .where((c) => c.type == 'expense')
+                                .map(
+                                  (cat) => Padding(
+                                    padding: const EdgeInsets.only(right: 6),
+                                    child: _FilterChip(
+                                      label: cat.name,
+                                      selected: _filterCategoryId == cat.id,
+                                      color: Color(cat.color),
+                                      onTap: () => setState(() {
+                                        _filterCategoryId =
+                                            _filterCategoryId == cat.id
+                                            ? null
+                                            : cat.id;
+                                      }),
+                                    ),
+                                  ),
+                                ),
                           ],
                         ),
                       ),
@@ -645,18 +785,23 @@ class _SpendCalendarState extends ConsumerState<SpendCalendar> {
 
                       // ── Day-of-week header ──
                       Row(
-                        children: ['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d) => Expanded(
-                          child: Center(
-                            child: Text(
-                              d,
-                              style: AppTheme.bodyStyle(
-                                size: 11,
-                                weight: FontWeight.w700,
-                                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                        children: ['S', 'M', 'T', 'W', 'T', 'F', 'S']
+                            .map(
+                              (d) => Expanded(
+                                child: Center(
+                                  child: Text(
+                                    d,
+                                    style: AppTheme.bodyStyle(
+                                      size: 11,
+                                      weight: FontWeight.w700,
+                                      color: colorScheme.onSurfaceVariant
+                                          .withValues(alpha: 0.6),
+                                    ),
+                                  ),
+                                ),
                               ),
-                            ),
-                          ),
-                        )).toList(),
+                            )
+                            .toList(),
                       ),
                       const SizedBox(height: 6),
 
@@ -666,17 +811,27 @@ class _SpendCalendarState extends ConsumerState<SpendCalendar> {
                           padding: const EdgeInsets.only(bottom: 4),
                           child: Row(
                             children: List.generate(7, (dayOfWeek) {
-                              final dayNum = weekIdx * 7 + dayOfWeek - startOffset + 1;
-                              final isValid = dayNum >= 1 && dayNum <= daysInMonth;
+                              final dayNum =
+                                  weekIdx * 7 + dayOfWeek - startOffset + 1;
+                              final isValid =
+                                  dayNum >= 1 && dayNum <= daysInMonth;
 
                               if (!isValid) {
-                                return Expanded(child: Container(margin: const EdgeInsets.all(2), height: 46));
+                                return Expanded(
+                                  child: Container(
+                                    margin: const EdgeInsets.all(2),
+                                    height: 46,
+                                  ),
+                                );
                               }
 
                               final dayTotal = dayTotals[dayNum] ?? 0.0;
-                              final intensity = maxDaily > 0 ? (dayTotal / maxDaily) : 0.0;
+                              final intensity = maxDaily > 0
+                                  ? (dayTotal / maxDaily)
+                                  : 0.0;
                               final hasSpend = dayTotal > 0;
-                              final isToday = dayNum == DateTime.now().day &&
+                              final isToday =
+                                  dayNum == DateTime.now().day &&
                                   _currentMonth.year == DateTime.now().year &&
                                   _currentMonth.month == DateTime.now().month;
 
@@ -687,42 +842,81 @@ class _SpendCalendarState extends ConsumerState<SpendCalendar> {
 
                               if (!hasSpend) {
                                 cellBgColor = isDark
-                                    ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.25)
-                                    : colorScheme.surfaceContainerHighest.withValues(alpha: 0.45);
+                                    ? colorScheme.surfaceContainerHighest
+                                          .withValues(alpha: 0.25)
+                                    : colorScheme.surfaceContainerHighest
+                                          .withValues(alpha: 0.45);
                                 cellTextColor = isToday
                                     ? colorScheme.primary
-                                    : colorScheme.onSurfaceVariant.withValues(alpha: 0.7);
+                                    : colorScheme.onSurfaceVariant.withValues(
+                                        alpha: 0.7,
+                                      );
                                 cellBorder = isToday
-                                    ? Border.all(color: colorScheme.primary, width: 2.5)
-                                    : Border.all(color: colorScheme.outline.withValues(alpha: 0.08));
+                                    ? Border.all(
+                                        color: colorScheme.primary,
+                                        width: 2.5,
+                                      )
+                                    : Border.all(
+                                        color: colorScheme.outline.withValues(
+                                          alpha: 0.08,
+                                        ),
+                                      );
                               } else if (intensity < 0.3) {
                                 // Light Spend - Emerald Accent
                                 cellBgColor = isDark
-                                    ? const Color(0xFF10B981).withValues(alpha: 0.35)
-                                    : const Color(0xFF10B981).withValues(alpha: 0.25);
-                                cellTextColor = isDark ? Colors.white : const Color(0xFF047857);
+                                    ? const Color(
+                                        0xFF10B981,
+                                      ).withValues(alpha: 0.35)
+                                    : const Color(
+                                        0xFF10B981,
+                                      ).withValues(alpha: 0.25);
+                                cellTextColor = isDark
+                                    ? Colors.white
+                                    : const Color(0xFF047857);
                                 cellBorder = Border.all(
-                                  color: isToday ? colorScheme.primary : const Color(0xFF10B981).withValues(alpha: 0.5),
+                                  color: isToday
+                                      ? colorScheme.primary
+                                      : const Color(
+                                          0xFF10B981,
+                                        ).withValues(alpha: 0.5),
                                   width: isToday ? 2.5 : 1,
                                 );
                               } else if (intensity < 0.65) {
                                 // Medium Spend - Amber Accent
                                 cellBgColor = isDark
-                                    ? const Color(0xFFF59E0B).withValues(alpha: 0.50)
-                                    : const Color(0xFFF59E0B).withValues(alpha: 0.35);
-                                cellTextColor = isDark ? Colors.white : const Color(0xFFB45309);
+                                    ? const Color(
+                                        0xFFF59E0B,
+                                      ).withValues(alpha: 0.50)
+                                    : const Color(
+                                        0xFFF59E0B,
+                                      ).withValues(alpha: 0.35);
+                                cellTextColor = isDark
+                                    ? Colors.white
+                                    : const Color(0xFFB45309);
                                 cellBorder = Border.all(
-                                  color: isToday ? colorScheme.primary : const Color(0xFFF59E0B).withValues(alpha: 0.6),
+                                  color: isToday
+                                      ? colorScheme.primary
+                                      : const Color(
+                                          0xFFF59E0B,
+                                        ).withValues(alpha: 0.6),
                                   width: isToday ? 2.5 : 1,
                                 );
                               } else {
                                 // Heavy Spend - Vibrant Crimson Accent
                                 cellBgColor = isDark
-                                    ? const Color(0xFFEF4444).withValues(alpha: 0.75)
-                                    : const Color(0xFFEF4444).withValues(alpha: 0.65);
+                                    ? const Color(
+                                        0xFFEF4444,
+                                      ).withValues(alpha: 0.75)
+                                    : const Color(
+                                        0xFFEF4444,
+                                      ).withValues(alpha: 0.65);
                                 cellTextColor = Colors.white;
                                 cellBorder = Border.all(
-                                  color: isToday ? colorScheme.primary : const Color(0xFFEF4444).withValues(alpha: 0.8),
+                                  color: isToday
+                                      ? colorScheme.primary
+                                      : const Color(
+                                          0xFFEF4444,
+                                        ).withValues(alpha: 0.8),
                                   width: isToday ? 2.5 : 1,
                                 );
                               }
@@ -732,17 +926,36 @@ class _SpendCalendarState extends ConsumerState<SpendCalendar> {
                               return Expanded(
                                 child: GestureDetector(
                                   onTap: isValid
-                                      ? () => _showDaySheet(context,
-                                          DateTime(_currentMonth.year, _currentMonth.month, dayNum),
-                                          dayTransactions, categories, accounts)
+                                      ? () => _showDaySheet(
+                                          context,
+                                          DateTime(
+                                            _currentMonth.year,
+                                            _currentMonth.month,
+                                            dayNum,
+                                          ),
+                                          dayTransactions,
+                                          categories,
+                                          accounts,
+                                        )
                                       : null,
                                   onLongPress: isValid && hasSpend
                                       ? () {
-                                          final topCatId = _getTopCategory(dayTransactions);
-                                          final topCat = categories.where((c) => c.id == topCatId).firstOrNull;
-                                          _showDayPreview(context,
-                                              DateTime(_currentMonth.year, _currentMonth.month, dayNum),
-                                              dayTotal, topCat?.name);
+                                          final topCatId = _getTopCategory(
+                                            dayTransactions,
+                                          );
+                                          final topCat = categories
+                                              .where((c) => c.id == topCatId)
+                                              .firstOrNull;
+                                          _showDayPreview(
+                                            context,
+                                            DateTime(
+                                              _currentMonth.year,
+                                              _currentMonth.month,
+                                              dayNum,
+                                            ),
+                                            dayTotal,
+                                            topCat?.name,
+                                          );
                                         }
                                       : null,
                                   child: AnimatedContainer(
@@ -756,10 +969,11 @@ class _SpendCalendarState extends ConsumerState<SpendCalendar> {
                                       boxShadow: isToday
                                           ? [
                                               BoxShadow(
-                                                color: colorScheme.primary.withValues(alpha: 0.3),
+                                                color: colorScheme.primary
+                                                    .withValues(alpha: 0.3),
                                                 blurRadius: 6,
                                                 spreadRadius: 1,
-                                              )
+                                              ),
                                             ]
                                           : null,
                                     ),
@@ -768,32 +982,41 @@ class _SpendCalendarState extends ConsumerState<SpendCalendar> {
                                         // ── Cell content ──
                                         Center(
                                           child: Column(
-                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.center,
                                             children: [
                                               Text(
                                                 '$dayNum',
                                                 style: AppTheme.bodyStyle(
                                                   size: 11,
-                                                  weight: isToday ? FontWeight.w800 : FontWeight.w600,
+                                                  weight: isToday
+                                                      ? FontWeight.w800
+                                                      : FontWeight.w600,
                                                   color: cellTextColor,
                                                 ),
                                               ),
                                               const SizedBox(height: 1),
                                               if (hasSpend)
                                                 Text(
-                                                  _formatCompactAmount(dayTotal),
+                                                  _formatCompactAmount(
+                                                    dayTotal,
+                                                  ),
                                                   style: TextStyle(
                                                     fontSize: 8.5,
                                                     fontWeight: FontWeight.w700,
-                                                    color: cellTextColor.withValues(alpha: 0.9),
-                                                    fontFeatures: const [FontFeature.tabularFigures()],
+                                                    color: cellTextColor
+                                                        .withValues(alpha: 0.9),
+                                                    fontFeatures: const [
+                                                      FontFeature.tabularFigures(),
+                                                    ],
                                                   ),
                                                 )
                                               else
                                                 Icon(
                                                   LucideIcons.sparkles,
                                                   size: 9,
-                                                  color: AppColors.success.withValues(alpha: 0.7),
+                                                  color: AppColors.success
+                                                      .withValues(alpha: 0.7),
                                                 ),
                                             ],
                                           ),
@@ -829,11 +1052,20 @@ class _SpendCalendarState extends ConsumerState<SpendCalendar> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          _LegendItem(color: const Color(0xFF10B981), label: 'Light'),
+                          const _LegendItem(
+                            color: Color(0xFF10B981),
+                            label: 'Light',
+                          ),
                           const SizedBox(width: 14),
-                          _LegendItem(color: const Color(0xFFF59E0B), label: 'Medium'),
+                          const _LegendItem(
+                            color: Color(0xFFF59E0B),
+                            label: 'Medium',
+                          ),
                           const SizedBox(width: 14),
-                          _LegendItem(color: const Color(0xFFEF4444), label: 'Heavy'),
+                          const _LegendItem(
+                            color: Color(0xFFEF4444),
+                            label: 'Heavy',
+                          ),
                           const SizedBox(width: 14),
                           Row(
                             mainAxisSize: MainAxisSize.min,
@@ -843,7 +1075,10 @@ class _SpendCalendarState extends ConsumerState<SpendCalendar> {
                                 height: 12,
                                 decoration: BoxDecoration(
                                   borderRadius: BorderRadius.circular(4),
-                                  border: Border.all(color: colorScheme.primary, width: 2),
+                                  border: Border.all(
+                                    color: colorScheme.primary,
+                                    width: 2,
+                                  ),
                                 ),
                               ),
                               const SizedBox(width: 4),
@@ -872,7 +1107,9 @@ class _SpendCalendarState extends ConsumerState<SpendCalendar> {
 
   String _formatCompactAmount(double val) {
     if (val >= 100000) return '₹${(val / 100000).toStringAsFixed(1)}L';
-    if (val >= 1000) return '₹${(val / 1000).toStringAsFixed(val % 1000 == 0 ? 0 : 1)}k';
+    if (val >= 1000) {
+      return '₹${(val / 1000).toStringAsFixed(val % 1000 == 0 ? 0 : 1)}k';
+    }
     return '₹${val.toInt()}';
   }
 
@@ -888,17 +1125,16 @@ class _SpendCalendarState extends ConsumerState<SpendCalendar> {
 
 /// Small filter chip for category selection.
 class _FilterChip extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final Color color;
-  final VoidCallback onTap;
-
   const _FilterChip({
     required this.label,
     required this.selected,
     required this.color,
     required this.onTap,
   });
+  final String label;
+  final bool selected;
+  final Color color;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -931,10 +1167,9 @@ class _FilterChip extends StatelessWidget {
 }
 
 class _LegendItem extends StatelessWidget {
+  const _LegendItem({required this.color, required this.label});
   final Color color;
   final String label;
-
-  const _LegendItem({required this.color, required this.label});
 
   @override
   Widget build(BuildContext context) {
@@ -943,7 +1178,8 @@ class _LegendItem extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-          width: 12, height: 12,
+          width: 12,
+          height: 12,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(4),
             color: color,
@@ -953,7 +1189,8 @@ class _LegendItem extends StatelessWidget {
         Text(
           label,
           style: AppTheme.bodyStyle(
-            size: 10, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+            size: 10,
+            color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
           ),
         ),
       ],

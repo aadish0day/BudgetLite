@@ -29,7 +29,9 @@ class DuplicateDetector {
       }
 
       // Skip if category specified and doesn't match
-      if (categoryId != null && categoryId.isNotEmpty && t.categoryId != categoryId) {
+      if (categoryId != null &&
+          categoryId.isNotEmpty &&
+          t.categoryId != categoryId) {
         continue;
       }
 

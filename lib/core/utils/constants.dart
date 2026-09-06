@@ -21,27 +21,27 @@ class AppConstants {
 
   // ── 8pt grid spacing scale ──
   static const double spaceXxs = 2;
-  static const double spaceXs  = 4;
-  static const double spaceSm  = 8;
-  static const double spaceMd  = 12;
-  static const double spaceLg  = 16;
-  static const double spaceXl  = 20;
+  static const double spaceXs = 4;
+  static const double spaceSm = 8;
+  static const double spaceMd = 12;
+  static const double spaceLg = 16;
+  static const double spaceXl = 20;
   static const double space2xl = 24;
   static const double space3xl = 32;
   static const double space4xl = 40;
 
   // ── Border radius scale (replaces scattered raw values) ──
-  static const double radiusXs   = 6;   // badges, chips, small pills
-  static const double radiusSm   = 10;  // icon containers
-  static const double radiusMd   = 14;  // inner cards, inputs
-  static const double radiusLg   = 18;  // outer cards (same as cardRadius)
-  static const double radiusXl   = 22;  // modals, sheets
+  static const double radiusXs = 6; // badges, chips, small pills
+  static const double radiusSm = 10; // icon containers
+  static const double radiusMd = 14; // inner cards, inputs
+  static const double radiusLg = 18; // outer cards (same as cardRadius)
+  static const double radiusXl = 22; // modals, sheets
   static const double radiusFull = 999; // pills, circular
 
   // ── Animation durations ──
-  static const Duration animFast   = Duration(milliseconds: 200);
+  static const Duration animFast = Duration(milliseconds: 200);
   static const Duration animNormal = Duration(milliseconds: 350);
-  static const Duration animSlow   = Duration(milliseconds: 500);
+  static const Duration animSlow = Duration(milliseconds: 500);
   static const Duration staggerDelay = Duration(milliseconds: 60);
 
   static List<String> paymentMethods = [

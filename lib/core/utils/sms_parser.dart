@@ -1,13 +1,4 @@
 class ParsedSmsTxn {
-  final double amount;
-  final String note;
-  final String categoryId;
-  final DateTime date;
-  final String id;
-  final DateTime detectedAt;
-  final bool isIncome;
-  final String? payee;
-
   ParsedSmsTxn({
     required this.amount,
     required this.note,
@@ -17,19 +8,10 @@ class ParsedSmsTxn {
     DateTime? detectedAt,
     this.isIncome = false,
     this.payee,
-  })  : id = id ?? 'sms_${amount}_${(payee ?? note).hashCode}_${date.toIso8601String()}',
-        detectedAt = detectedAt ?? DateTime.now();
-
-  Map<String, dynamic> toJson() => {
-    'id': id,
-    'amount': amount,
-    'note': note,
-    'categoryId': categoryId,
-    'date': date.toIso8601String(),
-    'detectedAt': detectedAt.toIso8601String(),
-    'isIncome': isIncome,
-    'payee': payee,
-  };
+  }) : id =
+           id ??
+           'sms_${amount}_${(payee ?? note).replaceAll(RegExp('[^a-zA-Z0-9]'), '').toLowerCase()}_${date.millisecondsSinceEpoch}',
+       detectedAt = detectedAt ?? DateTime.now();
 
   factory ParsedSmsTxn.fromJson(Map<String, dynamic> json) => ParsedSmsTxn(
     id: json['id'] as String,
@@ -41,9 +23,73 @@ class ParsedSmsTxn {
     isIncome: json['isIncome'] as bool? ?? false,
     payee: json['payee'] as String?,
   );
+  final double amount;
+  final String note;
+  final String categoryId;
+  final DateTime date;
+  final String id;
+  final DateTime detectedAt;
+  final bool isIncome;
+  final String? payee;
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'amount': amount,
+    'note': note,
+    'categoryId': categoryId,
+    'date': date.toIso8601String(),
+    'detectedAt': detectedAt.toIso8601String(),
+    'isIncome': isIncome,
+    'payee': payee,
+  };
 }
 
 class SmsParser {
+  /// Parse a UPI SMS message into a structured transaction.
+  static ParsedSmsTxn? parse(
+    String body, {
+    Map<String, String>? keywordToCategory,
+    DateTime? dateOverride,
+    bool includeMerchantNote = false,
+  }) => parseMessage(
+    body,
+    keywordToCategory: keywordToCategory,
+    dateOverride: dateOverride,
+    includeMerchantNote: includeMerchantNote,
+  );
+
+  static String _sanitizeFraudWarnings(String text) {
+    return text
+        .replaceAll(
+          RegExp(
+            r'(?:call|sms|dial|contact|report|forward|tap|visit|help)\b[^.\n]*(?:unauthorized|fraud|not you)[^.\n]*[.\n]?',
+            caseSensitive: false,
+          ),
+          ' ',
+        )
+        .replaceAll(
+          RegExp(
+            r'(?:if\s+(?:this\s+is\s+)?unauthorized|in\s+case\s+of\s+unauthorized)[^.\n]*[.\n]?',
+            caseSensitive: false,
+          ),
+          ' ',
+        )
+        .replaceAll(
+          RegExp(
+            r'(?:if\s+not\s+(?:done\s+by\s+)?you|not\s+you\??)[^.\n]*[.\n]?',
+            caseSensitive: false,
+          ),
+          ' ',
+        )
+        .replaceAll(
+          RegExp(
+            r'to\s+report\s+(?:unauthorized|fraud)[^.\n]*[.\n]?',
+            caseSensitive: false,
+          ),
+          ' ',
+        );
+  }
+
   /// Parse a UPI SMS message into a structured transaction.
   ///
   /// [body] - Raw SMS text.
@@ -57,35 +103,47 @@ class SmsParser {
     DateTime? dateOverride,
     bool includeMerchantNote = false,
   }) {
-    final lowerBody = body.toLowerCase();
+    final cleanBody = _sanitizeFraudWarnings(body);
+    final lowerCleanBody = cleanBody.toLowerCase();
 
     // ── Direction detection ──
+    final hasCreditKeyword =
+        lowerCleanBody.contains('credited') ||
+        lowerCleanBody.contains('refund') ||
+        lowerCleanBody.contains('cashback') ||
+        lowerCleanBody.contains('received rs.') ||
+        lowerCleanBody.contains('received rs ') ||
+        lowerCleanBody.contains('received inr') ||
+        lowerCleanBody.contains('received') ||
+        lowerCleanBody.contains('deposited') ||
+        lowerCleanBody.contains('added to your') ||
+        lowerCleanBody.contains('transferred to your a/c') ||
+        lowerCleanBody.contains('transferred to your account');
+
     bool isCredit = false;
     bool isDebit = false;
 
-    if (lowerBody.contains('sent rs.') || lowerBody.contains('sent rs ') || lowerBody.contains('sent inr')) {
-      isDebit = true;
-    } else if (lowerBody.contains('received rs.') || lowerBody.contains('received rs ') || lowerBody.contains('received inr')) {
+    if (hasCreditKeyword) {
       isCredit = true;
+      // If credit/refund keywords are present, do not allow payment words
+      // (like "paid", "order", "unauthorized debit") to invert to expense.
+      isDebit = false;
+    } else if (lowerCleanBody.contains('sent rs.') ||
+        lowerCleanBody.contains('sent rs ') ||
+        lowerCleanBody.contains('sent inr')) {
+      isDebit = true;
     } else {
       // Keyword-based detection
-      isCredit = lowerBody.contains('credited') ||
-          lowerBody.contains('received') ||
-          lowerBody.contains('deposited') ||
-          lowerBody.contains('refund') ||
-          lowerBody.contains('cashback') ||
-          lowerBody.contains('added to your') ||
-          lowerBody.contains('transferred to your a/c') ||
-          lowerBody.contains('transferred to your account');
-      isDebit = lowerBody.contains('debit') ||
-          lowerBody.contains('debited') ||
-          lowerBody.contains('spent') ||
-          lowerBody.contains('charged') ||
-          lowerBody.contains('paid') ||
-          lowerBody.contains('transacted') ||
-          lowerBody.contains('withdrawn') ||
-          lowerBody.contains('payment of') ||
-          lowerBody.contains('transferred from');
+      isDebit =
+          lowerCleanBody.contains('debit') ||
+          lowerCleanBody.contains('debited') ||
+          lowerCleanBody.contains('spent') ||
+          lowerCleanBody.contains('charged') ||
+          lowerCleanBody.contains('paid') ||
+          lowerCleanBody.contains('transacted') ||
+          lowerCleanBody.contains('withdrawn') ||
+          lowerCleanBody.contains('payment of') ||
+          lowerCleanBody.contains('transferred from');
     }
 
     if (!isCredit && !isDebit) return null;
@@ -97,18 +155,19 @@ class SmsParser {
     String rawMerchant = 'Bank transaction';
     String? payee;
 
-    final amountMatch = RegExp(
-      r'(?:Rs\.?|INR|₹)\s*([0-9,]+(?:\.[0-9]+)?)',
-      caseSensitive: false,
-    ).firstMatch(body) ??
-    RegExp(
-      r'([0-9,]+\.[0-9]+)\s*(?:INR|Rs\.?)',
-      caseSensitive: false,
-    ).firstMatch(body) ??
-    RegExp(
-      r'([0-9,]{2,})\s*(?:INR|Rs\.?)(?!\w)',
-      caseSensitive: false,
-    ).firstMatch(body);
+    final amountMatch =
+        RegExp(
+          r'(?:Rs\.?|INR|₹)\s*([0-9,]+(?:\.[0-9]+)?)',
+          caseSensitive: false,
+        ).firstMatch(cleanBody) ??
+        RegExp(
+          r'([0-9,]+\.[0-9]+)\s*(?:INR|Rs\.?)',
+          caseSensitive: false,
+        ).firstMatch(cleanBody) ??
+        RegExp(
+          r'([0-9,]{2,})\s*(?:INR|Rs\.?)(?!\w)',
+          caseSensitive: false,
+        ).firstMatch(cleanBody);
     if (amountMatch != null) {
       amount = double.tryParse(amountMatch.group(1)!.replaceAll(',', ''));
     }
@@ -128,21 +187,27 @@ class SmsParser {
             caseSensitive: false,
           );
 
-    var merchantMatch = primaryRegex.firstMatch(body);
+    var merchantMatch = primaryRegex.firstMatch(cleanBody);
 
     // Fallback if primary preposition wasn't found
     merchantMatch ??= RegExp(
-      r"(?:towards|to|from|at)\s+([a-zA-Z0-9\s\.'&,\-@]+?)(?:\s+on\s+\d|\s+at\s+\d|\s+(?:ref|txn|upi|not|refer|regards)[\s:]|(?:\s+\.\s+)|(?:\.\s*$)|$)",
+      r"(?:towards|to|from|at|paid\s+on|(?:on\s+(?![0-9])))\s*([a-zA-Z0-9\s\.'&,\-@]+?)(?:\s+on\s+\d|\s+at\s+\d|\s+(?:ref|txn|upi|not|refer|regards|credited)[\s:]|(?:\s+\.\s+)|(?:\.\s*$)|$)",
       caseSensitive: false,
-    ).firstMatch(body);
+    ).firstMatch(cleanBody);
 
     if (merchantMatch != null) {
       var extracted = merchantMatch.group(1)!.trim();
       // Remove VPA handle suffixes (e.g. @oksbi, @ybl, @okicici, @axl, @paytm)
-      extracted = extracted.replaceAll(RegExp(r'@[a-zA-Z0-9\.\-_]+'), '').trim();
+      extracted = extracted
+          .replaceAll(RegExp(r'@[a-zA-Z0-9\.\-_]+'), '')
+          .trim();
       // Remove trailing URLs or fraud alert disclaimers
-      extracted = extracted.replaceAll(RegExp(r'https?://\S+.*$', caseSensitive: false), '').trim();
-      extracted = extracted.replaceAll(RegExp(r'not you.*$', caseSensitive: false), '').trim();
+      extracted = extracted
+          .replaceAll(RegExp(r'https?://\S+.*$', caseSensitive: false), '')
+          .trim();
+      extracted = extracted
+          .replaceAll(RegExp(r'not you.*$', caseSensitive: false), '')
+          .trim();
       if (extracted.isNotEmpty && extracted.length < 60) {
         rawMerchant = extracted;
         payee = extracted;
@@ -157,8 +222,11 @@ class SmsParser {
       const walletTokens = {'gpay', 'google', 'pay', 'phonepe', 'paytm'};
       final parts = rawMerchant.split(RegExp(r'\s+'));
       rawMerchant = parts
-          .where((p) => !walletTokens
-              .contains(p.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '')))
+          .where(
+            (p) => !walletTokens.contains(
+              p.toLowerCase().replaceAll(RegExp('[^a-z0-9]'), ''),
+            ),
+          )
           .join(' ');
       if (rawMerchant.trim().isEmpty) rawMerchant = 'UPI transaction';
     }
@@ -218,7 +286,10 @@ class SmsParser {
     int minute = 0;
     int second = 0;
 
-    final timeMatch = RegExp(r'(?<!\d)(\d{1,2}):(\d{2})(?::(\d{2}))?(?::\d{2})?\s*(am|pm)?', caseSensitive: false).firstMatch(body);
+    final timeMatch = RegExp(
+      r'(?<!\d)(\d{1,2}):(\d{2})(?::(\d{2}))?(?::\d{2})?\s*(am|pm)?',
+      caseSensitive: false,
+    ).firstMatch(body);
     if (timeMatch != null) {
       final h = int.parse(timeMatch.group(1)!);
       final m = int.parse(timeMatch.group(2)!);
@@ -243,7 +314,10 @@ class SmsParser {
       final year = int.parse(ymd.group(1)!);
       final month = int.parse(ymd.group(2)!);
       final day = int.parse(ymd.group(3)!);
-      if (month >= 1 && month <= 12 && day >= 1 && day <= DateTime(year, month + 1, 0).day) {
+      if (month >= 1 &&
+          month <= 12 &&
+          day >= 1 &&
+          day <= DateTime(year, month + 1, 0).day) {
         return DateTime(year, month, day, hour, minute, second);
       }
     }
@@ -257,23 +331,41 @@ class SmsParser {
       if (year < 100) {
         year += 2000;
       }
-      if (month >= 1 && month <= 12 && day >= 1 && day <= DateTime(year, month + 1, 0).day) {
+      if (month >= 1 &&
+          month <= 12 &&
+          day >= 1 &&
+          day <= DateTime(year, month + 1, 0).day) {
         return DateTime(year, month, day, hour, minute, second);
       }
     }
 
     // DD Mon YYYY or DD Mon YY (e.g. "22 Jul 2026", "22 Jul 26")
-    final dMonY = RegExp(r'(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{2,4})', caseSensitive: false).firstMatch(body);
+    final dMonY = RegExp(
+      r'(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{2,4})',
+      caseSensitive: false,
+    ).firstMatch(body);
     if (dMonY != null) {
       const months = {
-        'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'may': 5, 'jun': 6,
-        'jul': 7, 'aug': 8, 'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12,
+        'jan': 1,
+        'feb': 2,
+        'mar': 3,
+        'apr': 4,
+        'may': 5,
+        'jun': 6,
+        'jul': 7,
+        'aug': 8,
+        'sep': 9,
+        'oct': 10,
+        'nov': 11,
+        'dec': 12,
       };
       final month = months[dMonY.group(2)!.toLowerCase().substring(0, 3)];
       final day = int.parse(dMonY.group(1)!);
       var year = int.parse(dMonY.group(3)!);
       if (year < 100) year += 2000;
-      if (month != null && day >= 1 && day <= DateTime(year, month + 1, 0).day) {
+      if (month != null &&
+          day >= 1 &&
+          day <= DateTime(year, month + 1, 0).day) {
         return DateTime(year, month, day, hour, minute, second);
       }
     }
@@ -284,45 +376,71 @@ class SmsParser {
   static String _detectCategoryFromMerchant(String note) {
     final cleanNote = note.toLowerCase();
 
-    if (cleanNote.contains('starbucks') || cleanNote.contains('swiggy') ||
-        cleanNote.contains('zomato') || cleanNote.contains('restaurant') ||
-        cleanNote.contains('cafe') || cleanNote.contains('food') ||
-        cleanNote.contains('mcdonalds') || cleanNote.contains('kfc') ||
-        cleanNote.contains('diner') || cleanNote.contains('baker') ||
-        cleanNote.contains('pizza') || cleanNote.contains('burger') ||
-        cleanNote.contains('domino') || cleanNote.contains('subway') ||
+    if (cleanNote.contains('starbucks') ||
+        cleanNote.contains('swiggy') ||
+        cleanNote.contains('zomato') ||
+        cleanNote.contains('restaurant') ||
+        cleanNote.contains('cafe') ||
+        cleanNote.contains('food') ||
+        cleanNote.contains('mcdonalds') ||
+        cleanNote.contains('kfc') ||
+        cleanNote.contains('diner') ||
+        cleanNote.contains('baker') ||
+        cleanNote.contains('pizza') ||
+        cleanNote.contains('burger') ||
+        cleanNote.contains('domino') ||
+        cleanNote.contains('subway') ||
         cleanNote.contains('dhaba')) {
       return 'food';
     }
 
-    if (cleanNote.contains('uber') || cleanNote.contains('ola') ||
-        cleanNote.contains('metro') || cleanNote.contains('petrol') ||
-        cleanNote.contains('fuel') || cleanNote.contains('shell') ||
-        cleanNote.contains('railway') || cleanNote.contains('taxi') ||
-        cleanNote.contains('irctc') || cleanNote.contains('bus')) {
+    if (cleanNote.contains('uber') ||
+        cleanNote.contains('ola') ||
+        cleanNote.contains('metro') ||
+        cleanNote.contains('petrol') ||
+        cleanNote.contains('fuel') ||
+        cleanNote.contains('shell') ||
+        cleanNote.contains('railway') ||
+        cleanNote.contains('taxi') ||
+        cleanNote.contains('irctc') ||
+        cleanNote.contains('bus')) {
       return 'transport';
     }
 
-    if (cleanNote.contains('amazon') || cleanNote.contains('flipkart') ||
-        cleanNote.contains('myntra') || cleanNote.contains('shopping') ||
-        cleanNote.contains('zara') || cleanNote.contains('groceries') ||
-        cleanNote.contains('supermarket') || cleanNote.contains('store') ||
-        cleanNote.contains('mart') || cleanNote.contains('ajio') ||
-        cleanNote.contains('nykaa') || cleanNote.contains('h&m')) {
+    if (cleanNote.contains('amazon') ||
+        cleanNote.contains('flipkart') ||
+        cleanNote.contains('myntra') ||
+        cleanNote.contains('shopping') ||
+        cleanNote.contains('zara') ||
+        cleanNote.contains('groceries') ||
+        cleanNote.contains('supermarket') ||
+        cleanNote.contains('store') ||
+        cleanNote.contains('mart') ||
+        cleanNote.contains('ajio') ||
+        cleanNote.contains('nykaa') ||
+        cleanNote.contains('h&m')) {
       return 'shopping';
     }
 
-    if (cleanNote.contains('bill') || cleanNote.contains('electricity') ||
-        cleanNote.contains('broadband') || cleanNote.contains('recharge') ||
-        cleanNote.contains('water') || cleanNote.contains('gas') ||
-        cleanNote.contains('insurance') || cleanNote.contains('bsnl') ||
-        cleanNote.contains('jio') || cleanNote.contains('airtel') ||
-        cleanNote.contains('netflix') || cleanNote.contains('spotify')) {
+    if (cleanNote.contains('bill') ||
+        cleanNote.contains('electricity') ||
+        cleanNote.contains('broadband') ||
+        cleanNote.contains('recharge') ||
+        cleanNote.contains('water') ||
+        cleanNote.contains('gas') ||
+        cleanNote.contains('insurance') ||
+        cleanNote.contains('bsnl') ||
+        cleanNote.contains('jio') ||
+        cleanNote.contains('airtel') ||
+        cleanNote.contains('netflix') ||
+        cleanNote.contains('spotify')) {
       return 'bills';
     }
 
-    if (cleanNote.contains('pvr') || cleanNote.contains('bookmyshow') ||
-        cleanNote.contains('steam') || cleanNote.contains('movie') ||
+    if (cleanNote.contains('pvr') ||
+        cleanNote.contains('bookmyshow') ||
+        cleanNote.contains('steam') ||
+        cleanNote.contains('movie') ||
         cleanNote.contains('cinema')) {
       return 'entertainment';
     }

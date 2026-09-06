@@ -1,23 +1,23 @@
 import 'dart:convert';
 import 'dart:io';
+
+import 'package:drift/drift.dart' show Value;
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:uuid/uuid.dart';
-import 'package:drift/drift.dart' show Value;
 
+import '../../core/database/database.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/colors.dart';
-
-import '../../core/utils/formatters.dart';
 import '../../core/utils/csv_importer.dart';
 import '../../core/utils/duplicate_detector.dart';
-import '../../core/database/database.dart';
+import '../../core/utils/formatters.dart';
 import '../../providers/database_provider.dart';
-import '../../providers/transaction_provider.dart';
 import '../../providers/settings_provider.dart';
+import '../../providers/transaction_provider.dart';
 
 /// Bottom sheet for importing transactions from a bank statement CSV.
 class CsvImportSheet extends ConsumerStatefulWidget {
@@ -61,7 +61,8 @@ class _CsvImportSheetState extends ConsumerState<CsvImportSheet> {
           Padding(
             padding: const EdgeInsets.only(top: 12, bottom: 4),
             child: Container(
-              width: 40, height: 4,
+              width: 40,
+              height: 4,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(2),
                 color: colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
@@ -73,14 +74,20 @@ class _CsvImportSheetState extends ConsumerState<CsvImportSheet> {
             padding: const EdgeInsets.fromLTRB(24, 12, 24, 16),
             child: Row(
               children: [
-                Icon(LucideIcons.fileSpreadsheet, size: 20, color: colorScheme.primary),
+                Icon(
+                  LucideIcons.fileSpreadsheet,
+                  size: 20,
+                  color: colorScheme.primary,
+                ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child:           Text(
-                    _showMapping ? 'Column Mapping' : _result != null ? 'Review Import' : 'Import Bank Statement',
-                    style: AppTheme.displayStyle(
-                      size: 18, weight: FontWeight.w600, color: colorScheme.onSurface,
-                    ),
+                  child: Text(
+                    _showMapping
+                        ? 'Column Mapping'
+                        : _result != null
+                        ? 'Review Import'
+                        : 'Import Bank Statement',
+                    style: AppTheme.displayStyle(color: colorScheme.onSurface),
                   ),
                 ),
                 if (!_loading)
@@ -118,7 +125,8 @@ class _CsvImportSheetState extends ConsumerState<CsvImportSheet> {
       child: Column(
         children: [
           Container(
-            width: 80, height: 80,
+            width: 80,
+            height: 80,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: colorScheme.primary.withValues(alpha: 0.08),
@@ -133,7 +141,8 @@ class _CsvImportSheetState extends ConsumerState<CsvImportSheet> {
           Text(
             'Select a bank statement CSV file',
             style: AppTheme.displayStyle(
-              size: 16, weight: FontWeight.w600, color: colorScheme.onSurface,
+              size: 16,
+              color: colorScheme.onSurface,
             ),
           ),
           const SizedBox(height: 8),
@@ -141,7 +150,9 @@ class _CsvImportSheetState extends ConsumerState<CsvImportSheet> {
             'Supports most Indian bank formats.\nColumns will be auto-detected.',
             textAlign: TextAlign.center,
             style: AppTheme.bodyStyle(
-              size: 13, color: colorScheme.onSurfaceVariant, height: 1.4,
+              size: 13,
+              color: colorScheme.onSurfaceVariant,
+              height: 1.4,
             ),
           ),
           const SizedBox(height: 24),
@@ -152,7 +163,7 @@ class _CsvImportSheetState extends ConsumerState<CsvImportSheet> {
           ),
           const SizedBox(height: 12),
           TextButton.icon(
-            onPressed: () => _loadSampleData(),
+            onPressed: _loadSampleData,
             icon: const Icon(LucideIcons.flaskConical, size: 16),
             label: const Text('Try with sample CSV'),
           ),
@@ -163,7 +174,9 @@ class _CsvImportSheetState extends ConsumerState<CsvImportSheet> {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(10),
               color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
-              border: Border.all(color: colorScheme.outline.withValues(alpha: 0.08)),
+              border: Border.all(
+                color: colorScheme.outline.withValues(alpha: 0.08),
+              ),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -171,7 +184,8 @@ class _CsvImportSheetState extends ConsumerState<CsvImportSheet> {
                 Text(
                   'Expected format:',
                   style: AppTheme.bodyStyle(
-                    size: 10, weight: FontWeight.w600,
+                    size: 10,
+                    weight: FontWeight.w600,
                     color: colorScheme.onSurfaceVariant,
                   ),
                 ),
@@ -179,9 +193,10 @@ class _CsvImportSheetState extends ConsumerState<CsvImportSheet> {
                 Text(
                   'Date, Narration, Withdrawal, Deposit, Balance\n'
                   '01/01/2026, Swiggy order, 450.00, , 5000.00\n'
-                  '02/01/2026, Salary credit, , 50000.00, 55000.00',                    style: AppTheme.bodyStyle(
-                      size: 10, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-                      height: 1.5,
+                  '02/01/2026, Salary credit, , 50000.00, 55000.00',
+                  style: AppTheme.bodyStyle(
+                    size: 10,
+                    color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                   ),
                 ),
               ],
@@ -192,8 +207,11 @@ class _CsvImportSheetState extends ConsumerState<CsvImportSheet> {
     );
   }
 
-  Widget _buildPreviewView(ColorScheme colorScheme, bool isDark,
-      List<Category> categories) {
+  Widget _buildPreviewView(
+    ColorScheme colorScheme,
+    bool isDark,
+    List<Category> categories,
+  ) {
     if (_result == null) return const SizedBox.shrink();
 
     return Flexible(
@@ -231,7 +249,8 @@ class _CsvImportSheetState extends ConsumerState<CsvImportSheet> {
                     '${_result!.validCount} valid transaction${_result!.validCount != 1 ? 's' : ''}'
                     '${_result!.skippedRows > 0 ? ', ${_result!.skippedRows} skipped' : ''}',
                     style: AppTheme.bodyStyle(
-                      size: 12, weight: FontWeight.w600,
+                      size: 12,
+                      weight: FontWeight.w600,
                       color: colorScheme.onSurface,
                     ),
                   ),
@@ -249,12 +268,21 @@ class _CsvImportSheetState extends ConsumerState<CsvImportSheet> {
                   child: _buildDropdown<String>(
                     value: _categoryName,
                     items: [
-                      ...categories.where((c) => c.type == 'expense').map((c) =>
-                        DropdownMenuItem(value: c.id, child: Text(c.name, style: AppTheme.bodyStyle(size: 13))),
-                      ),
+                      ...categories
+                          .where((c) => c.type == 'expense')
+                          .map(
+                            (c) => DropdownMenuItem(
+                              value: c.id,
+                              child: Text(
+                                c.name,
+                                style: AppTheme.bodyStyle(size: 13),
+                              ),
+                            ),
+                          ),
                     ],
                     hint: 'Category',
-                    onChanged: (v) => setState(() => _categoryName = v ?? 'other'),
+                    onChanged: (v) =>
+                        setState(() => _categoryName = v ?? 'other'),
                     colorScheme: colorScheme,
                   ),
                 ),
@@ -268,23 +296,47 @@ class _CsvImportSheetState extends ConsumerState<CsvImportSheet> {
             padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
             decoration: BoxDecoration(
               border: Border(
-                bottom: BorderSide(color: colorScheme.outline.withValues(alpha: 0.1)),
+                bottom: BorderSide(
+                  color: colorScheme.outline.withValues(alpha: 0.1),
+                ),
               ),
             ),
             child: Row(
               children: [
                 const SizedBox(width: 24),
-                Expanded(flex: 2,
-                  child: Text('Date', style: AppTheme.bodyStyle(
-                      size: 10, weight: FontWeight.w600, color: colorScheme.onSurfaceVariant)),
+                Expanded(
+                  flex: 2,
+                  child: Text(
+                    'Date',
+                    style: AppTheme.bodyStyle(
+                      size: 10,
+                      weight: FontWeight.w600,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
                 ),
-                Expanded(flex: 3,
-                  child: Text('Description', style: AppTheme.bodyStyle(
-                      size: 10, weight: FontWeight.w600, color: colorScheme.onSurfaceVariant)),
+                Expanded(
+                  flex: 3,
+                  child: Text(
+                    'Description',
+                    style: AppTheme.bodyStyle(
+                      size: 10,
+                      weight: FontWeight.w600,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
                 ),
-                Expanded(flex: 2,
-                  child: Text('Amount', textAlign: TextAlign.right, style: AppTheme.bodyStyle(
-                      size: 10, weight: FontWeight.w600, color: colorScheme.onSurfaceVariant)),
+                Expanded(
+                  flex: 2,
+                  child: Text(
+                    'Amount',
+                    textAlign: TextAlign.right,
+                    style: AppTheme.bodyStyle(
+                      size: 10,
+                      weight: FontWeight.w600,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -322,35 +374,50 @@ class _CsvImportSheetState extends ConsumerState<CsvImportSheet> {
                     child: Row(
                       children: [
                         Icon(
-                          isSelected ? LucideIcons.checkCircle : LucideIcons.circle,
+                          isSelected
+                              ? LucideIcons.checkCircle
+                              : LucideIcons.circle,
                           size: 16,
-                          color: isSelected ? colorScheme.primary : colorScheme.outline.withValues(alpha: 0.3),
+                          color: isSelected
+                              ? colorScheme.primary
+                              : colorScheme.outline.withValues(alpha: 0.3),
                         ),
                         const SizedBox(width: 6),
-                        Expanded(flex: 2,
+                        Expanded(
+                          flex: 2,
                           child: Text(
                             Formatters.formatDateShort(t.date),
-                            style: AppTheme.bodyStyle(size: 11, color: colorScheme.onSurfaceVariant),
+                            style: AppTheme.bodyStyle(
+                              size: 11,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
                           ),
                         ),
-                        Expanded(flex: 3,
+                        Expanded(
+                          flex: 3,
                           child: Text(
                             t.description.length > 20
                                 ? '${t.description.substring(0, 20)}…'
                                 : t.description,
-                            style: AppTheme.bodyStyle(size: 11, color: colorScheme.onSurface),
+                            style: AppTheme.bodyStyle(
+                              size: 11,
+                              color: colorScheme.onSurface,
+                            ),
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        Expanded(flex: 2,
+                        Expanded(
+                          flex: 2,
                           child: Text(
                             t.amount > 0
                                 ? '-${Formatters.formatCurrency(t.amount)}'
                                 : '+${Formatters.formatCurrency(t.amount.abs())}',
                             textAlign: TextAlign.right,
                             style: AppTheme.financialStyle(
-                              size: 11, weight: FontWeight.w600,
-                              color: t.amount > 0 ? AppColors.error : AppColors.success,
+                              size: 11,
+                              color: t.amount > 0
+                                  ? AppColors.error
+                                  : AppColors.success,
                             ),
                           ),
                         ),
@@ -377,13 +444,22 @@ class _CsvImportSheetState extends ConsumerState<CsvImportSheet> {
                   Text(
                     '${_result!.errors.length} error${_result!.errors.length != 1 ? 's' : ''}:',
                     style: AppTheme.bodyStyle(
-                      size: 10, weight: FontWeight.w600, color: AppColors.error,
+                      size: 10,
+                      weight: FontWeight.w600,
+                      color: AppColors.error,
                     ),
                   ),
-                  ..._result!.errors.take(3).map((e) => Text(
-                    e,
-                    style: AppTheme.bodyStyle(size: 9, color: AppColors.error.withValues(alpha: 0.8)),
-                  )),
+                  ..._result!.errors
+                      .take(3)
+                      .map(
+                        (e) => Text(
+                          e,
+                          style: AppTheme.bodyStyle(
+                            size: 9,
+                            color: AppColors.error.withValues(alpha: 0.8),
+                          ),
+                        ),
+                      ),
                 ],
               ),
             ),
@@ -399,7 +475,8 @@ class _CsvImportSheetState extends ConsumerState<CsvImportSheet> {
                     : null,
                 icon: _importing
                     ? const SizedBox(
-                        width: 18, height: 18,
+                        width: 18,
+                        height: 18,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(LucideIcons.import, size: 18),
@@ -444,8 +521,9 @@ class _CsvImportSheetState extends ConsumerState<CsvImportSheet> {
   }
 
   /// Generate a stable key for a CSV header row to save/restore mappings.
-  String _mappingKey(List<String> headers) =>
-      const JsonEncoder().convert(headers.map((h) => h.trim().toLowerCase()).toList());
+  String _mappingKey(List<String> headers) => const JsonEncoder().convert(
+    headers.map((h) => h.trim().toLowerCase()).toList(),
+  );
 
   /// Try to auto-parse a CSV file, falling back to manual mapping if detection fails.
   Future<void> _pickFile() async {
@@ -467,22 +545,31 @@ class _CsvImportSheetState extends ConsumerState<CsvImportSheet> {
           if (mounted) {
             setState(() => _loading = false);
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('File is empty'), behavior: SnackBarBehavior.floating),
+              const SnackBar(
+                content: Text('File is empty'),
+                behavior: SnackBarBehavior.floating,
+              ),
             );
           }
           return;
         }
 
-        final headers = _parseCsvLine(lines.first).map((h) => h.trim()).toList();
+        final headers = _parseCsvLine(
+          lines.first,
+        ).map((h) => h.trim()).toList();
         _csvHeaders = headers;
 
         // Try to load a saved mapping
         final settings = ref.read(settingsNotifierProvider.notifier);
-        final savedMappingStr = await settings.getSetting('csv_mapping_${_mappingKey(headers)}');
+        final savedMappingStr = await settings.getSetting(
+          'csv_mapping_${_mappingKey(headers)}',
+        );
         CsvColumnMapping? forcedMapping;
         if (savedMappingStr != null && savedMappingStr.isNotEmpty) {
           try {
-            final map = Map<String, dynamic>.from(const JsonDecoder().convert(savedMappingStr) as Map);
+            final map = Map<String, dynamic>.from(
+              const JsonDecoder().convert(savedMappingStr) as Map,
+            );
             forcedMapping = CsvColumnMapping(
               dateColumn: map['date'] as int?,
               descriptionColumn: map['desc'] as int?,
@@ -499,7 +586,9 @@ class _CsvImportSheetState extends ConsumerState<CsvImportSheet> {
         );
 
         if (mounted) {
-          if (importResult.errors.isNotEmpty && importResult.transactions.isEmpty && forcedMapping == null) {
+          if (importResult.errors.isNotEmpty &&
+              importResult.transactions.isEmpty &&
+              forcedMapping == null) {
             // Auto-detection failed — show manual mapping UI
             setState(() {
               _showMapping = true;
@@ -515,7 +604,8 @@ class _CsvImportSheetState extends ConsumerState<CsvImportSheet> {
               _result = importResult;
               _loading = false;
               _selectedRows = List.generate(
-                importResult.transactions.length, (i) => i,
+                importResult.transactions.length,
+                (i) => i,
               );
             });
           }
@@ -568,15 +658,26 @@ class _CsvImportSheetState extends ConsumerState<CsvImportSheet> {
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(10),
                 color: AppColors.warning.withValues(alpha: 0.1),
-                border: Border.all(color: AppColors.warning.withValues(alpha: 0.2)),
+                border: Border.all(
+                  color: AppColors.warning.withValues(alpha: 0.2),
+                ),
               ),
               child: Row(
                 children: [
-                  Icon(LucideIcons.slidersHorizontal, size: 16, color: AppColors.warning),
+                  const Icon(
+                    LucideIcons.slidersHorizontal,
+                    size: 16,
+                    color: AppColors.warning,
+                  ),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: Text('Column mapping required — select which column matches each field',
-                        style: AppTheme.bodyStyle(size: 12, color: colorScheme.onSurface)),
+                    child: Text(
+                      'Column mapping required — select which column matches each field',
+                      style: AppTheme.bodyStyle(
+                        size: 12,
+                        color: colorScheme.onSurface,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -634,7 +735,10 @@ class _CsvImportSheetState extends ConsumerState<CsvImportSheet> {
                 const SizedBox(height: 20),
                 Text(
                   'Select Date + Description + (Amount or Debit/Credit)',
-                  style: AppTheme.bodyStyle(size: 11, color: colorScheme.onSurfaceVariant),
+                  style: AppTheme.bodyStyle(
+                    size: 11,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
                   textAlign: TextAlign.center,
                 ),
               ],
@@ -645,9 +749,13 @@ class _CsvImportSheetState extends ConsumerState<CsvImportSheet> {
             child: SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
-                onPressed: (_mappedDateColumn != null && _mappedDescColumn != null &&
-                        (_mappedAmountColumn != null || (_mappedDebitColumn != null || _mappedCreditColumn != null)))
-                    ? () => _applyMapping()
+                onPressed:
+                    (_mappedDateColumn != null &&
+                        _mappedDescColumn != null &&
+                        (_mappedAmountColumn != null ||
+                            (_mappedDebitColumn != null ||
+                                _mappedCreditColumn != null)))
+                    ? _applyMapping
                     : null,
                 icon: const Icon(LucideIcons.check, size: 18),
                 label: const Text('Apply Mapping'),
@@ -665,9 +773,15 @@ class _CsvImportSheetState extends ConsumerState<CsvImportSheet> {
 
     final dateIdx = _csvHeaders.indexOf(_mappedDateColumn!);
     final descIdx = _csvHeaders.indexOf(_mappedDescColumn!);
-    final debitIdx = _mappedDebitColumn != null ? _csvHeaders.indexOf(_mappedDebitColumn!) : null;
-    final creditIdx = _mappedCreditColumn != null ? _csvHeaders.indexOf(_mappedCreditColumn!) : null;
-    final amountIdx = _mappedAmountColumn != null ? _csvHeaders.indexOf(_mappedAmountColumn!) : null;
+    final debitIdx = _mappedDebitColumn != null
+        ? _csvHeaders.indexOf(_mappedDebitColumn!)
+        : null;
+    final creditIdx = _mappedCreditColumn != null
+        ? _csvHeaders.indexOf(_mappedCreditColumn!)
+        : null;
+    final amountIdx = _mappedAmountColumn != null
+        ? _csvHeaders.indexOf(_mappedAmountColumn!)
+        : null;
 
     final mapping = CsvColumnMapping(
       dateColumn: dateIdx >= 0 ? dateIdx : null,
@@ -705,7 +819,8 @@ class _CsvImportSheetState extends ConsumerState<CsvImportSheet> {
         _loading = false;
         _result = importResult;
         _selectedRows = List.generate(
-          importResult.transactions.length, (i) => i,
+          importResult.transactions.length,
+          (i) => i,
         );
       });
     }
@@ -718,7 +833,7 @@ class _CsvImportSheetState extends ConsumerState<CsvImportSheet> {
     final now = DateTime.now();
     final sampleTransactions = [
       CsvTransactionRow(
-        date: DateTime(now.year, now.month, 1),
+        date: DateTime(now.year, now.month),
         description: 'Swiggy order',
         amount: 450,
       ),
@@ -776,9 +891,7 @@ class _CsvImportSheetState extends ConsumerState<CsvImportSheet> {
           errors: [],
         );
         _loading = false;
-        _selectedRows = List.generate(
-          sampleTransactions.length, (i) => i,
-        );
+        _selectedRows = List.generate(sampleTransactions.length, (i) => i);
       });
     }
   }
@@ -800,33 +913,53 @@ class _CsvImportSheetState extends ConsumerState<CsvImportSheet> {
       String categoryId = _categoryName; // default to user-selected
       final desc = row.description.toLowerCase();
 
-      if (desc.contains('swiggy') || desc.contains('zomato') ||
-          desc.contains('food') || desc.contains('restaurant') ||
-          desc.contains('cafe') || desc.contains('mcdonald') ||
-          desc.contains('kfc') || desc.contains('pizza') ||
-          desc.contains('groceri') || desc.contains('fresh') ||
+      if (desc.contains('swiggy') ||
+          desc.contains('zomato') ||
+          desc.contains('food') ||
+          desc.contains('restaurant') ||
+          desc.contains('cafe') ||
+          desc.contains('mcdonald') ||
+          desc.contains('kfc') ||
+          desc.contains('pizza') ||
+          desc.contains('groceri') ||
+          desc.contains('fresh') ||
           desc.contains('supermarket')) {
         categoryId = 'food';
-      } else if (desc.contains('uber') || desc.contains('ola') ||
-          desc.contains('metro') || desc.contains('petrol') ||
-          desc.contains('fuel') || desc.contains('taxi') ||
-          desc.contains('railway') || desc.contains('cab')) {
+      } else if (desc.contains('uber') ||
+          desc.contains('ola') ||
+          desc.contains('metro') ||
+          desc.contains('petrol') ||
+          desc.contains('fuel') ||
+          desc.contains('taxi') ||
+          desc.contains('railway') ||
+          desc.contains('cab')) {
         categoryId = 'transport';
-      } else if (desc.contains('rent') || desc.contains('housing') ||
+      } else if (desc.contains('rent') ||
+          desc.contains('housing') ||
           desc.contains('pg ')) {
         categoryId = 'rent';
-      } else if (desc.contains('amazon') || desc.contains('flipkart') ||
-          desc.contains('myntra') || desc.contains('zara') ||
-          desc.contains('cloth') || desc.contains('shoe') ||
-          desc.contains('shopping') || desc.contains('store') ||
+      } else if (desc.contains('amazon') ||
+          desc.contains('flipkart') ||
+          desc.contains('myntra') ||
+          desc.contains('zara') ||
+          desc.contains('cloth') ||
+          desc.contains('shoe') ||
+          desc.contains('shopping') ||
+          desc.contains('store') ||
           desc.contains('mart')) {
         categoryId = 'shopping';
-      } else if (desc.contains('bill') || desc.contains('electricity') ||
-          desc.contains('broadband') || desc.contains('recharge') ||
-          desc.contains('water') || desc.contains('gas') ||
-          desc.contains('insurance') || desc.contains('netflix') ||
-          desc.contains('subscription') || desc.contains('phone') ||
-          desc.contains('jio') || desc.contains('airtel')) {
+      } else if (desc.contains('bill') ||
+          desc.contains('electricity') ||
+          desc.contains('broadband') ||
+          desc.contains('recharge') ||
+          desc.contains('water') ||
+          desc.contains('gas') ||
+          desc.contains('insurance') ||
+          desc.contains('netflix') ||
+          desc.contains('subscription') ||
+          desc.contains('phone') ||
+          desc.contains('jio') ||
+          desc.contains('airtel')) {
         categoryId = 'bills';
       } else if (desc.contains('salary') || desc.contains('credit')) {
         categoryId = 'income';
@@ -860,15 +993,19 @@ class _CsvImportSheetState extends ConsumerState<CsvImportSheet> {
             ? -row.amount.abs()
             : row.amount;
 
-        await db.into(db.transactions).insert(TransactionsCompanion.insert(
-          id: uuid,
-          amount: finalAmount,
-          categoryId: categoryId,
-          accountId: 'default',
-          note: Value(row.description),
-          date: row.date,
-          paymentMethod: const Value('bank'),
-        ));
+        await db
+            .into(db.transactions)
+            .insert(
+              TransactionsCompanion.insert(
+                id: uuid,
+                amount: finalAmount,
+                categoryId: categoryId,
+                accountId: 'default',
+                note: Value(row.description),
+                date: row.date,
+                paymentMethod: const Value('bank'),
+              ),
+            );
 
         imported++;
       } catch (e) {
@@ -882,33 +1019,25 @@ class _CsvImportSheetState extends ConsumerState<CsvImportSheet> {
     ref.invalidate(totalSpentThisMonthProvider);
     ref.invalidate(totalIncomeThisMonthProvider);
 
+    if (!mounted) return;
     setState(() => _importing = false);
 
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Imported $imported transaction${imported != 1 ? 's' : ''}'
-            '${skipped > 0 ? ', $skipped skipped (duplicates)' : ''}',
-          ),
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 3),
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Imported $imported transaction${imported != 1 ? 's' : ''}'
+          '${skipped > 0 ? ', $skipped skipped (duplicates)' : ''}',
         ),
-      );
-      Navigator.pop(context);
-    }
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 3),
+      ),
+    );
+    Navigator.pop(context);
   }
 }
 
 /// Dropdown for selecting which CSV header maps to a field.
 class _MappingDropdown extends StatelessWidget {
-  final String label;
-  final IconData? icon;
-  final String? value;
-  final List<String> headers;
-  final ValueChanged<String?> onChanged;
-  final ColorScheme colorScheme;
-
   const _MappingDropdown({
     required this.label,
     this.icon,
@@ -917,6 +1046,12 @@ class _MappingDropdown extends StatelessWidget {
     required this.onChanged,
     required this.colorScheme,
   });
+  final String label;
+  final IconData? icon;
+  final String? value;
+  final List<String> headers;
+  final ValueChanged<String?> onChanged;
+  final ColorScheme colorScheme;
 
   @override
   Widget build(BuildContext context) {
@@ -947,8 +1082,21 @@ class _MappingDropdown extends StatelessWidget {
           style: AppTheme.bodyStyle(size: 13, color: colorScheme.onSurface),
           dropdownColor: colorScheme.surface,
           items: [
-            DropdownMenuItem(value: null, child: Text('— Not set —', style: AppTheme.bodyStyle(size: 12, color: colorScheme.onSurfaceVariant))),
-            ...headers.map((h) => DropdownMenuItem(value: h, child: Text(h, style: AppTheme.bodyStyle(size: 12)))),
+            DropdownMenuItem(
+              child: Text(
+                '— Not set —',
+                style: AppTheme.bodyStyle(
+                  size: 12,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+            ...headers.map(
+              (h) => DropdownMenuItem(
+                value: h,
+                child: Text(h, style: AppTheme.bodyStyle(size: 12)),
+              ),
+            ),
           ],
           onChanged: onChanged,
         ),

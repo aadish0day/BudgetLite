@@ -19,4 +19,3 @@ int? budgetTabIndex(WidgetRef ref) {
   final enabled = ref.read(budgetModuleEnabledProvider).valueOrNull ?? true;
   return enabled ? 2 : null;
 }
-

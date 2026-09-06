@@ -36,7 +36,8 @@ class Transactions extends Table {
   DateTimeColumn get date => dateTime()();
   TextColumn get paymentMethod => text().withDefault(const Constant('cash'))();
   BoolColumn get isRecurring => boolean().withDefault(const Constant(false))();
-  BoolColumn get isRecurringInstance => boolean().withDefault(const Constant(false))();
+  BoolColumn get isRecurringInstance =>
+      boolean().withDefault(const Constant(false))();
   TextColumn get recurringInterval => text().nullable()();
   DateTimeColumn get recurringEndDate => dateTime().nullable()();
   TextColumn get payee => text().nullable()();
@@ -92,4 +93,3 @@ class AppSettings extends Table {
   @override
   Set<Column> get primaryKey => {key};
 }
-

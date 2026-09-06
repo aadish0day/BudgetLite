@@ -1,5 +1,5 @@
-import 'package:flutter_test/flutter_test.dart';
 import 'package:budget_lite/core/utils/formatters.dart';
+import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('Formatters', () {
@@ -45,7 +45,7 @@ void main() {
 
     test('formatPercentage formats correctly', () {
       expect(Formatters.formatPercentage(75.3), '75%');
-      expect(Formatters.formatPercentage(100.0), '100%');
+      expect(Formatters.formatPercentage(100), '100%');
     });
   });
 }

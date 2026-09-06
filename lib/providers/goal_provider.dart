@@ -1,14 +1,16 @@
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:drift/drift.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
+
 import '../core/database/database.dart';
 import 'database_provider.dart';
 import 'transaction_provider.dart';
 
 final goalsProvider = StreamProvider.autoDispose<List<Goal>>((ref) {
   final db = ref.watch(databaseProvider);
-  return (db.select(db.goals)
-        ..orderBy([(t) => OrderingTerm(expression: t.createdAt, mode: OrderingMode.desc)]))
+  return (db.select(db.goals)..orderBy([
+        (t) => OrderingTerm(expression: t.createdAt, mode: OrderingMode.desc),
+      ]))
       .watch();
 });
 
@@ -24,21 +26,27 @@ class GoalNotifier extends StateNotifier<AsyncValue<void>> {
     String icon = 'flag',
   }) async {
     final db = ref.read(databaseProvider);
-    await db.into(db.goals).insert(GoalsCompanion.insert(
-      id: const Uuid().v4(),
-      name: name,
-      targetAmount: targetAmount,
-      currentAmount: const Value(0),
-      targetDate: targetDate,
-      color: Value(color),
-      icon: Value(icon),
-    ));
+    await db
+        .into(db.goals)
+        .insert(
+          GoalsCompanion.insert(
+            id: const Uuid().v4(),
+            name: name,
+            targetAmount: targetAmount,
+            currentAmount: const Value(0),
+            targetDate: targetDate,
+            color: Value(color),
+            icon: Value(icon),
+          ),
+        );
     ref.invalidate(goalsProvider);
   }
 
   Future<void> updateGoalProgress(String id, double amount) async {
     final db = ref.read(databaseProvider);
-    final rows = await (db.select(db.goals)..where((t) => t.id.equals(id))).get();
+    final rows = await (db.select(
+      db.goals,
+    )..where((t) => t.id.equals(id))).get();
     final goal = rows.isNotEmpty ? rows.first : null;
     if (goal == null) return;
     final newAmount = (goal.currentAmount + amount).clamp(0.0, double.infinity);
@@ -47,20 +55,24 @@ class GoalNotifier extends StateNotifier<AsyncValue<void>> {
       // Record the ledger entry first — if it fails, the goal balance stays
       // consistent with the transaction history.
       const savingsCategoryId = 'savings';
-      final savingsCat = await (db.select(db.categories)
-            ..where((c) => c.id.equals(savingsCategoryId)))
-          .getSingleOrNull();
+      final savingsCat = await (db.select(
+        db.categories,
+      )..where((c) => c.id.equals(savingsCategoryId))).getSingleOrNull();
       if (savingsCat == null) {
         // Seed data has no 'savings' category; create it on first use so
         // contributions don't reference a dangling categoryId.
-        await db.into(db.categories).insert(CategoriesCompanion.insert(
-              id: savingsCategoryId,
-              name: 'Savings',
-              icon: const Value('savings'),
-              color: const Value(0xFF14B8A6),
-              type: const Value('expense'),
-              sortOrder: const Value(90),
-            ));
+        await db
+            .into(db.categories)
+            .insert(
+              CategoriesCompanion.insert(
+                id: savingsCategoryId,
+                name: 'Savings',
+                icon: const Value('savings'),
+                color: const Value(0xFF14B8A6),
+                type: const Value('expense'),
+                sortOrder: const Value(90),
+              ),
+            );
         ref.invalidate(categoriesProvider);
         ref.invalidate(expenseCategoriesProvider);
       }
@@ -88,5 +100,5 @@ class GoalNotifier extends StateNotifier<AsyncValue<void>> {
 
 final goalNotifierProvider =
     StateNotifierProvider.autoDispose<GoalNotifier, AsyncValue<void>>((ref) {
-  return GoalNotifier(ref);
-});
+      return GoalNotifier(ref);
+    });

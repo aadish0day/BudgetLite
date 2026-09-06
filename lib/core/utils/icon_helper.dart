@@ -3,7 +3,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 IconData getCategoryIcon(String iconName) {
   final cleanName = iconName.trim().toLowerCase();
-  
+
   // Direct match map
   final iconMap = {
     'restaurant': LucideIcons.utensils,

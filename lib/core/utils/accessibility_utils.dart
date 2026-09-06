@@ -1,6 +1,7 @@
 import 'dart:convert';
-import 'package:flutter/widgets.dart';
+
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
 
 /// Accessibility utilities for motion, animation, and visual preferences.
 abstract final class AccessibilityUtils {
@@ -33,8 +34,13 @@ abstract final class AccessibilityUtils {
       Map<String, dynamic>.from(const JsonDecoder().convert(json) as Map);
 
   /// Decode a JSON string to a list safely.
-  static List<T> decodeList<T>(String json, T Function(Map<String, dynamic>) fromJson) {
+  static List<T> decodeList<T>(
+    String json,
+    T Function(Map<String, dynamic>) fromJson,
+  ) {
     final list = const JsonDecoder().convert(json) as List;
-    return list.map((e) => fromJson(Map<String, dynamic>.from(e as Map))).toList();
+    return list
+        .map((e) => fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
   }
 }

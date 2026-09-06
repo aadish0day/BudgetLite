@@ -1,50 +1,62 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import 'package:drift/drift.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
+
 import '../core/database/database.dart';
-import '../core/utils/formatters.dart';
-import '../core/utils/sms_parser.dart';
 import '../core/utils/duplicate_detector.dart';
+import '../core/utils/formatters.dart';
 import '../core/utils/notification_service.dart';
+import '../core/utils/sms_parser.dart';
+import 'budget_provider.dart';
 import 'database_provider.dart';
 import 'insights_provider.dart';
-import 'budget_provider.dart';
 import 'settings_provider.dart';
 
-final transactionsProvider = StreamProvider.autoDispose<List<Transaction>>((ref) {
+typedef TransactionCompanion = TransactionsCompanion;
+
+final transactionsProvider = StreamProvider.autoDispose<List<Transaction>>((
+  ref,
+) {
   final db = ref.watch(databaseProvider);
-  return (db.select(db.transactions)
-        ..orderBy([(t) => OrderingTerm(expression: t.date, mode: OrderingMode.desc)]))
+  return (db.select(db.transactions)..orderBy([
+        (t) => OrderingTerm(expression: t.date, mode: OrderingMode.desc),
+      ]))
       .watch();
 });
 
-final transactionsByMonthProvider =
-    StreamProvider.autoDispose.family<List<Transaction>, String>((ref, monthKey) {
-  final db = ref.watch(databaseProvider);
-  final parts = monthKey.split('-');
-  final year = int.parse(parts[0]);
-  final month = int.parse(parts[1]);
-  // Compare against local month-boundary instants rather than extracting
-  // UTC year/month components, which mis-buckets transactions created
-  // between midnight and the local UTC offset on the 1st of the month.
-  return (db.select(db.transactions)
-        ..where((t) => t.date.isBiggerOrEqualValue(DateTime(year, month)))
-        ..where((t) => t.date.isSmallerThanValue(DateTime(year, month + 1)))
-        ..orderBy([(t) => OrderingTerm(expression: t.date, mode: OrderingMode.desc)]))
-      .watch();
-});
+final transactionsByMonthProvider = StreamProvider.autoDispose
+    .family<List<Transaction>, String>((ref, monthKey) {
+      final db = ref.watch(databaseProvider);
+      final parts = monthKey.split('-');
+      final year = int.parse(parts[0]);
+      final month = int.parse(parts[1]);
+      // Compare against local month-boundary instants rather than extracting
+      // UTC year/month components, which mis-buckets transactions created
+      // between midnight and the local UTC offset on the 1st of the month.
+      return (db.select(db.transactions)
+            ..where((t) => t.date.isBiggerOrEqualValue(DateTime(year, month)))
+            ..where((t) => t.date.isSmallerThanValue(DateTime(year, month + 1)))
+            ..orderBy([
+              (t) => OrderingTerm(expression: t.date, mode: OrderingMode.desc),
+            ]))
+          .watch();
+    });
 
-final thisMonthTransactionsProvider = StreamProvider.autoDispose<List<Transaction>>((ref) {
-  final asyncTxns = ref.watch(transactionsByMonthProvider(Formatters.monthKey));
-  return asyncTxns.when(
-    data: (txns) => Stream.value(txns),
-    error: (err, stack) => Stream.error(err, stack),
-    loading: () => const Stream.empty(),
-  );
-});
+final thisMonthTransactionsProvider =
+    StreamProvider.autoDispose<List<Transaction>>((ref) {
+      final asyncTxns = ref.watch(
+        transactionsByMonthProvider(Formatters.monthKey),
+      );
+      return asyncTxns.when(
+        data: Stream.value,
+        error: Stream.error,
+        loading: () => const Stream.empty(),
+      );
+    });
 
 /// Total spending this month (excludes transfers — they are balance-neutral,
 /// consistent with the Insights screen).
@@ -57,7 +69,7 @@ final totalSpentThisMonthProvider = StreamProvider.autoDispose<double>((ref) {
           .fold<double>(0, (sum, t) => sum + t.amount);
       return Stream.value(spent);
     },
-    error: (err, stack) => Stream.error(err, stack),
+    error: Stream.error,
     loading: () => const Stream.empty(),
   );
 });
@@ -67,10 +79,12 @@ final totalIncomeThisMonthProvider = StreamProvider.autoDispose<double>((ref) {
   final asyncTxns = ref.watch(thisMonthTransactionsProvider);
   return asyncTxns.when(
     data: (txns) {
-      final income = txns.where((t) => t.amount < 0).fold<double>(0, (sum, t) => sum + t.amount.abs());
+      final income = txns
+          .where((t) => t.amount < 0)
+          .fold<double>(0, (sum, t) => sum + t.amount.abs());
       return Stream.value(income);
     },
-    error: (err, stack) => Stream.error(err, stack),
+    error: Stream.error,
     loading: () => const Stream.empty(),
   );
 });
@@ -99,7 +113,9 @@ class TransactionNotifier extends StateNotifier<AsyncValue<void>> {
     if (isIncome == true) {
       finalAmount = -amount.abs();
     } else {
-      final cat = await (db.select(db.categories)..where((c) => c.id.equals(categoryId))).getSingleOrNull();
+      final cat = await (db.select(
+        db.categories,
+      )..where((c) => c.id.equals(categoryId))).getSingleOrNull();
       if (cat != null && cat.type == 'income') {
         finalAmount = -amount.abs();
       } else {
@@ -107,21 +123,25 @@ class TransactionNotifier extends StateNotifier<AsyncValue<void>> {
       }
     }
 
-    await db.into(db.transactions).insert(TransactionsCompanion.insert(
-      id: uuid,
-      amount: finalAmount,
-      categoryId: categoryId,
-      accountId: 'default',
-      note: Value(note),
-      date: date,
-      paymentMethod: Value(paymentMethod),
-      isRecurring: Value(isRecurring),
-      isRecurringInstance: const Value(false),
-      recurringInterval: Value(recurringInterval),
-      recurringEndDate: Value(recurringEndDate),
-      receiptImagePath: Value(receiptImagePath),
-      payee: Value(payee),
-    ));
+    await db
+        .into(db.transactions)
+        .insert(
+          TransactionsCompanion.insert(
+            id: uuid,
+            amount: finalAmount,
+            categoryId: categoryId,
+            accountId: 'default',
+            note: Value(note),
+            date: date,
+            paymentMethod: Value(paymentMethod),
+            isRecurring: Value(isRecurring),
+            isRecurringInstance: const Value(false),
+            recurringInterval: Value(recurringInterval),
+            recurringEndDate: Value(recurringEndDate),
+            receiptImagePath: Value(receiptImagePath),
+            payee: Value(payee),
+          ),
+        );
 
     ref.invalidate(transactionsProvider);
     ref.invalidate(thisMonthTransactionsProvider);
@@ -132,7 +152,47 @@ class TransactionNotifier extends StateNotifier<AsyncValue<void>> {
     ref.invalidate(spendingInsightsProvider);
     ref.invalidate(effectiveCategoryBudgetProvider(categoryId));
 
-    _checkBudgetAlerts(categoryId, date);
+    unawaited(_checkBudgetAlerts(categoryId, date));
+  }
+
+  /// Add multiple split transactions atomically inside a single SQLite transaction.
+  /// Invalidates providers once after completion.
+  Future<void> addSplitTransactions({
+    required List<TransactionsCompanion> items,
+    required double totalAmount,
+  }) async {
+    final db = ref.read(databaseProvider);
+    final categoryIds = <String>{};
+    DateTime? alertDate;
+
+    await db.transaction(() async {
+      for (final item in items) {
+        await db.into(db.transactions).insert(item);
+        if (item.categoryId.present) {
+          categoryIds.add(item.categoryId.value);
+        }
+        if (item.date.present && alertDate == null) {
+          alertDate = item.date.value;
+        }
+      }
+    });
+
+    ref.invalidate(transactionsProvider);
+    ref.invalidate(thisMonthTransactionsProvider);
+    ref.invalidate(totalSpentThisMonthProvider);
+    ref.invalidate(totalIncomeThisMonthProvider);
+    ref.invalidate(budgetHealthProvider);
+    ref.invalidate(spendingVelocityProvider);
+    ref.invalidate(spendingInsightsProvider);
+    for (final catId in categoryIds) {
+      ref.invalidate(effectiveCategoryBudgetProvider(catId));
+    }
+
+    if (alertDate != null) {
+      for (final catId in categoryIds) {
+        unawaited(_checkBudgetAlerts(catId, alertDate!));
+      }
+    }
   }
 
   Future<void> updateTransaction(Transaction transaction) async {
@@ -147,18 +207,19 @@ class TransactionNotifier extends StateNotifier<AsyncValue<void>> {
     ref.invalidate(spendingInsightsProvider);
     ref.invalidate(effectiveCategoryBudgetProvider(transaction.categoryId));
 
-    _checkBudgetAlerts(transaction.categoryId, transaction.date);
+    unawaited(_checkBudgetAlerts(transaction.categoryId, transaction.date));
   }
 
   Future<void> deleteTransaction(String id) async {
     final db = ref.read(databaseProvider);
 
-    final transaction = await (db.select(db.transactions)
-      ..where((t) => t.id.equals(id))).getSingleOrNull();
+    final transaction = await (db.select(
+      db.transactions,
+    )..where((t) => t.id.equals(id))).getSingleOrNull();
     if (transaction != null && transaction.receiptImagePath != null) {
       try {
         final file = File(transaction.receiptImagePath!);
-        if (await file.exists()) await file.delete();
+        if (file.existsSync()) await file.delete();
       } catch (_) {}
     }
 
@@ -173,7 +234,7 @@ class TransactionNotifier extends StateNotifier<AsyncValue<void>> {
       ref.invalidate(spendingInsightsProvider);
       ref.invalidate(effectiveCategoryBudgetProvider(transaction.categoryId));
 
-      _checkBudgetAlerts(transaction.categoryId, transaction.date);
+      unawaited(_checkBudgetAlerts(transaction.categoryId, transaction.date));
     }
   }
 
@@ -182,26 +243,37 @@ class TransactionNotifier extends StateNotifier<AsyncValue<void>> {
       final db = ref.read(databaseProvider);
       final monthStr = Formatters.formatMonthKey(date);
 
-      final budget = await (db.select(db.budgets)
-            ..where((b) => b.categoryId.equals(categoryId))
-            ..where((b) => b.month.equals(monthStr)))
-          .getSingleOrNull();
+      final budget =
+          await (db.select(db.budgets)
+                ..where((b) => b.categoryId.equals(categoryId))
+                ..where((b) => b.month.equals(monthStr)))
+              .getSingleOrNull();
 
       if (budget == null || budget.allocatedAmount <= 0) return;
 
-      final category = await (db.select(db.categories)
-            ..where((c) => c.id.equals(categoryId)))
-          .getSingleOrNull();
+      final category = await (db.select(
+        db.categories,
+      )..where((c) => c.id.equals(categoryId))).getSingleOrNull();
       if (category == null || category.type == 'income') return;
 
-      final txns = await (db.select(db.transactions)
-            ..where((t) => t.categoryId.equals(categoryId))
-            ..where((t) => t.date.isBiggerOrEqualValue(DateTime(date.year, date.month)))
-            ..where((t) =>
-                t.date.isSmallerThanValue(DateTime(date.year, date.month + 1))))
-          .get();
+      final txns =
+          await (db.select(db.transactions)
+                ..where((t) => t.categoryId.equals(categoryId))
+                ..where(
+                  (t) => t.date.isBiggerOrEqualValue(
+                    DateTime(date.year, date.month),
+                  ),
+                )
+                ..where(
+                  (t) => t.date.isSmallerThanValue(
+                    DateTime(date.year, date.month + 1),
+                  ),
+                ))
+              .get();
 
-      final spent = txns.where((t) => t.amount > 0).fold<double>(0, (sum, t) => sum + t.amount);
+      final spent = txns
+          .where((t) => t.amount > 0)
+          .fold<double>(0, (sum, t) => sum + t.amount);
 
       await NotificationService.instance.checkBudgetThreshold(
         categoryId: categoryId,
@@ -241,7 +313,9 @@ class TransactionNotifier extends StateNotifier<AsyncValue<void>> {
   Future<int> postDueRecurringTransactions() async {
     final settings = ref.read(settingsNotifierProvider.notifier);
     final lastCheckStr = await settings.getSetting('last_recurring_check');
-    final lastCheck = lastCheckStr != null ? DateTime.tryParse(lastCheckStr) : null;
+    final lastCheck = lastCheckStr != null
+        ? DateTime.tryParse(lastCheckStr)
+        : null;
     final now = DateTime.now();
 
     final db = ref.read(databaseProvider);
@@ -253,10 +327,11 @@ class TransactionNotifier extends StateNotifier<AsyncValue<void>> {
         .map((c) => c.id)
         .toSet();
 
-    final templates = await (db.select(db.transactions)
-      ..where((t) => t.isRecurring.equals(true))
-      ..where((t) => t.isRecurringInstance.equals(false)))
-      .get();
+    final templates =
+        await (db.select(db.transactions)
+              ..where((t) => t.isRecurring.equals(true))
+              ..where((t) => t.isRecurringInstance.equals(false)))
+            .get();
 
     const uuid = Uuid();
     int postedCount = 0;
@@ -279,7 +354,9 @@ class TransactionNotifier extends StateNotifier<AsyncValue<void>> {
         // Determine end boundary: now or endDate, whichever is earlier.
         // Templates whose end date has passed must still post any instances
         // that fell due between [startFrom] and their end date.
-        final upTo = template.recurringEndDate != null && template.recurringEndDate!.isBefore(now)
+        final upTo =
+            template.recurringEndDate != null &&
+                template.recurringEndDate!.isBefore(now)
             ? template.recurringEndDate!
             : now;
 
@@ -297,21 +374,23 @@ class TransactionNotifier extends StateNotifier<AsyncValue<void>> {
 
         // Safety cap: at most 31 instances per template
         for (final dueDate in dueDates.take(maxInstancesPerTemplate)) {
-          await db.into(db.transactions).insert(TransactionsCompanion.insert(
-            id: uuid.v4(),
-            amount: template.amount,
-            categoryId: template.categoryId,
-            accountId: 'default',
-            note: template.note != null
-                ? Value('${template.note} (auto)')
-                : const Value.absent(),
-            date: dueDate,
-            paymentMethod: const Value('cash'),
-            isRecurring: const Value(false),
-            isRecurringInstance: const Value(true),
-            recurringInterval: const Value.absent(),
-            receiptImagePath: const Value.absent(),
-          ));
+          await db
+              .into(db.transactions)
+              .insert(
+                TransactionsCompanion.insert(
+                  id: uuid.v4(),
+                  amount: template.amount,
+                  categoryId: template.categoryId,
+                  accountId: 'default',
+                  note: template.note != null
+                      ? Value('${template.note} (auto)')
+                      : const Value.absent(),
+                  date: dueDate,
+                  paymentMethod: const Value('cash'),
+                  isRecurring: const Value(false),
+                  isRecurringInstance: const Value(true),
+                ),
+              );
 
           postedCount++;
         }
@@ -387,23 +466,36 @@ class TransactionNotifier extends StateNotifier<AsyncValue<void>> {
     final targetYear = totalMonths ~/ 12;
     final targetMonth = (totalMonths % 12) + 1;
     final lastDayOfTargetMonth = DateTime(targetYear, targetMonth + 1, 0).day;
-    final targetDay = date.day > lastDayOfTargetMonth ? lastDayOfTargetMonth : date.day;
-    return DateTime(targetYear, targetMonth, targetDay, date.hour, date.minute, date.second);
+    final targetDay = date.day > lastDayOfTargetMonth
+        ? lastDayOfTargetMonth
+        : date.day;
+    return DateTime(
+      targetYear,
+      targetMonth,
+      targetDay,
+      date.hour,
+      date.minute,
+      date.second,
+    );
   }
 }
 
 final transactionNotifierProvider =
-    StateNotifierProvider.autoDispose<TransactionNotifier, AsyncValue<void>>((ref) {
-  return TransactionNotifier(ref);
-});
+    StateNotifierProvider.autoDispose<TransactionNotifier, AsyncValue<void>>((
+      ref,
+    ) {
+      return TransactionNotifier(ref);
+    });
 
-final pendingSmsTransactionProvider = StateProvider<ParsedSmsTxn?>((ref) => null);
+final pendingSmsTransactionProvider = StateProvider<ParsedSmsTxn?>(
+  (ref) => null,
+);
 
 /// Provider for the persistent SMS review queue, stored in AppSettings as JSON.
 final smsReviewQueueProvider =
     StateNotifierProvider<SmsReviewQueueNotifier, List<ParsedSmsTxn>>((ref) {
-  return SmsReviewQueueNotifier(ref);
-});
+      return SmsReviewQueueNotifier(ref);
+    });
 
 class SmsReviewQueueNotifier extends StateNotifier<List<ParsedSmsTxn>> {
   SmsReviewQueueNotifier(this.ref) : super([]) {
@@ -427,17 +519,21 @@ class SmsReviewQueueNotifier extends StateNotifier<List<ParsedSmsTxn>> {
       final stored = await settings.getSetting('pending_sms_queue');
       if (stored != null && stored.isNotEmpty) {
         try {
-          final list = stored.split('|||').map((json) {
-            try {
-              return ParsedSmsTxn.fromJson(
-                Map<String, dynamic>.from(
-                  const JsonDecoder().convert(json) as Map,
-                ),
-              );
-            } catch (_) {
-              return null;
-            }
-          }).whereType<ParsedSmsTxn>().toList();
+          final list = stored
+              .split('|||')
+              .map((json) {
+                try {
+                  return ParsedSmsTxn.fromJson(
+                    Map<String, dynamic>.from(
+                      const JsonDecoder().convert(json) as Map,
+                    ),
+                  );
+                } catch (_) {
+                  return null;
+                }
+              })
+              .whereType<ParsedSmsTxn>()
+              .toList();
           if (list.isNotEmpty) {
             // Filter out any items that were already processed in past sessions
             state = list.where((t) => !_processedIds.contains(t.id)).toList();
@@ -455,7 +551,9 @@ class SmsReviewQueueNotifier extends StateNotifier<List<ParsedSmsTxn>> {
   Future<void> _persist() async {
     await _loaded.future;
     final settings = ref.read(settingsNotifierProvider.notifier);
-    final jsonStr = state.map((t) => const JsonEncoder().convert(t.toJson())).join('|||');
+    final jsonStr = state
+        .map((t) => const JsonEncoder().convert(t.toJson()))
+        .join('|||');
     await settings.setSetting('pending_sms_queue', jsonStr);
     await settings.setSetting('processed_sms_ids', _processedIds.join('|||'));
   }
@@ -489,7 +587,11 @@ class SmsReviewQueueNotifier extends StateNotifier<List<ParsedSmsTxn>> {
   }
 
   /// Confirm (add as transaction) a single item and remove from queue
-  Future<void> confirmItem(String id, {String? overrideCategory, String? overrideNote}) async {
+  Future<void> confirmItem(
+    String id, {
+    String? overrideCategory,
+    String? overrideNote,
+  }) async {
     final txn = state.where((t) => t.id == id).firstOrNull;
     if (txn == null) return;
 
@@ -550,53 +652,52 @@ class SmsReviewQueueNotifier extends StateNotifier<List<ParsedSmsTxn>> {
   int get pendingCount => state.length;
 }
 
-
 /// Provider for all recurring transactions with computed next due dates
 final recurringTransactionsProvider =
     FutureProvider<List<RecurringPaymentInfo>>((ref) async {
-  final transactions = await ref.watch(transactionsProvider.future);
-  final categories = await ref.watch(categoriesProvider.future);
-  final settingsNotifier = ref.read(settingsNotifierProvider.notifier);
+      final transactions = await ref.watch(transactionsProvider.future);
+      final categories = await ref.watch(categoriesProvider.future);
+      final settingsNotifier = ref.read(settingsNotifierProvider.notifier);
 
-  final recurring = <RecurringPaymentInfo>[];
-  final now = DateTime.now();
-  final today = DateTime(now.year, now.month, now.day);
+      final recurring = <RecurringPaymentInfo>[];
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
 
-  for (final t in transactions.where((t) => t.isRecurring)) {
-    final nextDate = NotificationService.calculateNextDueDate(
-      lastDate: t.date,
-      interval: t.recurringInterval,
-    );
-    if (nextDate != null) {
-      final category = categories.where((c) => c.id == t.categoryId).firstOrNull;
+      for (final t in transactions.where((t) => t.isRecurring)) {
+        final nextDate = NotificationService.calculateNextDueDate(
+          lastDate: t.date,
+          interval: t.recurringInterval,
+        );
+        if (nextDate != null) {
+          final category = categories
+              .where((c) => c.id == t.categoryId)
+              .firstOrNull;
 
-      final isReviewed = await settingsNotifier.isSubscriptionReviewed(t.id);
-      final nextDay = DateTime(nextDate.year, nextDate.month, nextDate.day);
-      final daysUntil = nextDay.difference(today).inDays;
+          final isReviewed = await settingsNotifier.isSubscriptionReviewed(
+            t.id,
+          );
+          final nextDay = DateTime(nextDate.year, nextDate.month, nextDate.day);
+          final daysUntil = nextDay.difference(today).inDays;
 
-      recurring.add(RecurringPaymentInfo(
-        transaction: t,
-        category: category,
-        nextDate: nextDate,
-        daysUntil: daysUntil,
-        isPossiblyUnused: !isReviewed,
-      ));
-    }
-  }
+          recurring.add(
+            RecurringPaymentInfo(
+              transaction: t,
+              category: category,
+              nextDate: nextDate,
+              daysUntil: daysUntil,
+              isPossiblyUnused: !isReviewed,
+            ),
+          );
+        }
+      }
 
-  // Sort by next due date (closest first)
-  recurring.sort((a, b) => a.daysUntil.compareTo(b.daysUntil));
-  return recurring;
-});
+      // Sort by next due date (closest first)
+      recurring.sort((a, b) => a.daysUntil.compareTo(b.daysUntil));
+      return recurring;
+    });
 
 /// Structured info about a recurring payment with computed next due date
 class RecurringPaymentInfo {
-  final Transaction transaction;
-  final Category? category;
-  final DateTime nextDate;
-  final int daysUntil;
-  final bool isPossiblyUnused;
-
   const RecurringPaymentInfo({
     required this.transaction,
     this.category,
@@ -604,32 +705,51 @@ class RecurringPaymentInfo {
     required this.daysUntil,
     this.isPossiblyUnused = false,
   });
+  final Transaction transaction;
+  final Category? category;
+  final DateTime nextDate;
+  final int daysUntil;
+  final bool isPossiblyUnused;
 
   bool get isOverdue => daysUntil < 0;
   bool get isDueToday => daysUntil == 0;
   bool get isDueSoon => daysUntil > 0 && daysUntil <= 3;
   String get intervalLabel {
     switch (transaction.recurringInterval) {
-      case 'daily': return 'Daily';
-      case 'weekly': return 'Weekly';
-      case 'biweekly': return 'Biweekly';
-      case 'monthly': return 'Monthly';
-      case 'quarterly': return 'Quarterly';
-      case 'yearly': return 'Yearly';
-      default: return transaction.recurringInterval ?? 'Recurring';
+      case 'daily':
+        return 'Daily';
+      case 'weekly':
+        return 'Weekly';
+      case 'biweekly':
+        return 'Biweekly';
+      case 'monthly':
+        return 'Monthly';
+      case 'quarterly':
+        return 'Quarterly';
+      case 'yearly':
+        return 'Yearly';
+      default:
+        return transaction.recurringInterval ?? 'Recurring';
     }
   }
 
   /// Monthly equivalent cost for comparison
   double get monthlyCost {
     switch (transaction.recurringInterval) {
-      case 'daily': return transaction.amount.abs() * 30;
-      case 'weekly': return transaction.amount.abs() * 4.33;
-      case 'biweekly': return transaction.amount.abs() * 2.17;
-      case 'monthly': return transaction.amount.abs();
-      case 'quarterly': return transaction.amount.abs() / 3;
-      case 'yearly': return transaction.amount.abs() / 12;
-      default: return transaction.amount.abs();
+      case 'daily':
+        return transaction.amount.abs() * 30;
+      case 'weekly':
+        return transaction.amount.abs() * 4.33;
+      case 'biweekly':
+        return transaction.amount.abs() * 2.17;
+      case 'monthly':
+        return transaction.amount.abs();
+      case 'quarterly':
+        return transaction.amount.abs() / 3;
+      case 'yearly':
+        return transaction.amount.abs() / 12;
+      default:
+        return transaction.amount.abs();
     }
   }
 
@@ -638,32 +758,37 @@ class RecurringPaymentInfo {
 }
 
 /// Provider for pending reimbursements (transactions marked with [Owed by: ...] or #reimburse)
-final pendingReimbursementsProvider = StreamProvider.autoDispose<List<Transaction>>((ref) {
-  final asyncTxns = ref.watch(transactionsProvider);
-  return asyncTxns.when(
-    data: (txns) {
-      final pending = txns.where((t) {
-        final note = (t.note ?? '').toLowerCase();
-        final payee = (t.payee ?? '').toLowerCase();
-        return (note.contains('[owed by:') || note.contains('#reimburse') || payee.contains('[owed by:'));
-      }).toList();
-      return Stream.value(pending);
-    },
-    error: (err, stack) => Stream.error(err, stack),
-    loading: () => const Stream.empty(),
-  );
-});
+final pendingReimbursementsProvider =
+    StreamProvider.autoDispose<List<Transaction>>((ref) {
+      final asyncTxns = ref.watch(transactionsProvider);
+      return asyncTxns.when(
+        data: (txns) {
+          final pending = txns.where((t) {
+            final note = (t.note ?? '').toLowerCase();
+            final payee = (t.payee ?? '').toLowerCase();
+            return (note.contains('[owed by:') ||
+                note.contains('#reimburse') ||
+                payee.contains('[owed by:') ||
+                payee.contains('#reimburse'));
+          }).toList();
+          return Stream.value(pending);
+        },
+        error: Stream.error,
+        loading: () => const Stream.empty(),
+      );
+    });
 
 /// Total pending reimbursement amount owed to user
-final totalPendingReimbursementProvider = StreamProvider.autoDispose<double>((ref) {
+final totalPendingReimbursementProvider = StreamProvider.autoDispose<double>((
+  ref,
+) {
   final asyncPending = ref.watch(pendingReimbursementsProvider);
   return asyncPending.when(
     data: (txns) {
       final total = txns.fold<double>(0, (sum, t) => sum + t.amount.abs());
       return Stream.value(total);
     },
-    error: (err, stack) => Stream.error(err, stack),
+    error: Stream.error,
     loading: () => const Stream.empty(),
   );
 });
-

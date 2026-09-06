@@ -11,6 +11,16 @@ import 'package:flutter_animate/flutter_animate.dart';
 /// The arc sweeps clockwise from the top (12 o'clock position).
 /// Progress changes animate with a smooth easeOutCubic spring.
 class ArcProgress extends StatelessWidget {
+  const ArcProgress({
+    super.key,
+    required this.progress,
+    required this.color,
+    this.size = 48,
+    this.strokeWidth = 4,
+    this.center,
+    this.showTrack = true,
+  });
+
   /// Progress value from 0.0 to 1.0. Values outside [0,1] are clamped.
   final double progress;
 
@@ -29,19 +39,9 @@ class ArcProgress extends StatelessWidget {
   /// Whether to show a subtle track behind the arc. Default true.
   final bool showTrack;
 
-  const ArcProgress({
-    super.key,
-    required this.progress,
-    required this.color,
-    this.size = 48,
-    this.strokeWidth = 4,
-    this.center,
-    this.showTrack = true,
-  });
-
   @override
   Widget build(BuildContext context) {
-    final clamped = progress.clamp(0.0, 1.0).toDouble();
+    final clamped = progress.clamp(0.0, 1.0);
 
     return SizedBox(
       width: size,
@@ -61,10 +61,7 @@ class ArcProgress extends StatelessWidget {
             child: center != null
                 ? Padding(
                     padding: EdgeInsets.all(strokeWidth + 2),
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: center!,
-                    ),
+                    child: FittedBox(fit: BoxFit.scaleDown, child: center),
                   )
                 : null,
           );
@@ -75,17 +72,16 @@ class ArcProgress extends StatelessWidget {
 }
 
 class _ArcPainter extends CustomPainter {
-  final double progress;
-  final Color color;
-  final double strokeWidth;
-  final bool showTrack;
-
   _ArcPainter({
     required this.progress,
     required this.color,
     required this.strokeWidth,
     required this.showTrack,
   });
+  final double progress;
+  final Color color;
+  final double strokeWidth;
+  final bool showTrack;
 
   @override
   void paint(Canvas canvas, Size size) {

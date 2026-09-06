@@ -1,14 +1,17 @@
+import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:uuid/uuid.dart';
+
+import '../../core/database/database.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/colors.dart';
 import '../../core/utils/constants.dart';
 import '../../core/utils/icon_helper.dart';
-import '../../providers/transaction_provider.dart';
 import '../../providers/database_provider.dart';
-import '../../core/database/database.dart';
+import '../../providers/transaction_provider.dart';
 
 /// A bottom sheet for splitting a transaction across multiple categories.
 /// User enters a total amount and allocates portions to different categories.
@@ -16,7 +19,8 @@ class SplitTransactionSheet extends ConsumerStatefulWidget {
   const SplitTransactionSheet({super.key});
 
   @override
-  ConsumerState<SplitTransactionSheet> createState() => _SplitTransactionSheetState();
+  ConsumerState<SplitTransactionSheet> createState() =>
+      _SplitTransactionSheetState();
 }
 
 class _SplitTransactionSheetState extends ConsumerState<SplitTransactionSheet> {
@@ -43,18 +47,22 @@ class _SplitTransactionSheetState extends ConsumerState<SplitTransactionSheet> {
     final defaults = expenseCats.take(2).map((c) => c.id).toList();
     if (defaults.length >= 2) {
       _splits.addAll([
-        _SplitLine(categoryId: defaults[0], amount: ''),
-        _SplitLine(categoryId: defaults[1], amount: ''),
+        _SplitLine(categoryId: defaults[0]),
+        _SplitLine(categoryId: defaults[1]),
       ]);
     } else {
-      _splits.add(_SplitLine(categoryId: defaults.isNotEmpty ? defaults[0] : 'other', amount: ''));
+      _splits.add(
+        _SplitLine(categoryId: defaults.isNotEmpty ? defaults[0] : 'other'),
+      );
     }
     _syncSplitCtrls();
   }
 
   void _syncSplitCtrls() {
     while (_splitCtrls.length < _splits.length) {
-      _splitCtrls.add(TextEditingController(text: _splits[_splitCtrls.length].amount));
+      _splitCtrls.add(
+        TextEditingController(text: _splits[_splitCtrls.length].amount),
+      );
     }
     while (_splitCtrls.length > _splits.length) {
       _splitCtrls.removeLast().dispose();
@@ -84,7 +92,7 @@ class _SplitTransactionSheetState extends ConsumerState<SplitTransactionSheet> {
 
   void _addSplitLine() {
     setState(() {
-      _splits.add(_SplitLine(categoryId: 'other', amount: ''));
+      _splits.add(_SplitLine(categoryId: 'other'));
       _syncSplitCtrls();
     });
   }
@@ -106,8 +114,11 @@ class _SplitTransactionSheetState extends ConsumerState<SplitTransactionSheet> {
     final lastIdx = _splits.length - 1;
     final existing = double.tryParse(_splits[lastIdx].amount) ?? 0;
     final newAmount = existing + _remainder;
-    setState(() => _splits[lastIdx].amount =
-        newAmount > 0 ? newAmount.toStringAsFixed(0) : '');
+    setState(
+      () => _splits[lastIdx].amount = newAmount > 0
+          ? newAmount.toStringAsFixed(0)
+          : '',
+    );
   }
 
   @override
@@ -120,7 +131,9 @@ class _SplitTransactionSheetState extends ConsumerState<SplitTransactionSheet> {
     return Padding(
       padding: EdgeInsets.only(
         bottom: MediaQuery.of(context).viewInsets.bottom,
-        left: 24, right: 24, top: 24,
+        left: 24,
+        right: 24,
+        top: 24,
       ),
       child: Form(
         key: _formKey,
@@ -132,7 +145,8 @@ class _SplitTransactionSheetState extends ConsumerState<SplitTransactionSheet> {
               // Drag handle
               Center(
                 child: Container(
-                  width: 40, height: 4,
+                  width: 40,
+                  height: 4,
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(2),
                     color: colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
@@ -143,14 +157,16 @@ class _SplitTransactionSheetState extends ConsumerState<SplitTransactionSheet> {
               Text(
                 'Split Transaction',
                 style: AppTheme.displayStyle(
-                  size: 20, weight: FontWeight.w600, color: colorScheme.onSurface,
+                  size: 20,
+                  color: colorScheme.onSurface,
                 ),
               ),
               const SizedBox(height: 4),
               Text(
                 'Allocate a total amount across categories',
                 style: AppTheme.bodyStyle(
-                  size: 13, color: colorScheme.onSurfaceVariant,
+                  size: 13,
+                  color: colorScheme.onSurfaceVariant,
                 ),
               ),
               const SizedBox(height: 20),
@@ -158,19 +174,29 @@ class _SplitTransactionSheetState extends ConsumerState<SplitTransactionSheet> {
               // Total amount field
               TextFormField(
                 controller: _totalCtrl,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
                 autofocus: true,
-                style: AppTheme.financialStyle(size: 24, weight: FontWeight.w700),
+                style: AppTheme.financialStyle(
+                  size: 24,
+                  weight: FontWeight.w700,
+                ),
                 decoration: InputDecoration(
                   labelText: 'Total Amount',
                   prefixText: '₹ ',
-                  prefixStyle: AppTheme.financialStyle(size: 24, weight: FontWeight.w700),
+                  prefixStyle: AppTheme.financialStyle(
+                    size: 24,
+                    weight: FontWeight.w700,
+                  ),
                 ),
                 onChanged: (_) => setState(() {}),
                 validator: (v) {
                   if (v == null || v.isEmpty) return 'Enter total amount';
                   final parsed = double.tryParse(v);
-                  if (parsed == null || parsed <= 0) return 'Enter a valid amount > 0';
+                  if (parsed == null || parsed <= 0) {
+                    return 'Enter a valid amount > 0';
+                  }
                   return null;
                 },
               ),
@@ -181,13 +207,26 @@ class _SplitTransactionSheetState extends ConsumerState<SplitTransactionSheet> {
                 children: [
                   Expanded(
                     flex: 3,
-                    child: Text('Category', style: AppTheme.bodyStyle(
-                      size: 12, weight: FontWeight.w600, color: colorScheme.onSurfaceVariant)),
+                    child: Text(
+                      'Category',
+                      style: AppTheme.bodyStyle(
+                        size: 12,
+                        weight: FontWeight.w600,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
                   ),
                   Expanded(
                     flex: 2,
-                    child: Text('Amount', textAlign: TextAlign.right, style: AppTheme.bodyStyle(
-                      size: 12, weight: FontWeight.w600, color: colorScheme.onSurfaceVariant)),
+                    child: Text(
+                      'Amount',
+                      textAlign: TextAlign.right,
+                      style: AppTheme.bodyStyle(
+                        size: 12,
+                        weight: FontWeight.w600,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
                   ),
                   const SizedBox(width: 32),
                 ],
@@ -218,7 +257,10 @@ class _SplitTransactionSheetState extends ConsumerState<SplitTransactionSheet> {
                 child: TextButton.icon(
                   onPressed: _addSplitLine,
                   icon: const Icon(LucideIcons.plus, size: 16),
-                  label: Text('Add category', style: AppTheme.bodyStyle(size: 13)),
+                  label: Text(
+                    'Add category',
+                    style: AppTheme.bodyStyle(size: 13),
+                  ),
                 ),
               ),
 
@@ -242,9 +284,13 @@ class _SplitTransactionSheetState extends ConsumerState<SplitTransactionSheet> {
                   child: Row(
                     children: [
                       Icon(
-                        _isBalanced ? LucideIcons.checkCircle2 : LucideIcons.alertTriangle,
+                        _isBalanced
+                            ? LucideIcons.checkCircle2
+                            : LucideIcons.alertTriangle,
                         size: 18,
-                        color: _isBalanced ? AppColors.success : AppColors.warning,
+                        color: _isBalanced
+                            ? AppColors.success
+                            : AppColors.warning,
                       ),
                       const SizedBox(width: 8),
                       Expanded(
@@ -253,8 +299,11 @@ class _SplitTransactionSheetState extends ConsumerState<SplitTransactionSheet> {
                               ? 'All ₹${_totalEntered.toStringAsFixed(0)} allocated ✓'
                               : 'Remaining: ₹${_remainder.toStringAsFixed(0)}',
                           style: AppTheme.bodyStyle(
-                            size: 13, weight: FontWeight.w600,
-                            color: _isBalanced ? AppColors.success : AppColors.warning,
+                            size: 13,
+                            weight: FontWeight.w600,
+                            color: _isBalanced
+                                ? AppColors.success
+                                : AppColors.warning,
                           ),
                         ),
                       ),
@@ -262,13 +311,22 @@ class _SplitTransactionSheetState extends ConsumerState<SplitTransactionSheet> {
                         GestureDetector(
                           onTap: _autoBalanceRemainder,
                           child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
                             decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(6),
                               color: AppColors.warning.withValues(alpha: 0.2),
                             ),
-                            child: Text('Auto-fill', style: AppTheme.bodyStyle(
-                              size: 11, weight: FontWeight.w600, color: AppColors.warning)),
+                            child: Text(
+                              'Auto-fill',
+                              style: AppTheme.bodyStyle(
+                                size: 11,
+                                weight: FontWeight.w600,
+                                color: AppColors.warning,
+                              ),
+                            ),
                           ),
                         ),
                     ],
@@ -303,13 +361,24 @@ class _SplitTransactionSheetState extends ConsumerState<SplitTransactionSheet> {
                     child: DropdownButtonFormField<String>(
                       initialValue: _paymentMethod,
                       decoration: const InputDecoration(
-                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
                       ),
-                      items: AppConstants.paymentMethods.map((m) => DropdownMenuItem(
-                        value: m,
-                        child: Text(m, style: AppTheme.bodyStyle(size: 13)),
-                      )).toList(),
-                      onChanged: (v) => setState(() => _paymentMethod = v ?? 'Cash'),
+                      items: AppConstants.paymentMethods
+                          .map(
+                            (m) => DropdownMenuItem(
+                              value: m,
+                              child: Text(
+                                m,
+                                style: AppTheme.bodyStyle(size: 13),
+                              ),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (v) =>
+                          setState(() => _paymentMethod = v ?? 'Cash'),
                     ),
                   ),
                 ],
@@ -318,11 +387,18 @@ class _SplitTransactionSheetState extends ConsumerState<SplitTransactionSheet> {
 
               // Submit button
               FilledButton(
-                onPressed: (_totalEntered > 0 && !_isSubmitting) ? _submit : null,
-                style: FilledButton.styleFrom(minimumSize: const Size(double.infinity, 52)),
+                onPressed: (_totalEntered > 0 && !_isSubmitting)
+                    ? _submitSplits
+                    : null,
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(double.infinity, 52),
+                ),
                 child: _isSubmitting
-                    ? const SizedBox(width: 20, height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2))
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
                     : Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
@@ -332,9 +408,12 @@ class _SplitTransactionSheetState extends ConsumerState<SplitTransactionSheet> {
                             _isBalanced
                                 ? 'Save ${_splits.length} Split Transactions'
                                 : _totalEntered > 0
-                                    ? 'Balance ₹${_remainder.toStringAsFixed(0)}'
-                                    : 'Enter total amount',
-                            style: AppTheme.bodyStyle(size: 15, weight: FontWeight.w600),
+                                ? 'Balance ₹${_remainder.toStringAsFixed(0)}'
+                                : 'Enter total amount',
+                            style: AppTheme.bodyStyle(
+                              size: 15,
+                              weight: FontWeight.w600,
+                            ),
                           ),
                         ],
                       ),
@@ -347,15 +426,17 @@ class _SplitTransactionSheetState extends ConsumerState<SplitTransactionSheet> {
     );
   }
 
-  Future<void> _submit() async {
+  Future<void> _submitSplits() async {
     if (!_formKey.currentState!.validate()) return;
 
     // Validate splits are balanced
     if (!_isBalanced) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Split amounts must total ₹${_totalEntered.toStringAsFixed(0)}. '
-              'Remaining: ₹${_remainder.toStringAsFixed(0)}'),
+          content: Text(
+            'Split amounts must total ₹${_totalEntered.toStringAsFixed(0)}. '
+            'Remaining: ₹${_remainder.toStringAsFixed(0)}',
+          ),
           behavior: SnackBarBehavior.floating,
           backgroundColor: AppColors.warning,
         ),
@@ -368,8 +449,8 @@ class _SplitTransactionSheetState extends ConsumerState<SplitTransactionSheet> {
       final amt = double.tryParse(split.amount) ?? 0;
       if (amt <= 0) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Each split must have an amount > 0'),
+          const SnackBar(
+            content: Text('Each split must have an amount > 0'),
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -382,19 +463,38 @@ class _SplitTransactionSheetState extends ConsumerState<SplitTransactionSheet> {
 
     try {
       final categories = ref.read(categoriesProvider).valueOrNull ?? [];
+      const uuid = Uuid();
+      final items = <TransactionsCompanion>[];
+
       for (final split in _splits) {
         final amt = double.tryParse(split.amount) ?? 0;
         if (amt <= 0) continue;
-        final catName = categories.where((c) => c.id == split.categoryId).firstOrNull?.name ?? split.categoryId;
+        final catName =
+            categories
+                .where((c) => c.id == split.categoryId)
+                .firstOrNull
+                ?.name ??
+            split.categoryId;
 
-        await notifier.addTransaction(
-          amount: amt,
-          categoryId: split.categoryId,
-          note: 'Split: $catName',
-          date: _selectedDate,
-          paymentMethod: _paymentMethod,
+        items.add(
+          TransactionsCompanion.insert(
+            id: uuid.v4(),
+            amount: amt.abs(),
+            categoryId: split.categoryId,
+            accountId: 'default',
+            note: Value('Split: $catName'),
+            date: _selectedDate,
+            paymentMethod: Value(_paymentMethod),
+            isRecurring: const Value(false),
+            isRecurringInstance: const Value(false),
+          ),
         );
       }
+
+      await notifier.addSplitTransactions(
+        items: items,
+        totalAmount: _totalEntered,
+      );
 
       if (mounted) {
         Navigator.pop(context);
@@ -420,23 +520,12 @@ class _SplitTransactionSheetState extends ConsumerState<SplitTransactionSheet> {
 }
 
 class _SplitLine {
+  _SplitLine({required this.categoryId}) : amount = '';
   String categoryId;
   String amount;
-
-  _SplitLine({required this.categoryId, this.amount = ''});
 }
 
 class _SplitLineRow extends StatelessWidget {
-  final _SplitLine split;
-  final TextEditingController controller;
-  final int index;
-  final List<Category> categories;
-  final bool canRemove;
-  final VoidCallback onRemove;
-  final VoidCallback onChanged;
-  final ColorScheme colorScheme;
-  final bool isDark;
-
   const _SplitLineRow({
     required this.split,
     required this.controller,
@@ -448,11 +537,21 @@ class _SplitLineRow extends StatelessWidget {
     required this.colorScheme,
     required this.isDark,
   });
+  final _SplitLine split;
+  final TextEditingController controller;
+  final int index;
+  final List<Category> categories;
+  final bool canRemove;
+  final VoidCallback onRemove;
+  final VoidCallback onChanged;
+  final ColorScheme colorScheme;
+  final bool isDark;
 
   @override
   Widget build(BuildContext context) {
     final catColor = Color(
-      categories.where((c) => c.id == split.categoryId).firstOrNull?.color ?? 0xFF6B7280,
+      categories.where((c) => c.id == split.categoryId).firstOrNull?.color ??
+          0xFF6B7280,
     );
 
     return Padding(
@@ -475,19 +574,31 @@ class _SplitLineRow extends StatelessWidget {
                       ? split.categoryId
                       : categories.firstOrNull?.id ?? 'other',
                   isExpanded: true,
-                  style: AppTheme.bodyStyle(size: 13, color: colorScheme.onSurface),
-                  dropdownColor: isDark ? Color(0xFF1C2333) : Colors.white,
-                  items: categories.map((c) => DropdownMenuItem(
-                    value: c.id,
-                    child: Row(
-                      children: [
-                        Icon(getCategoryIcon(c.icon), size: 14,
-                            color: Color(c.color)),
-                        const SizedBox(width: 6),
-                        Text(c.name, style: AppTheme.bodyStyle(size: 12)),
-                      ],
-                    ),
-                  )).toList(),
+                  style: AppTheme.bodyStyle(
+                    size: 13,
+                    color: colorScheme.onSurface,
+                  ),
+                  dropdownColor: isDark
+                      ? const Color(0xFF1C2333)
+                      : Colors.white,
+                  items: categories
+                      .map(
+                        (c) => DropdownMenuItem(
+                          value: c.id,
+                          child: Row(
+                            children: [
+                              Icon(
+                                getCategoryIcon(c.icon),
+                                size: 14,
+                                color: Color(c.color),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(c.name, style: AppTheme.bodyStyle(size: 12)),
+                            ],
+                          ),
+                        ),
+                      )
+                      .toList(),
                   onChanged: (v) {
                     split.categoryId = v ?? 'other';
                     onChanged();
@@ -504,19 +615,28 @@ class _SplitLineRow extends StatelessWidget {
               height: 40,
               child: TextField(
                 controller: controller,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                style: AppTheme.financialStyle(size: 14, weight: FontWeight.w600),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                style: AppTheme.financialStyle(size: 14),
                 decoration: InputDecoration(
                   prefixText: '₹ ',
-                  prefixStyle: AppTheme.financialStyle(size: 12, weight: FontWeight.w600),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                  prefixStyle: AppTheme.financialStyle(size: 12),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 8,
+                  ),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide(color: colorScheme.outline.withValues(alpha: 0.2)),
+                    borderSide: BorderSide(
+                      color: colorScheme.outline.withValues(alpha: 0.2),
+                    ),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide(color: colorScheme.outline.withValues(alpha: 0.2)),
+                    borderSide: BorderSide(
+                      color: colorScheme.outline.withValues(alpha: 0.2),
+                    ),
                   ),
                   isDense: true,
                 ),
@@ -538,7 +658,11 @@ class _SplitLineRow extends StatelessWidget {
                   shape: BoxShape.circle,
                   color: AppColors.error.withValues(alpha: 0.1),
                 ),
-                child: Icon(LucideIcons.x, size: 14, color: AppColors.error),
+                child: const Icon(
+                  LucideIcons.x,
+                  size: 14,
+                  color: AppColors.error,
+                ),
               ),
             )
           else

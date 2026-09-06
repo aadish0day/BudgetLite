@@ -1,31 +1,36 @@
+import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:drift/drift.dart' show Value;
-import 'package:uuid/uuid.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:uuid/uuid.dart';
+
 import '../core/database/database.dart';
-import '../core/utils/formatters.dart';
 import '../core/theme/colors.dart';
-import 'transaction_provider.dart';
+import '../core/utils/formatters.dart';
 import 'database_provider.dart';
 import 'settings_provider.dart';
+import 'transaction_provider.dart';
 
 final budgetsProvider = StreamProvider.autoDispose<List<Budget>>((ref) {
   final db = ref.watch(databaseProvider);
   return db.select(db.budgets).watch();
 });
 
-final budgetsByMonthProvider =
-    StreamProvider.autoDispose.family<List<Budget>, String>((ref, monthKey) {
-  final db = ref.watch(databaseProvider);
-  return (db.select(db.budgets)..where((t) => t.month.equals(monthKey))).watch();
-});
+final budgetsByMonthProvider = StreamProvider.autoDispose
+    .family<List<Budget>, String>((ref, monthKey) {
+      final db = ref.watch(databaseProvider);
+      return (db.select(
+        db.budgets,
+      )..where((t) => t.month.equals(monthKey))).watch();
+    });
 
-final thisMonthBudgetsProvider = StreamProvider.autoDispose<List<Budget>>((ref) {
+final thisMonthBudgetsProvider = StreamProvider.autoDispose<List<Budget>>((
+  ref,
+) {
   final asyncBudgets = ref.watch(budgetsByMonthProvider(Formatters.monthKey));
   return asyncBudgets.when(
-    data: (budgets) => Stream.value(budgets),
-    error: (err, stack) => Stream.error(err, stack),
+    data: Stream.value,
+    error: Stream.error,
     loading: () => const Stream.empty(),
   );
 });
@@ -33,8 +38,8 @@ final thisMonthBudgetsProvider = StreamProvider.autoDispose<List<Budget>>((ref) 
 final monthlyIncomeProvider = StreamProvider.autoDispose<double>((ref) {
   final asyncIncome = ref.watch(totalIncomeThisMonthProvider);
   return asyncIncome.when(
-    data: (income) => Stream.value(income),
-    error: (err, stack) => Stream.error(err, stack),
+    data: Stream.value,
+    error: Stream.error,
     loading: () => const Stream.empty(),
   );
 });
@@ -43,10 +48,13 @@ final totalBudgetThisMonthProvider = StreamProvider.autoDispose<double>((ref) {
   final asyncBudgets = ref.watch(thisMonthBudgetsProvider);
   return asyncBudgets.when(
     data: (budgets) {
-      final total = budgets.fold<double>(0, (sum, b) => sum + b.allocatedAmount);
+      final total = budgets.fold<double>(
+        0,
+        (sum, b) => sum + b.allocatedAmount,
+      );
       return Stream.value(total);
     },
-    error: (err, stack) => Stream.error(err, stack),
+    error: Stream.error,
     loading: () => const Stream.empty(),
   );
 });
@@ -71,26 +79,33 @@ class BudgetNotifier extends StateNotifier<AsyncValue<void>> {
     // Allocated amount must be >= 0
     final validAmount = amount < 0 ? 0.0 : amount;
     final db = ref.read(databaseProvider);
-    final existing = await (db.select(db.budgets)
-          ..where((t) => t.categoryId.equals(categoryId))
-          ..where((t) => t.month.equals(Formatters.monthKey)))
-        .get();
+    final existing =
+        await (db.select(db.budgets)
+              ..where((t) => t.categoryId.equals(categoryId))
+              ..where((t) => t.month.equals(Formatters.monthKey)))
+            .get();
 
     if (existing.isNotEmpty) {
-      await (db.update(db.budgets)
-            ..where((t) => t.id.equals(existing.first.id)))
-          .write(BudgetsCompanion(
-        allocatedAmount: Value(validAmount),
-        rollover: Value(rollover),
-      ));
+      await (db.update(
+        db.budgets,
+      )..where((t) => t.id.equals(existing.first.id))).write(
+        BudgetsCompanion(
+          allocatedAmount: Value(validAmount),
+          rollover: Value(rollover),
+        ),
+      );
     } else {
-      await db.into(db.budgets).insert(BudgetsCompanion.insert(
-        id: const Uuid().v4(),
-        categoryId: categoryId,
-        month: Formatters.monthKey,
-        allocatedAmount: validAmount,
-        rollover: Value(rollover),
-      ));
+      await db
+          .into(db.budgets)
+          .insert(
+            BudgetsCompanion.insert(
+              id: const Uuid().v4(),
+              categoryId: categoryId,
+              month: Formatters.monthKey,
+              allocatedAmount: validAmount,
+              rollover: Value(rollover),
+            ),
+          );
     }
     ref.invalidate(budgetsProvider);
     ref.invalidate(thisMonthBudgetsProvider);
@@ -105,28 +120,38 @@ class BudgetNotifier extends StateNotifier<AsyncValue<void>> {
     required String categoryId,
   }) async {
     final messenger = ScaffoldMessenger.of(context);
-    final info = await ref.read(effectiveCategoryBudgetProvider(categoryId).future);
+    final info = await ref.read(
+      effectiveCategoryBudgetProvider(categoryId).future,
+    );
     if (info.effectiveAllocated <= 0) return;
     final ratio = info.spent / info.effectiveAllocated;
     final settings = ref.read(settingsNotifierProvider.notifier);
 
     if (ratio >= 1.0) {
-      final alreadyNotified = await settings.wasBudgetNotified(categoryId, 'over');
+      final alreadyNotified = await settings.wasBudgetNotified(
+        categoryId,
+        'over',
+      );
       if (!alreadyNotified) {
         await settings.setBudgetNotified(categoryId, 'over');
         messenger.showSnackBar(
           SnackBar(
             content: Row(
               children: [
-                Icon(LucideIcons.alertTriangle, size: 18, color: AppColors.error),
+                const Icon(
+                  LucideIcons.alertTriangle,
+                  size: 18,
+                  color: AppColors.error,
+                ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text('Over budget! ₹${(info.spent - info.effectiveAllocated).toStringAsFixed(0)} exceeded'),
+                  child: Text(
+                    'Over budget! ₹${(info.spent - info.effectiveAllocated).toStringAsFixed(0)} exceeded',
+                  ),
                 ),
               ],
             ),
             behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 4),
             backgroundColor: AppColors.error.withValues(alpha: 0.9),
           ),
         );
@@ -136,7 +161,10 @@ class BudgetNotifier extends StateNotifier<AsyncValue<void>> {
       // checking only the exact level caused the approaching alert to re-fire
       // (and the stored level to bounce) whenever spend dipped below 100%
       // after an over-budget alert.
-      final notifiedApproaching = await settings.wasBudgetNotified(categoryId, 'approaching');
+      final notifiedApproaching = await settings.wasBudgetNotified(
+        categoryId,
+        'approaching',
+      );
       final notifiedOver = await settings.wasBudgetNotified(categoryId, 'over');
       if (!notifiedApproaching && !notifiedOver) {
         await settings.setBudgetNotified(categoryId, 'approaching');
@@ -144,7 +172,11 @@ class BudgetNotifier extends StateNotifier<AsyncValue<void>> {
           SnackBar(
             content: Row(
               children: [
-                Icon(LucideIcons.bell, size: 18, color: AppColors.warning),
+                const Icon(
+                  LucideIcons.bell,
+                  size: 18,
+                  color: AppColors.warning,
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -154,7 +186,6 @@ class BudgetNotifier extends StateNotifier<AsyncValue<void>> {
               ],
             ),
             behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 4),
             backgroundColor: AppColors.warning.withValues(alpha: 0.9),
           ),
         );
@@ -167,58 +198,77 @@ class BudgetNotifier extends StateNotifier<AsyncValue<void>> {
 
 final budgetNotifierProvider =
     StateNotifierProvider.autoDispose<BudgetNotifier, AsyncValue<void>>((ref) {
-  return BudgetNotifier(ref);
-});
+      return BudgetNotifier(ref);
+    });
 
 /// Provider for effective budget of a category for this month, including rollover carryover if enabled.
 /// If rollover is ON: effectiveAllocated = baseAllocated + max(0, previousAllocated - previousUsed). Overspend does NOT carry as negative.
 /// If rollover is OFF: effectiveAllocated = baseAllocated.
-final effectiveCategoryBudgetProvider =
-    FutureProvider.autoDispose.family<({double baseAllocated, double effectiveAllocated, double spent, bool rollover}), String>(
-        (ref, categoryId) async {
-  final thisMonthBudgets = await ref.watch(thisMonthBudgetsProvider.future);
-  final budget = thisMonthBudgets.where((b) => b.categoryId == categoryId).firstOrNull;
+final effectiveCategoryBudgetProvider = FutureProvider.autoDispose
+    .family<
+      ({
+        double baseAllocated,
+        double effectiveAllocated,
+        double spent,
+        bool rollover,
+      }),
+      String
+    >((ref, categoryId) async {
+      final thisMonthBudgets = await ref.watch(thisMonthBudgetsProvider.future);
+      final budget = thisMonthBudgets
+          .where((b) => b.categoryId == categoryId)
+          .firstOrNull;
 
-  final baseAllocated = budget?.allocatedAmount ?? 0.0;
-  final rollover = budget?.rollover ?? false;
+      final baseAllocated = budget?.allocatedAmount ?? 0.0;
+      final rollover = budget?.rollover ?? false;
 
-  // Derive live used amount from this month's transactions
-  final thisMonthTxns = await ref.watch(thisMonthTransactionsProvider.future);
-  final spent = thisMonthTxns
-      .where((t) => t.categoryId == categoryId && t.amount > 0)
-      .fold<double>(0, (sum, t) => sum + t.amount);
-
-  double carryover = 0.0;
-  if (rollover) {
-    // Check previous month budget and usage
-    final prevMonthBudgets = await ref.watch(budgetsByMonthProvider(Formatters.previousMonthKey).future);
-    final prevBudget = prevMonthBudgets.where((b) => b.categoryId == categoryId).firstOrNull;
-    if (prevBudget != null) {
-      final prevMonthTxns = await ref.watch(transactionsByMonthProvider(Formatters.previousMonthKey).future);
-      final prevSpent = prevMonthTxns
+      // Derive live used amount from this month's transactions
+      final thisMonthTxns = await ref.watch(
+        thisMonthTransactionsProvider.future,
+      );
+      final spent = thisMonthTxns
           .where((t) => t.categoryId == categoryId && t.amount > 0)
           .fold<double>(0, (sum, t) => sum + t.amount);
-      final unspent = prevBudget.allocatedAmount - prevSpent;
-      // Overspend does NOT carry as negative
-      if (unspent > 0) {
-        carryover = unspent;
-      }
-    }
-  }
 
-  final effectiveAllocated = baseAllocated + carryover;
-  return (
-    baseAllocated: baseAllocated,
-    effectiveAllocated: effectiveAllocated,
-    spent: spent,
-    rollover: rollover,
-  );
-});
+      double carryover = 0;
+      if (rollover) {
+        // Check previous month budget and usage
+        final prevMonthBudgets = await ref.watch(
+          budgetsByMonthProvider(Formatters.previousMonthKey).future,
+        );
+        final prevBudget = prevMonthBudgets
+            .where((b) => b.categoryId == categoryId)
+            .firstOrNull;
+        if (prevBudget != null) {
+          final prevMonthTxns = await ref.watch(
+            transactionsByMonthProvider(Formatters.previousMonthKey).future,
+          );
+          final prevSpent = prevMonthTxns
+              .where((t) => t.categoryId == categoryId && t.amount > 0)
+              .fold<double>(0, (sum, t) => sum + t.amount);
+          final unspent = prevBudget.allocatedAmount - prevSpent;
+          // Overspend does NOT carry as negative
+          if (unspent > 0) {
+            carryover = unspent;
+          }
+        }
+      }
+
+      final effectiveAllocated = baseAllocated + carryover;
+      return (
+        baseAllocated: baseAllocated,
+        effectiveAllocated: effectiveAllocated,
+        spent: spent,
+        rollover: rollover,
+      );
+    });
 
 /// Provider for the used budget ratio per category (using effective budget with rollover)
-final categoryBudgetUsageProvider =
-    FutureProvider.autoDispose.family<double, String>((ref, categoryId) async {
-  final info = await ref.watch(effectiveCategoryBudgetProvider(categoryId).future);
-  if (info.effectiveAllocated <= 0) return 0.0;
-  return (info.spent / info.effectiveAllocated).clamp(0, 2).toDouble();
-});
+final categoryBudgetUsageProvider = FutureProvider.autoDispose
+    .family<double, String>((ref, categoryId) async {
+      final info = await ref.watch(
+        effectiveCategoryBudgetProvider(categoryId).future,
+      );
+      if (info.effectiveAllocated <= 0) return 0.0;
+      return (info.spent / info.effectiveAllocated).clamp(0, 2).toDouble();
+    });

@@ -1,32 +1,38 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+
 import 'core/theme/app_theme.dart';
 import 'core/theme/colors.dart';
-import 'core/utils/sms_parser.dart';
-import 'core/utils/formatters.dart';
 import 'core/utils/accessibility_utils.dart';
-import 'features/home/home_screen.dart';
-import 'features/transactions/transactions_screen.dart';
-import 'features/transactions/add_transaction_sheet.dart';
+import 'core/utils/formatters.dart';
+import 'core/utils/notification_service.dart';
+import 'core/utils/sms_parser.dart';
 import 'features/budget/budget_screen.dart';
 import 'features/goals/goals_screen.dart';
+import 'features/home/home_screen.dart';
 import 'features/insights/insights_screen.dart';
 import 'features/onboarding/onboarding_screen.dart';
-import 'core/utils/notification_service.dart';
+import 'features/transactions/add_transaction_sheet.dart';
+import 'features/transactions/transactions_screen.dart';
+import 'main.dart' show quickActionCallbackProvider, setupQuickActions;
+import 'providers/navigation_provider.dart';
 import 'providers/settings_provider.dart';
 import 'providers/transaction_provider.dart';
-import 'providers/navigation_provider.dart';
-import 'main.dart' show quickActionCallbackProvider, setupQuickActions;
+
+final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 
 class BudgetLiteApp extends ConsumerWidget {
   const BudgetLiteApp({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final themeOption = ref.watch(themeModeProvider).valueOrNull ?? ThemeModeOption.light;
+    final themeOption =
+        ref.watch(themeModeProvider).valueOrNull ?? ThemeModeOption.light;
     final accentColorVal = ref.watch(accentColorProvider).valueOrNull;
 
     final themeMode = switch (themeOption) {
@@ -41,18 +47,15 @@ class BudgetLiteApp extends ConsumerWidget {
     if (accentColorVal != null) {
       final accentColor = Color(accentColorVal);
       lightTheme = lightTheme.copyWith(
-        colorScheme: lightTheme.colorScheme.copyWith(
-          primary: accentColor,
-        ),
+        colorScheme: lightTheme.colorScheme.copyWith(primary: accentColor),
       );
       darkTheme = darkTheme.copyWith(
-        colorScheme: darkTheme.colorScheme.copyWith(
-          primary: accentColor,
-        ),
+        colorScheme: darkTheme.colorScheme.copyWith(primary: accentColor),
       );
     }
 
     return MaterialApp(
+      navigatorKey: rootNavigatorKey,
       title: 'BudgetLite',
       debugShowCheckedModeBanner: false,
       theme: lightTheme,
@@ -70,7 +73,8 @@ class _AppEntry extends ConsumerStatefulWidget {
   ConsumerState<_AppEntry> createState() => _AppEntryState();
 }
 
-class _AppEntryState extends ConsumerState<_AppEntry> with WidgetsBindingObserver {
+class _AppEntryState extends ConsumerState<_AppEntry>
+    with WidgetsBindingObserver {
   bool _showOnboarding = true;
   bool _isAuthenticated = false;
   bool _biometricEnabled = false;
@@ -96,11 +100,16 @@ class _AppEntryState extends ConsumerState<_AppEntry> with WidgetsBindingObserve
     if (state == AppLifecycleState.paused) {
       _backgroundedAt ??= DateTime.now();
     } else if (state == AppLifecycleState.resumed) {
-      final biometric = ref.read(biometricLockEnabledProvider).valueOrNull ?? false;
+      final biometric =
+          ref.read(biometricLockEnabledProvider).valueOrNull ?? false;
       if (_backgroundedAt != null && biometric && _isAuthenticated) {
-        final durationMinutes = ref.read(autoLockDurationProvider).valueOrNull ?? 1;
-        final elapsedSeconds = DateTime.now().difference(_backgroundedAt!).inSeconds;
+        final durationMinutes =
+            ref.read(autoLockDurationProvider).valueOrNull ?? 1;
+        final elapsedSeconds = DateTime.now()
+            .difference(_backgroundedAt!)
+            .inSeconds;
         if (elapsedSeconds >= durationMinutes * 60) {
+          rootNavigatorKey.currentState?.popUntil((route) => route.isFirst);
           setState(() {
             _isAuthenticated = false;
             _biometricEnabled = true;
@@ -124,7 +133,8 @@ class _AppEntryState extends ConsumerState<_AppEntry> with WidgetsBindingObserve
         _checkingAuth = false;
       });
       if (seen == 'true' && biometric) {
-        _authenticate();
+        rootNavigatorKey.currentState?.popUntil((route) => route.isFirst);
+        unawaited(_authenticate());
       }
     }
   }
@@ -134,6 +144,19 @@ class _AppEntryState extends ConsumerState<_AppEntry> with WidgetsBindingObserve
   Future<void> _authenticate() async {
     if (_isAuthenticating) return;
     _isAuthenticating = true;
+    final biometric =
+        ref.read(biometricLockEnabledProvider).valueOrNull ?? false;
+    if (!biometric) {
+      if (mounted) {
+        setState(() {
+          _isAuthenticated = true;
+          _biometricEnabled = false;
+        });
+      }
+      _isAuthenticating = false;
+      return;
+    }
+
     final localAuth = LocalAuthentication();
     try {
       final isAvailable = await localAuth.canCheckBiometrics;
@@ -157,7 +180,7 @@ class _AppEntryState extends ConsumerState<_AppEntry> with WidgetsBindingObserve
     } on PlatformException catch (_) {
       if (mounted) {
         setState(() {
-          _isAuthenticated = true;
+          _isAuthenticated = false;
         });
       }
     } finally {
@@ -168,11 +191,7 @@ class _AppEntryState extends ConsumerState<_AppEntry> with WidgetsBindingObserve
   @override
   Widget build(BuildContext context) {
     if (_checkingAuth) {
-      return const Scaffold(
-        body: Center(
-          child: CircularProgressIndicator(),
-        ),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     if (_showOnboarding) {
@@ -215,7 +234,8 @@ class _MainShellState extends ConsumerState<_MainShell> {
     NotificationService.instance.initialize(
       onNotificationTap: (payload) {
         if (payload != null && payload.startsWith('budget:')) {
-          final isBudgetEnabled = ref.read(budgetModuleEnabledProvider).valueOrNull ?? true;
+          final isBudgetEnabled =
+              ref.read(budgetModuleEnabledProvider).valueOrNull ?? true;
           if (isBudgetEnabled) {
             final catId = payload.substring('budget:'.length);
             ref.read(currentTabProvider.notifier).state = 2;
@@ -226,7 +246,9 @@ class _MainShellState extends ConsumerState<_MainShell> {
     );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      ref.read(transactionNotifierProvider.notifier).postDueRecurringTransactions();
+      ref
+          .read(transactionNotifierProvider.notifier)
+          .postDueRecurringTransactions();
       setupQuickActions(ref);
       ref.read(quickActionCallbackProvider.notifier).state = (tabIndex) {
         ref.read(currentTabProvider.notifier).state = tabIndex;
@@ -239,7 +261,8 @@ class _MainShellState extends ConsumerState<_MainShell> {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = colorScheme.brightness == Brightness.dark;
     final rawTab = ref.watch(currentTabProvider);
-    final isBudgetEnabled = ref.watch(budgetModuleEnabledProvider).valueOrNull ?? true;
+    final isBudgetEnabled =
+        ref.watch(budgetModuleEnabledProvider).valueOrNull ?? true;
     final shouldAnimate = AccessibilityUtils.shouldAnimate(context);
 
     final navLabels = [
@@ -291,30 +314,35 @@ class _MainShellState extends ConsumerState<_MainShell> {
               children: [
                 Icon(LucideIcons.logOut, size: 20, color: colorScheme.primary),
                 const SizedBox(width: 8),
-                Text(
-                  'Exit BudgetLite?',
-                  style: AppTheme.displayStyle(size: 18, weight: FontWeight.w600),
-                ),
+                Text('Exit BudgetLite?', style: AppTheme.displayStyle()),
               ],
             ),
             content: Text(
               'Are you sure you want to exit the app?',
-              style: AppTheme.bodyStyle(size: 14, color: colorScheme.onSurfaceVariant),
+              style: AppTheme.bodyStyle(color: colorScheme.onSurfaceVariant),
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
-                child: Text('Cancel', style: AppTheme.bodyStyle(color: colorScheme.onSurfaceVariant)),
+                child: Text(
+                  'Cancel',
+                  style: AppTheme.bodyStyle(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
               ),
               FilledButton(
                 onPressed: () => Navigator.pop(ctx, true),
-                child: Text('Exit', style: AppTheme.bodyStyle(weight: FontWeight.w600)),
+                child: Text(
+                  'Exit',
+                  style: AppTheme.bodyStyle(weight: FontWeight.w600),
+                ),
               ),
             ],
           ),
         );
         if (confirmed == true && context.mounted) {
-          SystemNavigator.pop();
+          unawaited(SystemNavigator.pop());
         }
       },
       child: Scaffold(
@@ -325,11 +353,17 @@ class _MainShellState extends ConsumerState<_MainShell> {
                 switchOutCurve: Curves.easeInCubic,
                 transitionBuilder: (child, animation) {
                   return ScaleTransition(
-                    scale: Tween<double>(begin: 0.97, end: 1.0).animate(
-                      CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+                    scale: Tween<double>(begin: 0.97, end: 1).animate(
+                      CurvedAnimation(
+                        parent: animation,
+                        curve: Curves.easeOutCubic,
+                      ),
                     ),
                     child: FadeTransition(
-                      opacity: Tween<double>(begin: 0.3, end: 1.0).animate(animation),
+                      opacity: Tween<double>(
+                        begin: 0.3,
+                        end: 1,
+                      ).animate(animation),
                       child: child,
                     ),
                   );
@@ -350,7 +384,6 @@ class _MainShellState extends ConsumerState<_MainShell> {
                     : colorScheme.surface.withValues(alpha: 0.95),
                 border: Border.all(
                   color: colorScheme.outline.withValues(alpha: 0.12),
-                  width: 1,
                 ),
                 boxShadow: [
                   BoxShadow(
@@ -399,7 +432,9 @@ class _MainShellState extends ConsumerState<_MainShell> {
                                 size: 20,
                                 color: isSelected
                                     ? colorScheme.primary
-                                    : colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                                    : colorScheme.onSurfaceVariant.withValues(
+                                        alpha: 0.7,
+                                      ),
                               ),
                             ),
                             const SizedBox(height: 3),
@@ -407,10 +442,14 @@ class _MainShellState extends ConsumerState<_MainShell> {
                               duration: const Duration(milliseconds: 200),
                               style: AppTheme.bodyStyle(
                                 size: 10,
-                                weight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                                weight: isSelected
+                                    ? FontWeight.w700
+                                    : FontWeight.w500,
                                 color: isSelected
                                     ? colorScheme.primary
-                                    : colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                                    : colorScheme.onSurfaceVariant.withValues(
+                                        alpha: 0.7,
+                                      ),
                               ),
                               child: Text(
                                 label,
@@ -457,7 +496,8 @@ class _MainShellState extends ConsumerState<_MainShell> {
             children: [
               Center(
                 child: Container(
-                  width: 40, height: 4,
+                  width: 40,
+                  height: 4,
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(2),
                     color: colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
@@ -465,7 +505,10 @@ class _MainShellState extends ConsumerState<_MainShell> {
                 ),
               ),
               const SizedBox(height: 20),
-              Text('Quick Entry', style: AppTheme.displayStyle(size: 18, weight: FontWeight.w600, color: colorScheme.onSurface)),
+              Text(
+                'Quick Entry',
+                style: AppTheme.displayStyle(color: colorScheme.onSurface),
+              ),
               const SizedBox(height: 20),
               Row(
                 children: [
@@ -537,10 +580,7 @@ class _MainShellState extends ConsumerState<_MainShell> {
           children: [
             Icon(LucideIcons.messageSquare, color: colorScheme.primary),
             const SizedBox(width: 8),
-            Text(
-              'Bank SMS Detected',
-              style: AppTheme.displayStyle(size: 18, weight: FontWeight.w600),
-            ),
+            Text('Bank SMS Detected', style: AppTheme.displayStyle()),
           ],
         ),
         content: Column(
@@ -549,15 +589,22 @@ class _MainShellState extends ConsumerState<_MainShell> {
           children: [
             Text(
               'We found a new transaction details from your SMS message:',
-              style: AppTheme.bodyStyle(size: 13, color: colorScheme.onSurfaceVariant),
+              style: AppTheme.bodyStyle(
+                size: 13,
+                color: colorScheme.onSurfaceVariant,
+              ),
             ),
             const SizedBox(height: 16),
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+                color: colorScheme.surfaceContainerHighest.withValues(
+                  alpha: 0.4,
+                ),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: colorScheme.outline.withValues(alpha: 0.1)),
+                border: Border.all(
+                  color: colorScheme.outline.withValues(alpha: 0.1),
+                ),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -565,8 +612,20 @@ class _MainShellState extends ConsumerState<_MainShell> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('Amount', style: AppTheme.bodyStyle(size: 11, color: colorScheme.onSurfaceVariant)),
-                      Text('Category', style: AppTheme.bodyStyle(size: 11, color: colorScheme.onSurfaceVariant)),
+                      Text(
+                        'Amount',
+                        style: AppTheme.bodyStyle(
+                          size: 11,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      Text(
+                        'Category',
+                        style: AppTheme.bodyStyle(
+                          size: 11,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 4),
@@ -575,25 +634,49 @@ class _MainShellState extends ConsumerState<_MainShell> {
                     children: [
                       Text(
                         '₹${txn.amount.toStringAsFixed(0)}',
-                        style: AppTheme.financialStyle(size: 18, weight: FontWeight.w700, color: colorScheme.onSurface),
+                        style: AppTheme.financialStyle(
+                          size: 18,
+                          weight: FontWeight.w700,
+                          color: colorScheme.onSurface,
+                        ),
                       ),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
                           color: colorScheme.primary.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
                           txn.categoryId.toUpperCase(),
-                          style: AppTheme.bodyStyle(size: 11, weight: FontWeight.w600, color: colorScheme.primary),
+                          style: AppTheme.bodyStyle(
+                            size: 11,
+                            weight: FontWeight.w600,
+                            color: colorScheme.primary,
+                          ),
                         ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 12),
-                  Text('Note / Merchant', style: AppTheme.bodyStyle(size: 11, color: colorScheme.onSurfaceVariant)),
+                  Text(
+                    'Note / Merchant',
+                    style: AppTheme.bodyStyle(
+                      size: 11,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
                   const SizedBox(height: 2),
-                  Text(txn.note, style: AppTheme.bodyStyle(size: 13, weight: FontWeight.w500, color: colorScheme.onSurface)),
+                  Text(
+                    txn.note,
+                    style: AppTheme.bodyStyle(
+                      size: 13,
+                      weight: FontWeight.w500,
+                      color: colorScheme.onSurface,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -605,7 +688,10 @@ class _MainShellState extends ConsumerState<_MainShell> {
               ref.read(pendingSmsTransactionProvider.notifier).state = null;
               Navigator.pop(ctx);
             },
-            child: Text('Ignore', style: AppTheme.bodyStyle(color: colorScheme.onSurfaceVariant)),
+            child: Text(
+              'Ignore',
+              style: AppTheme.bodyStyle(color: colorScheme.onSurfaceVariant),
+            ),
           ),
           FilledButton(
             onPressed: () async {
@@ -627,46 +713,80 @@ class _MainShellState extends ConsumerState<_MainShell> {
                   builder: (dialogCtx) => AlertDialog(
                     title: Row(
                       children: [
-                        Icon(LucideIcons.alertTriangle, color: AppColors.warning),
+                        const Icon(
+                          LucideIcons.alertTriangle,
+                          color: AppColors.warning,
+                        ),
                         const SizedBox(width: 8),
-                        Text('Possible Duplicate',
-                          style: AppTheme.displayStyle(size: 18, weight: FontWeight.w600)),
+                        Text(
+                          'Possible Duplicate',
+                          style: AppTheme.displayStyle(),
+                        ),
                       ],
                     ),
                     content: Column(
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('A similar transaction already exists:',
-                          style: AppTheme.bodyStyle(size: 14, color: colorScheme.onSurfaceVariant)),
+                        Text(
+                          'A similar transaction already exists:',
+                          style: AppTheme.bodyStyle(
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
                         const SizedBox(height: 12),
-                        ...dupCheck.take(3).map((d) => Padding(
-                          padding: const EdgeInsets.only(bottom: 6),
-                          child: Row(
-                            children: [
-                              Icon(LucideIcons.receiptText, size: 14, color: colorScheme.onSurfaceVariant),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  '₹${d.amount.abs().toStringAsFixed(0)} on ${Formatters.formatDateShort(d.date)}',
-                                  style: AppTheme.bodyStyle(size: 12, color: colorScheme.onSurface),
+                        ...dupCheck
+                            .take(3)
+                            .map(
+                              (d) => Padding(
+                                padding: const EdgeInsets.only(bottom: 6),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      LucideIcons.receiptText,
+                                      size: 14,
+                                      color: colorScheme.onSurfaceVariant,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        '₹${d.amount.abs().toStringAsFixed(0)} on ${Formatters.formatDateShort(d.date)}',
+                                        style: AppTheme.bodyStyle(
+                                          size: 12,
+                                          color: colorScheme.onSurface,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                            ],
-                          ),
-                        )),
+                            ),
                         if (dupCheck.length > 3)
-                          Text('...and ${dupCheck.length - 3} more',
-                            style: AppTheme.bodyStyle(size: 11, color: colorScheme.onSurfaceVariant)),
+                          Text(
+                            '...and ${dupCheck.length - 3} more',
+                            style: AppTheme.bodyStyle(
+                              size: 11,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                          ),
                         const SizedBox(height: 12),
-                        Text('Add it anyway?',
-                          style: AppTheme.bodyStyle(size: 14, color: colorScheme.onSurfaceVariant)),
+                        Text(
+                          'Add it anyway?',
+                          style: AppTheme.bodyStyle(
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
                       ],
                     ),
                     actions: [
                       TextButton(
                         onPressed: () => Navigator.pop(dialogCtx, false),
-                        child: Text('Cancel', style: AppTheme.bodyStyle(color: colorScheme.onSurfaceVariant)),
+                        child: Text(
+                          'Cancel',
+                          style: AppTheme.bodyStyle(
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
                       ),
                       FilledButton(
                         onPressed: () => Navigator.pop(dialogCtx, true),
@@ -698,7 +818,10 @@ class _MainShellState extends ConsumerState<_MainShell> {
                 );
               }
             },
-            child: Text(txn.isIncome ? 'Add Income' : 'Add Expense', style: AppTheme.bodyStyle(weight: FontWeight.w600)),
+            child: Text(
+              txn.isIncome ? 'Add Income' : 'Add Expense',
+              style: AppTheme.bodyStyle(weight: FontWeight.w600),
+            ),
           ),
         ],
       ),
@@ -707,17 +830,16 @@ class _MainShellState extends ConsumerState<_MainShell> {
 }
 
 class _QuickActionButton extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final Color color;
-  final VoidCallback onTap;
-
   const _QuickActionButton({
     required this.icon,
     required this.label,
     required this.color,
     required this.onTap,
   });
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -740,7 +862,11 @@ class _QuickActionButton extends StatelessWidget {
               const SizedBox(height: 8),
               Text(
                 label,
-                style: AppTheme.bodyStyle(size: 13, weight: FontWeight.w600, color: color),
+                style: AppTheme.bodyStyle(
+                  size: 13,
+                  weight: FontWeight.w600,
+                  color: color,
+                ),
               ),
             ],
           ),
@@ -751,8 +877,8 @@ class _QuickActionButton extends StatelessWidget {
 }
 
 class _LockScreen extends StatelessWidget {
-  final VoidCallback onRetry;
   const _LockScreen({required this.onRetry});
+  final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -771,17 +897,26 @@ class _LockScreen extends StatelessWidget {
                   shape: BoxShape.circle,
                   color: colorScheme.primary.withValues(alpha: 0.1),
                 ),
-                child: Icon(LucideIcons.lock, size: 40, color: colorScheme.primary),
+                child: Icon(
+                  LucideIcons.lock,
+                  size: 40,
+                  color: colorScheme.primary,
+                ),
               ),
               const SizedBox(height: 24),
-              Text('BudgetLite Locked',
-                style: AppTheme.displayStyle(size: 22, weight: FontWeight.w700, color: colorScheme.onSurface),
+              Text(
+                'BudgetLite Locked',
+                style: AppTheme.displayStyle(
+                  size: 22,
+                  weight: FontWeight.w700,
+                  color: colorScheme.onSurface,
+                ),
               ),
               const SizedBox(height: 8),
               Text(
                 'Please unlock with your biometric credentials to manage your budget.',
                 textAlign: TextAlign.center,
-                style: AppTheme.bodyStyle(size: 14, color: colorScheme.onSurfaceVariant),
+                style: AppTheme.bodyStyle(color: colorScheme.onSurfaceVariant),
               ),
               const SizedBox(height: 32),
               FilledButton.icon(
@@ -793,8 +928,13 @@ class _LockScreen extends StatelessWidget {
               const SizedBox(height: 12),
               TextButton(
                 onPressed: onRetry,
-                child: Text('Use Passcode / Retry',
-                  style: AppTheme.bodyStyle(size: 13, color: colorScheme.primary, weight: FontWeight.w600),
+                child: Text(
+                  'Use Passcode / Retry',
+                  style: AppTheme.bodyStyle(
+                    size: 13,
+                    color: colorScheme.primary,
+                    weight: FontWeight.w600,
+                  ),
                 ),
               ),
             ],

@@ -3,19 +3,19 @@ import 'package:flutter/services.dart';
 
 /// Pairs an SMS body with its device arrival timestamp (millis since epoch).
 class SmsMessage {
+  SmsMessage(this.body, this.timestamp);
   final String body;
   final int timestamp;
-  SmsMessage(this.body, this.timestamp);
 }
 
 /// Handles real UPI SMS receiving and inbox scanning via native Android bridge.
 class SmsListenerService {
+  factory SmsListenerService() => _instance;
+  SmsListenerService._();
   static const _channel = MethodChannel('budget_lite/sms');
   static const _events = EventChannel('budget_lite/sms_events');
 
   static final SmsListenerService _instance = SmsListenerService._();
-  factory SmsListenerService() => _instance;
-  SmsListenerService._();
 
   StreamSubscription? _eventSub;
 
@@ -45,8 +45,9 @@ class SmsListenerService {
   /// Check if SMS permissions are already granted.
   Future<bool> isPermissionGranted() async {
     try {
-      final result =
-          await _channel.invokeMethod<bool>('isSmsPermissionGranted');
+      final result = await _channel.invokeMethod<bool>(
+        'isSmsPermissionGranted',
+      );
       return result ?? false;
     } on MissingPluginException {
       return false;
@@ -65,8 +66,12 @@ class SmsListenerService {
             final body = event['body'] as String?;
             final timestamp = event['timestamp'] as int?;
             if (body != null) {
-              _onSmsReceived
-                  .add(SmsMessage(body, timestamp ?? DateTime.now().millisecondsSinceEpoch));
+              _onSmsReceived.add(
+                SmsMessage(
+                  body,
+                  timestamp ?? DateTime.now().millisecondsSinceEpoch,
+                ),
+              );
             }
           } else if (type == 'permission_result') {
             final granted = event['granted'] as bool? ?? false;
@@ -104,7 +109,8 @@ class SmsListenerService {
         final map = Map<String, dynamic>.from(e as Map);
         return SmsMessage(
           (map['body'] as String?) ?? '',
-          (map['timestamp'] as num?)?.toInt() ?? DateTime.now().millisecondsSinceEpoch,
+          (map['timestamp'] as num?)?.toInt() ??
+              DateTime.now().millisecondsSinceEpoch,
         );
       }).toList();
     } on MissingPluginException {

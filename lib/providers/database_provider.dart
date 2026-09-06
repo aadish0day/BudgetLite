@@ -4,11 +4,13 @@ import '../core/database/database.dart';
 final databaseProvider = Provider<AppDatabase>((ref) {
   final db = AppDatabase();
   db.migrateLegacyPayees();
-  ref.onDispose(() => db.close());
+  ref.onDispose(db.close);
   return db;
 });
 
-final categoriesProvider = FutureProvider.autoDispose<List<Category>>((ref) async {
+final categoriesProvider = FutureProvider.autoDispose<List<Category>>((
+  ref,
+) async {
   final db = ref.watch(databaseProvider);
   return db.select(db.categories).get();
 });
@@ -18,10 +20,13 @@ final accountsProvider = FutureProvider.autoDispose<List<Account>>((ref) async {
   return db.select(db.accounts).get();
 });
 
-final expenseCategoriesProvider = FutureProvider.autoDispose<List<Category>>((ref) async {
+final expenseCategoriesProvider = FutureProvider.autoDispose<List<Category>>((
+  ref,
+) async {
   final db = ref.watch(databaseProvider);
-  return (db.select(db.categories)..where((tbl) => tbl.type.equals('expense')))
-      .get();
+  return (db.select(
+    db.categories,
+  )..where((tbl) => tbl.type.equals('expense'))).get();
 });
 
 /// Stream-based provider for the default account's initial/starting balance.

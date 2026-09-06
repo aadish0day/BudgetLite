@@ -1,32 +1,37 @@
+import 'dart:async';
 import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+
+import '../../core/database/database.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/colors.dart';
 import '../../core/utils/constants.dart';
 import '../../core/utils/icon_helper.dart';
-import '../../providers/transaction_provider.dart';
 import '../../providers/budget_provider.dart';
 import '../../providers/database_provider.dart';
 import '../../providers/settings_provider.dart';
-import '../../core/database/database.dart';
+import '../../providers/transaction_provider.dart';
 
 class AddTransactionSheet extends ConsumerStatefulWidget {
-  final Transaction? transaction; // null = add mode, non-null = edit mode
-  final String initialType; // 'expense' or 'income'
+  // 'expense' or 'income'
 
   const AddTransactionSheet({
     super.key,
     this.transaction,
     this.initialType = 'expense',
   });
+  final Transaction? transaction; // null = add mode, non-null = edit mode
+  final String initialType;
 
   @override
-  ConsumerState<AddTransactionSheet> createState() => _AddTransactionSheetState();
+  ConsumerState<AddTransactionSheet> createState() =>
+      _AddTransactionSheetState();
 }
 
 class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
@@ -64,7 +69,9 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
       _selectedCategory = t.categoryId;
       _paymentMethod = t.paymentMethod;
       _selectedDate = t.date;
-      _amountCtrl.text = t.amount.abs().toStringAsFixed(t.amount == t.amount.roundToDouble() ? 0 : 2);
+      _amountCtrl.text = t.amount.abs().toStringAsFixed(
+        t.amount == t.amount.roundToDouble() ? 0 : 2,
+      );
       _isRecurring = t.isRecurring;
       _recurringInterval = t.recurringInterval;
       _recurringEndDate = t.recurringEndDate;
@@ -135,7 +142,9 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
 
   /// Uses the persisted auto-categorization rules from the provider.
   String? _detectCategory(String note) {
-    return ref.read(autoCategorizationRulesProvider.notifier).detectCategory(note);
+    return ref
+        .read(autoCategorizationRulesProvider.notifier)
+        .detectCategory(note);
   }
 
   void _setTransactionType(String type, List<Category> allCategories) {
@@ -151,18 +160,16 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
   Future<void> _pickImage(ImageSource source) async {
     try {
       final picker = ImagePicker();
-      final picked = await picker.pickImage(
-        source: source,
-        imageQuality: 70,
-      );
+      final picked = await picker.pickImage(source: source, imageQuality: 70);
+      if (!mounted) return;
       if (picked != null) {
         setState(() => _receiptImagePath = picked.path);
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to pick photo: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to pick photo: $e')));
       }
     }
   }
@@ -172,13 +179,10 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(
-          'Discard changes?',
-          style: AppTheme.displayStyle(size: 18, weight: FontWeight.w600),
-        ),
+        title: Text('Discard changes?', style: AppTheme.displayStyle()),
         content: Text(
           'You have unsaved data. Are you sure you want to discard it?',
-          style: AppTheme.bodyStyle(size: 14),
+          style: AppTheme.bodyStyle(),
         ),
         actions: [
           TextButton(
@@ -203,7 +207,9 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final allCategories = ref.watch(categoriesProvider).valueOrNull ?? [];
-    final categories = allCategories.where((c) => c.type == _transactionType).toList();
+    final categories = allCategories
+        .where((c) => c.type == _transactionType)
+        .toList();
     final isSubmitting = ref.watch(transactionNotifierProvider).isLoading;
 
     return PopScope(
@@ -232,10 +238,13 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
                 // Drag handle
                 Center(
                   child: Container(
-                    width: 40, height: 4,
+                    width: 40,
+                    height: 4,
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(2),
-                      color: colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
+                      color: colorScheme.onSurfaceVariant.withValues(
+                        alpha: 0.3,
+                      ),
                     ),
                   ),
                 ),
@@ -248,7 +257,8 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
                       child: Text(
                         _isEditing ? 'Edit Transaction' : 'Add Transaction',
                         style: AppTheme.displayStyle(
-                          size: 20, weight: FontWeight.w600, color: colorScheme.onSurface,
+                          size: 20,
+                          color: colorScheme.onSurface,
                         ),
                       ),
                     ),
@@ -266,7 +276,11 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
                             shape: BoxShape.circle,
                             color: colorScheme.surfaceContainerHighest,
                           ),
-                          child: Icon(LucideIcons.x, size: 16, color: colorScheme.onSurfaceVariant),
+                          child: Icon(
+                            LucideIcons.x,
+                            size: 16,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
                         ),
                       ),
                   ],
@@ -281,7 +295,10 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
                         label: 'Expense',
                         selected: _transactionType == 'expense',
                         color: colorScheme.primary,
-                        onTap: _isEditing ? null : () => _setTransactionType('expense', allCategories),
+                        onTap: _isEditing
+                            ? null
+                            : () =>
+                                  _setTransactionType('expense', allCategories),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -290,7 +307,10 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
                         label: 'Income',
                         selected: _transactionType == 'income',
                         color: AppColors.success,
-                        onTap: _isEditing ? null : () => _setTransactionType('income', allCategories),
+                        onTap: _isEditing
+                            ? null
+                            : () =>
+                                  _setTransactionType('income', allCategories),
                       ),
                     ),
                   ],
@@ -300,13 +320,15 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
                 // Amount field
                 TextFormField(
                   controller: _amountCtrl,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
                   autofocus: !_isEditing,
-                  style: AppTheme.financialStyle(size: 18, weight: FontWeight.w600),
+                  style: AppTheme.financialStyle(size: 18),
                   decoration: InputDecoration(
                     labelText: 'Amount',
                     prefixText: '₹ ',
-                    prefixStyle: AppTheme.financialStyle(size: 18, weight: FontWeight.w600),
+                    prefixStyle: AppTheme.financialStyle(size: 18),
                   ),
                   validator: (v) {
                     if (v == null || v.isEmpty) return 'Enter an amount';
@@ -322,7 +344,9 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
                 Text(
                   'Category',
                   style: AppTheme.bodyStyle(
-                    size: 13, weight: FontWeight.w500, color: colorScheme.onSurfaceVariant,
+                    size: 13,
+                    weight: FontWeight.w500,
+                    color: colorScheme.onSurfaceVariant,
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -337,46 +361,74 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Wrap(
-                          spacing: 8, runSpacing: 8,
+                          spacing: 8,
+                          runSpacing: 8,
                           children: [
                             ...categories.map((cat) {
                               final selected = _selectedCategory == cat.id;
                               final catColor = Color(cat.color);
                               final idx = categories.indexOf(cat);
                               return GestureDetector(
-                                onTapDown: (_) => setState(() => _pressedCategoryIdx = idx),
-                                onTapUp: (_) => setState(() => _pressedCategoryIdx = null),
-                                onTapCancel: () => setState(() => _pressedCategoryIdx = null),
+                                onTapDown: (_) =>
+                                    setState(() => _pressedCategoryIdx = idx),
+                                onTapUp: (_) =>
+                                    setState(() => _pressedCategoryIdx = null),
+                                onTapCancel: () =>
+                                    setState(() => _pressedCategoryIdx = null),
                                 onTap: () {
                                   setState(() => _selectedCategory = cat.id);
                                   field.didChange(cat.id);
                                 },
                                 child: AnimatedScale(
-                                  scale: _pressedCategoryIdx == idx ? 0.94 : 1.0,
+                                  scale: _pressedCategoryIdx == idx
+                                      ? 0.94
+                                      : 1.0,
                                   duration: const Duration(milliseconds: 120),
                                   curve: Curves.easeOut,
                                   child: AnimatedContainer(
                                     duration: 200.ms,
-                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 14,
+                                      vertical: 10,
+                                    ),
                                     decoration: BoxDecoration(
                                       borderRadius: BorderRadius.circular(12),
                                       color: selected
                                           ? catColor.withValues(alpha: 0.15)
-                                          : colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                                          : colorScheme.surfaceContainerHighest
+                                                .withValues(alpha: 0.5),
                                       border: selected
-                                          ? Border.all(color: catColor.withValues(alpha: 0.4), width: 1.5)
+                                          ? Border.all(
+                                              color: catColor.withValues(
+                                                alpha: 0.4,
+                                              ),
+                                              width: 1.5,
+                                            )
                                           : null,
                                     ),
                                     child: Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        Icon(getCategoryIcon(cat.icon), size: 18,
-                                            color: selected ? catColor : colorScheme.onSurfaceVariant),
+                                        Icon(
+                                          getCategoryIcon(cat.icon),
+                                          size: 18,
+                                          color: selected
+                                              ? catColor
+                                              : colorScheme.onSurfaceVariant,
+                                        ),
                                         const SizedBox(width: 6),
-                                        Text(cat.name, style: AppTheme.bodyStyle(
-                                          size: 13, weight: selected ? FontWeight.w600 : FontWeight.w400,
-                                          color: selected ? catColor : colorScheme.onSurfaceVariant,
-                                        )),
+                                        Text(
+                                          cat.name,
+                                          style: AppTheme.bodyStyle(
+                                            size: 13,
+                                            weight: selected
+                                                ? FontWeight.w600
+                                                : FontWeight.w400,
+                                            color: selected
+                                                ? catColor
+                                                : colorScheme.onSurfaceVariant,
+                                          ),
+                                        ),
                                       ],
                                     ),
                                   ),
@@ -390,7 +442,10 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
                             padding: const EdgeInsets.only(top: 6, left: 4),
                             child: Text(
                               field.errorText!,
-                              style: AppTheme.bodyStyle(size: 12, color: AppColors.error),
+                              style: AppTheme.bodyStyle(
+                                size: 12,
+                                color: AppColors.error,
+                              ),
                             ),
                           ),
                       ],
@@ -405,7 +460,11 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
                   children: [
                     Row(
                       children: [
-                        Icon(LucideIcons.tag, size: 14, color: colorScheme.primary),
+                        Icon(
+                          LucideIcons.tag,
+                          size: 14,
+                          color: colorScheme.primary,
+                        ),
                         const SizedBox(width: 6),
                         Text(
                           'Select Tags',
@@ -434,10 +493,15 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
                           selectedColor: colorScheme.primary,
                           labelStyle: AppTheme.bodyStyle(
                             size: 12,
-                            weight: selected ? FontWeight.w600 : FontWeight.w500,
-                            color: selected ? colorScheme.onPrimary : colorScheme.onSurface,
+                            weight: selected
+                                ? FontWeight.w600
+                                : FontWeight.w500,
+                            color: selected
+                                ? colorScheme.onPrimary
+                                : colorScheme.onSurface,
                           ),
-                          backgroundColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                          backgroundColor: colorScheme.surfaceContainerHighest
+                              .withValues(alpha: 0.5),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(20),
                             side: BorderSide(
@@ -446,7 +510,10 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
                                   : colorScheme.outline.withValues(alpha: 0.2),
                             ),
                           ),
-                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 4,
+                            vertical: 2,
+                          ),
                         );
                       }).toList(),
                     ),
@@ -468,7 +535,6 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
                               )
                             : null,
                       ),
-                      maxLines: 1,
                     ),
                   ],
                 ),
@@ -478,14 +544,19 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
                     borderRadius: BorderRadius.circular(12),
                     color: _isReimbursementPending
                         ? colorScheme.primary.withValues(alpha: 0.08)
-                        : colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                        : colorScheme.surfaceContainerHighest.withValues(
+                            alpha: 0.3,
+                          ),
                     border: Border.all(
                       color: _isReimbursementPending
                           ? colorScheme.primary.withValues(alpha: 0.3)
                           : colorScheme.outline.withValues(alpha: 0.1),
                     ),
                   ),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
                   child: Column(
                     children: [
                       SwitchListTile(
@@ -496,7 +567,9 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
                             Icon(
                               LucideIcons.handCoins,
                               size: 16,
-                              color: _isReimbursementPending ? colorScheme.primary : colorScheme.onSurfaceVariant,
+                              color: _isReimbursementPending
+                                  ? colorScheme.primary
+                                  : colorScheme.onSurfaceVariant,
                             ),
                             const SizedBox(width: 8),
                             Expanded(
@@ -513,30 +586,43 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
                         ),
                         subtitle: Text(
                           'Track money owed to you by parents/friends',
-                          style: AppTheme.bodyStyle(size: 11, color: colorScheme.onSurfaceVariant),
+                          style: AppTheme.bodyStyle(
+                            size: 11,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
                         ),
                         value: _isReimbursementPending,
-                        onChanged: (val) => setState(() => _isReimbursementPending = val),
+                        onChanged: (val) =>
+                            setState(() => _isReimbursementPending = val),
                       ),
                       if (_isReimbursementPending) ...[
                         const SizedBox(height: 6),
                         TextFormField(
                           controller: _owedByCtrl,
-                          decoration: InputDecoration(
+                          decoration: const InputDecoration(
                             labelText: 'Owed By (e.g. Parents, Friends, Rahul)',
-                            prefixIcon: const Icon(LucideIcons.user, size: 16),
-                            contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                            prefixIcon: Icon(LucideIcons.user, size: 16),
+                            contentPadding: EdgeInsets.symmetric(
+                              vertical: 8,
+                              horizontal: 12,
+                            ),
                           ),
                         ),
                         const SizedBox(height: 8),
                         Row(
-                          children: ['Parents', 'Friends', 'Roommate'].map((name) {
+                          children: ['Parents', 'Friends', 'Roommate'].map((
+                            name,
+                          ) {
                             return Padding(
                               padding: const EdgeInsets.only(right: 6),
                               child: ActionChip(
                                 label: Text(name),
-                                labelStyle: AppTheme.bodyStyle(size: 11, weight: FontWeight.w500),
-                                onPressed: () => setState(() => _owedByCtrl.text = name),
+                                labelStyle: AppTheme.bodyStyle(
+                                  size: 11,
+                                  weight: FontWeight.w500,
+                                ),
+                                onPressed: () =>
+                                    setState(() => _owedByCtrl.text = name),
                               ),
                             );
                           }).toList(),
@@ -555,7 +641,10 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
                     labelText: 'Note (optional)',
                     suffixIcon: _noteCtrl.text.isNotEmpty
                         ? GestureDetector(
-                            onTap: () { _noteCtrl.clear(); setState(() {}); },
+                            onTap: () {
+                              _noteCtrl.clear();
+                              setState(() {});
+                            },
                             child: const Icon(LucideIcons.x, size: 16),
                           )
                         : null,
@@ -570,37 +659,61 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
                     }
                   },
                 ),
-                if (widget.transaction?.payee != null && widget.transaction!.payee!.isNotEmpty)
+                if (widget.transaction?.payee != null &&
+                    widget.transaction!.payee!.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(top: 8),
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(8),
-                        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
-                        border: Border.all(color: colorScheme.outline.withValues(alpha: 0.15)),
+                        color: colorScheme.surfaceContainerHighest.withValues(
+                          alpha: 0.6,
+                        ),
+                        border: Border.all(
+                          color: colorScheme.outline.withValues(alpha: 0.15),
+                        ),
                       ),
                       child: Row(
                         children: [
                           Icon(
-                            _transactionType == 'income' ? LucideIcons.userCheck : LucideIcons.store,
+                            _transactionType == 'income'
+                                ? LucideIcons.userCheck
+                                : LucideIcons.store,
                             size: 14,
                             color: colorScheme.primary,
                           ),
                           const SizedBox(width: 6),
                           Text(
                             '${_transactionType == "income" ? "Sender" : "Paid to"}: ',
-                            style: AppTheme.bodyStyle(size: 12, weight: FontWeight.w600, color: colorScheme.onSurfaceVariant),
+                            style: AppTheme.bodyStyle(
+                              size: 12,
+                              weight: FontWeight.w600,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
                           ),
                           Expanded(
                             child: Text(
                               widget.transaction!.payee!,
-                              style: AppTheme.bodyStyle(size: 12, weight: FontWeight.w700, color: colorScheme.onSurface),
+                              style: AppTheme.bodyStyle(
+                                size: 12,
+                                weight: FontWeight.w700,
+                                color: colorScheme.onSurface,
+                              ),
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
                           const SizedBox(width: 4),
-                          Icon(LucideIcons.lock, size: 12, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5)),
+                          Icon(
+                            LucideIcons.lock,
+                            size: 12,
+                            color: colorScheme.onSurfaceVariant.withValues(
+                              alpha: 0.5,
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -619,7 +732,10 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
                             firstDate: DateTime(2020),
                             lastDate: DateTime(2030),
                           );
-                          if (date != null) setState(() => _selectedDate = date);
+                          if (!mounted) return;
+                          if (date != null) {
+                            setState(() => _selectedDate = date);
+                          }
                         },
                         icon: const Icon(LucideIcons.calendarDays, size: 16),
                         label: Text(
@@ -633,13 +749,24 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
                       child: DropdownButtonFormField<String>(
                         initialValue: _paymentMethod,
                         decoration: const InputDecoration(
-                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
                         ),
-                        items: AppConstants.paymentMethods.map((m) => DropdownMenuItem(
-                          value: m,
-                          child: Text(m, style: AppTheme.bodyStyle(size: 13)),
-                        )).toList(),
-                        onChanged: (v) => setState(() => _paymentMethod = v ?? 'Cash'),
+                        items: AppConstants.paymentMethods
+                            .map(
+                              (m) => DropdownMenuItem(
+                                value: m,
+                                child: Text(
+                                  m,
+                                  style: AppTheme.bodyStyle(size: 13),
+                                ),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (v) =>
+                            setState(() => _paymentMethod = v ?? 'Cash'),
                       ),
                     ),
                   ],
@@ -656,18 +783,30 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
                           : colorScheme.outline.withValues(alpha: 0.15),
                     ),
                   ),
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 4,
+                  ),
                   child: Column(
                     children: [
                       Row(
                         children: [
-                          Icon(LucideIcons.rotateCw, size: 18,
-                              color: _isRecurring ? colorScheme.primary : colorScheme.onSurfaceVariant),
+                          Icon(
+                            LucideIcons.rotateCw,
+                            size: 18,
+                            color: _isRecurring
+                                ? colorScheme.primary
+                                : colorScheme.onSurfaceVariant,
+                          ),
                           const SizedBox(width: 10),
                           Expanded(
-                            child: Text('Recurring Transaction', style: AppTheme.bodyStyle(
-                              size: 14, weight: FontWeight.w500, color: colorScheme.onSurface,
-                            )),
+                            child: Text(
+                              'Recurring Transaction',
+                              style: AppTheme.bodyStyle(
+                                weight: FontWeight.w500,
+                                color: colorScheme.onSurface,
+                              ),
+                            ),
                           ),
                           Switch.adaptive(
                             value: _isRecurring,
@@ -685,20 +824,33 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
                             initialValue: _recurringInterval,
                             decoration: InputDecoration(
                               labelText: 'Repeat every',
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
                               isDense: true,
                             ),
-                            items: AppConstants.recurringIntervals.map((interval) => DropdownMenuItem(
-                              value: interval,
-                              child: Text(
-                                interval[0].toUpperCase() + interval.substring(1),
-                                style: AppTheme.bodyStyle(size: 13),
-                              ),
-                            )).toList(),
-                            onChanged: (v) => setState(() => _recurringInterval = v),
+                            items: AppConstants.recurringIntervals
+                                .map(
+                                  (interval) => DropdownMenuItem(
+                                    value: interval,
+                                    child: Text(
+                                      interval[0].toUpperCase() +
+                                          interval.substring(1),
+                                      style: AppTheme.bodyStyle(size: 13),
+                                    ),
+                                  ),
+                                )
+                                .toList(),
+                            onChanged: (v) =>
+                                setState(() => _recurringInterval = v),
                             validator: (v) {
-                              if (_isRecurring && v == null) return 'Select interval';
+                              if (_isRecurring && v == null) {
+                                return 'Select interval';
+                              }
                               return null;
                             },
                           ),
@@ -711,16 +863,26 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
                                 onPressed: () async {
                                   final date = await showDatePicker(
                                     context: context,
-                                    initialDate: _recurringEndDate ?? _selectedDate.add(const Duration(days: 365)),
+                                    initialDate:
+                                        _recurringEndDate ??
+                                        _selectedDate.add(
+                                          const Duration(days: 365),
+                                        ),
                                     firstDate: _selectedDate,
                                     lastDate: DateTime(2035),
                                   );
-                                  if (date != null) setState(() => _recurringEndDate = date);
+                                  if (!mounted) return;
+                                  if (date != null) {
+                                    setState(() => _recurringEndDate = date);
+                                  }
                                 },
-                                icon: Icon(LucideIcons.calendarX, size: 14,
-                                    color: _recurringEndDate != null
-                                        ? AppColors.error
-                                        : colorScheme.onSurfaceVariant),
+                                icon: Icon(
+                                  LucideIcons.calendarX,
+                                  size: 14,
+                                  color: _recurringEndDate != null
+                                      ? AppColors.error
+                                      : colorScheme.onSurfaceVariant,
+                                ),
                                 label: Text(
                                   _recurringEndDate != null
                                       ? 'Ends ${_recurringEndDate!.day}/${_recurringEndDate!.month}/${_recurringEndDate!.year}'
@@ -728,19 +890,28 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
                                   style: AppTheme.bodyStyle(size: 12),
                                 ),
                                 style: OutlinedButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(vertical: 10),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 10,
+                                  ),
                                   side: BorderSide(
                                     color: _recurringEndDate != null
                                         ? AppColors.error.withValues(alpha: 0.3)
-                                        : colorScheme.outline.withValues(alpha: 0.2),
+                                        : colorScheme.outline.withValues(
+                                            alpha: 0.2,
+                                          ),
                                   ),
                                 ),
                               ),
                             ),
                             if (_recurringEndDate != null)
                               IconButton(
-                                icon: Icon(LucideIcons.x, size: 16, color: AppColors.error),
-                                onPressed: () => setState(() => _recurringEndDate = null),
+                                icon: const Icon(
+                                  LucideIcons.x,
+                                  size: 16,
+                                  color: AppColors.error,
+                                ),
+                                onPressed: () =>
+                                    setState(() => _recurringEndDate = null),
                                 visualDensity: VisualDensity.compact,
                               ),
                           ],
@@ -755,7 +926,9 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
                 Text(
                   'Attach Receipt Photo',
                   style: AppTheme.bodyStyle(
-                    size: 13, weight: FontWeight.w500, color: colorScheme.onSurfaceVariant,
+                    size: 13,
+                    weight: FontWeight.w500,
+                    color: colorScheme.onSurfaceVariant,
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -769,7 +942,11 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
                           width: double.infinity,
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: colorScheme.outline.withValues(alpha: 0.15)),
+                            border: Border.all(
+                              color: colorScheme.outline.withValues(
+                                alpha: 0.15,
+                              ),
+                            ),
                             image: DecorationImage(
                               image: FileImage(File(_receiptImagePath!)),
                               fit: BoxFit.cover,
@@ -778,13 +955,21 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
                         ),
                       ),
                       Positioned(
-                        top: 8, right: 8,
+                        top: 8,
+                        right: 8,
                         child: GestureDetector(
                           onTap: () => setState(() => _receiptImagePath = null),
                           child: Container(
                             padding: const EdgeInsets.all(4),
-                            decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.black54),
-                            child: const Icon(LucideIcons.x, size: 18, color: Colors.white),
+                            decoration: const BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Colors.black54,
+                            ),
+                            child: const Icon(
+                              LucideIcons.x,
+                              size: 18,
+                              color: Colors.white,
+                            ),
                           ),
                         ),
                       ),
@@ -797,7 +982,10 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
                         child: OutlinedButton.icon(
                           onPressed: () => _pickImage(ImageSource.camera),
                           icon: const Icon(LucideIcons.camera, size: 16),
-                          label: Text('Take Photo', style: AppTheme.bodyStyle(size: 12)),
+                          label: Text(
+                            'Take Photo',
+                            style: AppTheme.bodyStyle(size: 12),
+                          ),
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -805,7 +993,10 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
                         child: OutlinedButton.icon(
                           onPressed: () => _pickImage(ImageSource.gallery),
                           icon: const Icon(LucideIcons.image, size: 16),
-                          label: Text('Choose Gallery', style: AppTheme.bodyStyle(size: 12)),
+                          label: Text(
+                            'Choose Gallery',
+                            style: AppTheme.bodyStyle(size: 12),
+                          ),
                         ),
                       ),
                     ],
@@ -815,13 +1006,21 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
                 // Submit button
                 FilledButton(
                   onPressed: isSubmitting ? null : _submit,
-                  style: FilledButton.styleFrom(minimumSize: const Size(double.infinity, 52)),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size(double.infinity, 52),
+                  ),
                   child: isSubmitting
-                      ? const SizedBox(width: 20, height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2))
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
                       : Text(
                           _isEditing ? 'Update Transaction' : 'Add Transaction',
-                          style: AppTheme.bodyStyle(size: 15, weight: FontWeight.w600),
+                          style: AppTheme.bodyStyle(
+                            size: 15,
+                            weight: FontWeight.w600,
+                          ),
                         ),
                 ),
                 const SizedBox(height: 20),
@@ -847,9 +1046,9 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
     }
   }
 
-  void _submit() async {
+  Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
-    HapticFeedback.lightImpact();
+    unawaited(HapticFeedback.lightImpact());
     final amount = double.parse(_amountCtrl.text);
     if (amount <= 0) return;
 
@@ -916,7 +1115,9 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
   String? _buildMergedNote(String note, String tags) {
     var resultNote = note.trim();
     if (_isReimbursementPending) {
-      final person = _owedByCtrl.text.trim().isEmpty ? 'Parents' : _owedByCtrl.text.trim();
+      final person = _owedByCtrl.text.trim().isEmpty
+          ? 'Parents'
+          : _owedByCtrl.text.trim();
       final tagStr = '[Owed by: $person]';
       if (!resultNote.contains('[Owed by:')) {
         resultNote = resultNote.isEmpty ? tagStr : '$resultNote $tagStr';
@@ -936,8 +1137,8 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
 
 /// Full-screen receipt photo viewer with pinch-zoom
 class _FullReceiptViewer extends StatelessWidget {
-  final String imagePath;
   const _FullReceiptViewer({required this.imagePath});
+  final String imagePath;
 
   @override
   Widget build(BuildContext context) {
@@ -959,14 +1160,18 @@ class _FullReceiptViewer extends StatelessWidget {
       body: Center(
         child: InteractiveViewer(
           minScale: 0.5,
-          maxScale: 5.0,
+          maxScale: 5,
           child: Image.file(
             File(imagePath),
             fit: BoxFit.contain,
             errorBuilder: (_, _, _) => Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(LucideIcons.imageOff, size: 64, color: colorScheme.onSurface.withValues(alpha: 0.3)),
+                Icon(
+                  LucideIcons.imageOff,
+                  size: 64,
+                  color: colorScheme.onSurface.withValues(alpha: 0.3),
+                ),
                 const SizedBox(height: 16),
                 const Text('Could not load image'),
               ],
@@ -979,17 +1184,22 @@ class _FullReceiptViewer extends StatelessWidget {
 }
 
 class _TagExtractionResult {
+  const _TagExtractionResult({required this.cleanNote, required this.tags});
   final String cleanNote;
   final String tags;
-  const _TagExtractionResult({required this.cleanNote, required this.tags});
 }
 
 class _TypeButton extends StatefulWidget {
+  const _TypeButton({
+    required this.label,
+    required this.selected,
+    required this.color,
+    this.onTap,
+  });
   final String label;
   final bool selected;
   final Color color;
   final VoidCallback? onTap;
-  const _TypeButton({required this.label, required this.selected, required this.color, this.onTap});
 
   @override
   State<_TypeButton> createState() => _TypeButtonState();
@@ -1019,14 +1229,18 @@ class _TypeButtonState extends State<_TypeButton> {
             color: widget.selected
                 ? widget.color.withValues(alpha: 0.15)
                 : colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-            border: widget.selected ? Border.all(color: widget.color, width: 1.5) : null,
+            border: widget.selected
+                ? Border.all(color: widget.color, width: 1.5)
+                : null,
           ),
           child: Text(
             widget.label,
             style: AppTheme.bodyStyle(
               size: 13,
               weight: widget.selected ? FontWeight.bold : FontWeight.w500,
-              color: widget.selected ? widget.color : colorScheme.onSurfaceVariant,
+              color: widget.selected
+                  ? widget.color
+                  : colorScheme.onSurfaceVariant,
             ),
           ),
         ),

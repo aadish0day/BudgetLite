@@ -2,11 +2,6 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 
 class SectionTitle extends StatelessWidget {
-  final String title;
-  final double size;
-  final FontWeight weight;
-  final double letterSpacing;
-
   const SectionTitle(
     this.title, {
     super.key,
@@ -14,6 +9,10 @@ class SectionTitle extends StatelessWidget {
     this.weight = FontWeight.w600,
     this.letterSpacing = 0.5,
   });
+  final String title;
+  final double size;
+  final FontWeight weight;
+  final double letterSpacing;
 
   @override
   Widget build(BuildContext context) {

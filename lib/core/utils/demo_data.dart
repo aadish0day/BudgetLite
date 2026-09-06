@@ -8,12 +8,42 @@ class DemoDataSeeder {
     final now = DateTime.now();
 
     // Sample categories with student-friendly data
-    final categoryIds = ['food', 'transport', 'shopping', 'bills', 'entertainment'];
+    final categoryIds = [
+      'food',
+      'transport',
+      'shopping',
+      'bills',
+      'entertainment',
+    ];
     final merchants = {
-      'food': ['Swiggy', 'Zomato', 'Starbucks', "Domino's", 'Dhaba', 'Pizza Hut', "McDonald's", 'Subway'],
+      'food': [
+        'Swiggy',
+        'Zomato',
+        'Starbucks',
+        "Domino's",
+        'Dhaba',
+        'Pizza Hut',
+        "McDonald's",
+        'Subway',
+      ],
       'transport': ['Uber', 'Ola', 'Metro Card', 'Bus Pass', 'Auto'],
-      'shopping': ['Amazon', 'Myntra', 'Flipkart', 'Zara', 'H&M', 'Ajio', 'Nykaa'],
-      'bills': ['Netflix', 'Jio', 'Airtel', 'Electricity', 'Internet', 'Spotify'],
+      'shopping': [
+        'Amazon',
+        'Myntra',
+        'Flipkart',
+        'Zara',
+        'H&M',
+        'Ajio',
+        'Nykaa',
+      ],
+      'bills': [
+        'Netflix',
+        'Jio',
+        'Airtel',
+        'Electricity',
+        'Internet',
+        'Spotify',
+      ],
       'entertainment': ['PVR', 'BookMyShow', 'Steam', 'Spotify', 'Zomato'],
     };
 
@@ -30,36 +60,56 @@ class DemoDataSeeder {
 
       for (int i = 0; i < txnsToday; i++) {
         final catId = categoryIds[random.nextInt(categoryIds.length)];
-        final merchant = merchants[catId]![random.nextInt(merchants[catId]!.length)];
+        final merchant =
+            merchants[catId]![random.nextInt(merchants[catId]!.length)];
         final amount = _randomAmount(random, catId);
 
-        batch.add(TransactionsCompanion.insert(
-          id: 'demo_${daysAgo}_$i',
-          amount: amount,
-          categoryId: catId,
-          accountId: 'default',
-          note: Value(merchant),
-          date: DateTime(date.year, date.month, date.day, random.nextInt(12) + 8, random.nextInt(60)),
-          paymentMethod: Value(['Cash', 'UPI', 'Debit Card', 'Credit Card', 'Net Banking', 'Wallet'][random.nextInt(6)]),
-          // Historical one-offs must NOT be flagged recurring — that would
-          // turn dozens of past payments into templates whose due instances
-          // flood the ledger with "(auto)" rows after seeding.
-        ));
+        batch.add(
+          TransactionsCompanion.insert(
+            id: 'demo_${daysAgo}_$i',
+            amount: amount,
+            categoryId: catId,
+            accountId: 'default',
+            note: Value(merchant),
+            date: DateTime(
+              date.year,
+              date.month,
+              date.day,
+              random.nextInt(12) + 8,
+              random.nextInt(60),
+            ),
+            paymentMethod: Value(
+              [
+                'Cash',
+                'UPI',
+                'Debit Card',
+                'Credit Card',
+                'Net Banking',
+                'Wallet',
+              ][random.nextInt(6)],
+            ),
+            // Historical one-offs must NOT be flagged recurring — that would
+            // turn dozens of past payments into templates whose due instances
+            // flood the ledger with "(auto)" rows after seeding.
+          ),
+        );
       }
     }
 
     // Add past income entries for history (last 12 weeks) — one-off transactions only
     for (int weekOffset = 1; weekOffset <= 12; weekOffset++) {
       final pocketDate = now.subtract(Duration(days: 7 * weekOffset));
-      batch.add(TransactionsCompanion.insert(
-        id: 'demo_income_weekly_$weekOffset',
-        amount: -3000.0,
-        categoryId: 'income',
-        accountId: 'default',
-        note: const Value('Pocket Money'),
-        date: pocketDate,
-        paymentMethod: const Value('UPI'),
-      ));
+      batch.add(
+        TransactionsCompanion.insert(
+          id: 'demo_income_weekly_$weekOffset',
+          amount: -3000,
+          categoryId: 'income',
+          accountId: 'default',
+          note: const Value('Pocket Money'),
+          date: pocketDate,
+          paymentMethod: const Value('UPI'),
+        ),
+      );
     }
 
     // A few explicit subscription templates so the Subscriptions screen has
@@ -71,32 +121,44 @@ class DemoDataSeeder {
     ];
     for (final (id, name, catId, amount, daysAgo) in subTemplates) {
       final d = now.subtract(Duration(days: daysAgo));
-      batch.add(TransactionsCompanion.insert(
-        id: id,
-        amount: amount,
-        categoryId: catId,
-        accountId: 'default',
-        note: Value(name),
-        date: DateTime(d.year, d.month, d.day, 10, 0),
-        paymentMethod: const Value('UPI'),
-        isRecurring: const Value(true),
-        recurringInterval: const Value('monthly'),
-      ));
+      batch.add(
+        TransactionsCompanion.insert(
+          id: id,
+          amount: amount,
+          categoryId: catId,
+          accountId: 'default',
+          note: Value(name),
+          date: DateTime(d.year, d.month, d.day, 10),
+          paymentMethod: const Value('UPI'),
+          isRecurring: const Value(true),
+          recurringInterval: const Value('monthly'),
+        ),
+      );
     }
 
     // Set budgets for categories
-    final budgetAmounts = <String, double>{'food': 3000, 'transport': 1000, 'shopping': 2000, 'bills': 1000, 'entertainment': 1000};
+    final budgetAmounts = <String, double>{
+      'food': 3000,
+      'transport': 1000,
+      'shopping': 2000,
+      'bills': 1000,
+      'entertainment': 1000,
+    };
     final monthKey = '${now.year}-${now.month.toString().padLeft(2, '0')}';
     for (final entry in budgetAmounts.entries) {
       // Upsert on the primary key — a plain insert crashes when demo data was
       // seeded before a month boundary (same fixed id, existence check only
       // matched the current month).
-      await db.into(db.budgets).insertOnConflictUpdate(BudgetsCompanion.insert(
-        id: 'demo_budget_${entry.key}',
-        categoryId: entry.key,
-        month: monthKey,
-        allocatedAmount: entry.value,
-      ));
+      await db
+          .into(db.budgets)
+          .insertOnConflictUpdate(
+            BudgetsCompanion.insert(
+              id: 'demo_budget_${entry.key}',
+              categoryId: entry.key,
+              month: monthKey,
+              allocatedAmount: entry.value,
+            ),
+          );
     }
 
     // Insert all transactions

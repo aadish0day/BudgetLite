@@ -1,22 +1,28 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:quick_actions/quick_actions.dart';
 import 'app.dart';
+import 'firebase_options.dart';
 
-final quickActionCallbackProvider = StateProvider<void Function(int tabIndex)?>((ref) => null);
+final quickActionCallbackProvider = StateProvider<void Function(int tabIndex)?>(
+  (ref) => null,
+);
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-  ]);
+  await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
 
-  runApp(
-    const ProviderScope(
-      child: BudgetLiteApp(),
-    ),
-  );
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  } catch (e) {
+    debugPrint('Firebase initialization failed: $e');
+  }
+
+  runApp(const ProviderScope(child: BudgetLiteApp()));
 }
 
 final _quickActionsInitialized = StateProvider<bool>((ref) => false);

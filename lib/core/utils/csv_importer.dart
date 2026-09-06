@@ -3,41 +3,35 @@ import 'package:csv/csv.dart';
 
 /// A parsed row from a bank statement CSV.
 class CsvTransactionRow {
-  final DateTime date;
-  final String description;
-  final double amount;
-
   const CsvTransactionRow({
     required this.date,
     required this.description,
     required this.amount,
   });
+  final DateTime date;
+  final String description;
+  final double amount;
 }
 
 /// Result of importing a CSV file.
 class CsvImportResult {
-  final List<CsvTransactionRow> transactions;
-  final int totalRows;
-  final int skippedRows;
-  final List<String> errors;
-
   const CsvImportResult({
     required this.transactions,
     required this.totalRows,
     required this.skippedRows,
     required this.errors,
   });
+  final List<CsvTransactionRow> transactions;
+  final int totalRows;
+  final int skippedRows;
+  final List<String> errors;
 
   int get validCount => transactions.length;
 }
 
 /// Column mapping for detected CSV columns.
 class CsvColumnMapping {
-  final int? dateColumn;
-  final int? descriptionColumn;
-  final int? debitColumn;
-  final int? creditColumn;
-  final int? amountColumn; // For single-column amount
+  // For single-column amount
 
   const CsvColumnMapping({
     this.dateColumn,
@@ -46,6 +40,11 @@ class CsvColumnMapping {
     this.creditColumn,
     this.amountColumn,
   });
+  final int? dateColumn;
+  final int? descriptionColumn;
+  final int? debitColumn;
+  final int? creditColumn;
+  final int? amountColumn;
 
   bool get isValid =>
       dateColumn != null &&
@@ -67,7 +66,7 @@ class CsvImporter {
     CsvColumnMapping? forcedMapping,
   }) async {
     final file = File(filePath);
-    if (!await file.exists()) {
+    if (!file.existsSync()) {
       return const CsvImportResult(
         transactions: [],
         totalRows: 0,
@@ -86,9 +85,15 @@ class CsvImporter {
       );
     }
 
-    final normalizedContent = content.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
-    final parsedRows = const CsvToListConverter(eol: '\n').convert(normalizedContent);
-    final parsedLines = parsedRows.map((r) => r.map((e) => e.toString()).toList()).toList();
+    final normalizedContent = content
+        .replaceAll('\r\n', '\n')
+        .replaceAll('\r', '\n');
+    final parsedRows = const CsvToListConverter(
+      eol: '\n',
+    ).convert(normalizedContent);
+    final parsedLines = parsedRows
+        .map((r) => r.map((e) => e.toString()).toList())
+        .toList();
     // Filter out completely empty lines/rows
     final cleanLines = parsedLines
         .where((row) => row.any((cell) => cell.trim().isNotEmpty))
@@ -101,7 +106,9 @@ class CsvImporter {
         errors: ['Empty file'],
       );
     }
-    final headerRow = cleanLines.first.map((c) => c.trim().toLowerCase()).toList();
+    final headerRow = cleanLines.first
+        .map((c) => c.trim().toLowerCase())
+        .toList();
     final dataRows = cleanLines.skip(1).toList();
 
     // Auto-detect or use forced mapping
@@ -113,9 +120,7 @@ class CsvImporter {
         totalRows: dataRows.length,
         skippedRows: dataRows.length,
         errors: [
-          'Could not auto-detect CSV columns. '
-          'Expected columns: Date, Description, and Amount (or Debit/Credit). '
-          'Found: $sample',
+          'Could not auto-detect CSV columns. Expected columns: Date, Description, and Amount (or Debit/Credit). Found: $sample',
         ],
       );
     }
@@ -192,11 +197,13 @@ class CsvImporter {
           continue;
         }
 
-        transactions.add(CsvTransactionRow(
-          date: date,
-          description: desc.isNotEmpty ? desc : 'Bank transaction',
-          amount: amount,
-        ));
+        transactions.add(
+          CsvTransactionRow(
+            date: date,
+            description: desc.isNotEmpty ? desc : 'Bank transaction',
+            amount: amount,
+          ),
+        );
       } catch (e) {
         errors.add('Row ${i + 2}: $e');
       }
@@ -212,37 +219,59 @@ class CsvImporter {
 
   /// Auto-detect column indices from header names.
   static CsvColumnMapping _detectMapping(List<String> header) {
-    int? dateCol, descCol, debitCol, creditCol, amountCol;
+    int? dateCol;
+    int? descCol;
+    int? debitCol;
+    int? creditCol;
+    int? amountCol;
 
     for (int i = 0; i < header.length; i++) {
       final h = header[i];
 
       // Date column
-      if (h == 'date' || h == 'transaction date' || h == 'txn date' ||
-          h == 'value date' || h == 'posting date') {
+      if (h == 'date' ||
+          h == 'transaction date' ||
+          h == 'txn date' ||
+          h == 'value date' ||
+          h == 'posting date') {
         dateCol = i;
       }
 
       // Description
-      if (h == 'description' || h == 'narration' || h == 'particulars' ||
-          h == 'transaction details' || h == 'details' || h == 'remarks') {
+      if (h == 'description' ||
+          h == 'narration' ||
+          h == 'particulars' ||
+          h == 'transaction details' ||
+          h == 'details' ||
+          h == 'remarks') {
         descCol = i;
       }
 
       // Debit
-      if (h == 'debit' || h == 'debit amount' || h == 'withdrawal' ||
-          h == 'withdrawals' || h == 'dr' || h == 'dr.' || h == 'withdrawn') {
+      if (h == 'debit' ||
+          h == 'debit amount' ||
+          h == 'withdrawal' ||
+          h == 'withdrawals' ||
+          h == 'dr' ||
+          h == 'dr.' ||
+          h == 'withdrawn') {
         debitCol = i;
       }
 
       // Credit
-      if (h == 'credit' || h == 'credit amount' || h == 'deposit' ||
-          h == 'deposits' || h == 'cr' || h == 'cr.') {
+      if (h == 'credit' ||
+          h == 'credit amount' ||
+          h == 'deposit' ||
+          h == 'deposits' ||
+          h == 'cr' ||
+          h == 'cr.') {
         creditCol = i;
       }
 
       // Amount (single column, sign indicates direction)
-      if (h == 'amount' || h == 'txn amount' || h == 'transaction amount' ||
+      if (h == 'amount' ||
+          h == 'txn amount' ||
+          h == 'transaction amount' ||
           h == 'value') {
         amountCol = i;
       }
@@ -252,8 +281,10 @@ class CsvImporter {
     if (descCol == null) {
       // Try common alternative names
       for (int i = 0; i < header.length; i++) {
-        if (header[i] == 'transaction' || header[i] == 'name' ||
-            header[i] == 'merchant' || header[i] == 'payee') {
+        if (header[i] == 'transaction' ||
+            header[i] == 'name' ||
+            header[i] == 'merchant' ||
+            header[i] == 'payee') {
           descCol = i;
           break;
         }
@@ -282,7 +313,8 @@ class CsvImporter {
 
     // Honor an explicit dateFormat for ambiguous numeric dates.
     final preferMonthFirst =
-        dateFormat != null && RegExp(r'^\s*M', caseSensitive: false).hasMatch(dateFormat);
+        dateFormat != null &&
+        RegExp(r'^\s*M', caseSensitive: false).hasMatch(dateFormat);
 
     if (preferMonthFirst) {
       final mdy = _tryParseMdy(trimmed);
@@ -295,24 +327,34 @@ class CsvImporter {
   }
 
   static DateTime? _tryParseDmy(String trimmed) {
-    final dmy = RegExp(r'^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$').firstMatch(trimmed);
+    final dmy = RegExp(
+      r'^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$',
+    ).firstMatch(trimmed);
     if (dmy == null) return null;
     final day = int.parse(dmy.group(1)!);
     final month = int.parse(dmy.group(2)!);
     final year = int.parse(dmy.group(3)!);
-    if (month >= 1 && month <= 12 && day >= 1 && day <= DateTime(year, month + 1, 0).day) {
+    if (month >= 1 &&
+        month <= 12 &&
+        day >= 1 &&
+        day <= DateTime(year, month + 1, 0).day) {
       return DateTime(year, month, day);
     }
     return null;
   }
 
   static DateTime? _tryParseMdy(String trimmed) {
-    final mdy = RegExp(r'^(\d{1,2})[/](\d{1,2})[/](\d{4})$').firstMatch(trimmed);
+    final mdy = RegExp(
+      r'^(\d{1,2})[/](\d{1,2})[/](\d{4})$',
+    ).firstMatch(trimmed);
     if (mdy == null) return null;
     final month = int.parse(mdy.group(1)!);
     final day = int.parse(mdy.group(2)!);
     final year = int.parse(mdy.group(3)!);
-    if (month >= 1 && month <= 12 && day >= 1 && day <= DateTime(year, month + 1, 0).day) {
+    if (month >= 1 &&
+        month <= 12 &&
+        day >= 1 &&
+        day <= DateTime(year, month + 1, 0).day) {
       return DateTime(year, month, day);
     }
     return null;
@@ -364,11 +406,20 @@ class CsvImporter {
     return _parseAmountWithDirection(input)?.$1;
   }
 
-
   static int? _monthAbbrToInt(String abbr) {
     const months = {
-      'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'may': 5, 'jun': 6,
-      'jul': 7, 'aug': 8, 'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12,
+      'jan': 1,
+      'feb': 2,
+      'mar': 3,
+      'apr': 4,
+      'may': 5,
+      'jun': 6,
+      'jul': 7,
+      'aug': 8,
+      'sep': 9,
+      'oct': 10,
+      'nov': 11,
+      'dec': 12,
     };
     return months[abbr.toLowerCase()];
   }

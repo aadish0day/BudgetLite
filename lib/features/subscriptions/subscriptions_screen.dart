@@ -1,19 +1,21 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+
+import '../../core/database/database.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/colors.dart';
+import '../../core/utils/accessibility_utils.dart';
 import '../../core/utils/constants.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/utils/icon_helper.dart';
 import '../../core/utils/notification_service.dart';
-import '../../core/utils/accessibility_utils.dart';
-import '../../providers/transaction_provider.dart';
 import '../../providers/settings_provider.dart';
-import 'dart:async';
-import '../../core/database/database.dart';
+import '../../providers/transaction_provider.dart';
 import '../transactions/add_transaction_sheet.dart';
 
 /// Dedicated screen for auditing all recurring payments and subscriptions.
@@ -21,10 +23,12 @@ class SubscriptionAuditScreen extends ConsumerStatefulWidget {
   const SubscriptionAuditScreen({super.key});
 
   @override
-  ConsumerState<SubscriptionAuditScreen> createState() => _SubscriptionAuditScreenState();
+  ConsumerState<SubscriptionAuditScreen> createState() =>
+      _SubscriptionAuditScreenState();
 }
 
-class _SubscriptionAuditScreenState extends ConsumerState<SubscriptionAuditScreen> {
+class _SubscriptionAuditScreenState
+    extends ConsumerState<SubscriptionAuditScreen> {
   String? _filterInterval;
   String? _filterCategoryId;
   String _sortBy = 'date'; // 'date', 'amount', 'name'
@@ -39,15 +43,49 @@ class _SubscriptionAuditScreenState extends ConsumerState<SubscriptionAuditScree
         title: const Text('Subscription Audit'),
         actions: [
           PopupMenuButton<String>(
-            icon: Icon(LucideIcons.arrowUpDown, size: 18, color: colorScheme.onSurfaceVariant),
+            icon: Icon(
+              LucideIcons.arrowUpDown,
+              size: 18,
+              color: colorScheme.onSurfaceVariant,
+            ),
             onSelected: (v) => setState(() => _sortBy = v),
             itemBuilder: (_) => [
-              PopupMenuItem(value: 'date', child: Text('Sort by due date',
-                  style: AppTheme.bodyStyle(size: 13, weight: _sortBy == 'date' ? FontWeight.w600 : FontWeight.w400))),
-              PopupMenuItem(value: 'amount', child: Text('Sort by amount',
-                  style: AppTheme.bodyStyle(size: 13, weight: _sortBy == 'amount' ? FontWeight.w600 : FontWeight.w400))),
-              PopupMenuItem(value: 'name', child: Text('Sort by name',
-                  style: AppTheme.bodyStyle(size: 13, weight: _sortBy == 'name' ? FontWeight.w600 : FontWeight.w400))),
+              PopupMenuItem(
+                value: 'date',
+                child: Text(
+                  'Sort by due date',
+                  style: AppTheme.bodyStyle(
+                    size: 13,
+                    weight: _sortBy == 'date'
+                        ? FontWeight.w600
+                        : FontWeight.w400,
+                  ),
+                ),
+              ),
+              PopupMenuItem(
+                value: 'amount',
+                child: Text(
+                  'Sort by amount',
+                  style: AppTheme.bodyStyle(
+                    size: 13,
+                    weight: _sortBy == 'amount'
+                        ? FontWeight.w600
+                        : FontWeight.w400,
+                  ),
+                ),
+              ),
+              PopupMenuItem(
+                value: 'name',
+                child: Text(
+                  'Sort by name',
+                  style: AppTheme.bodyStyle(
+                    size: 13,
+                    weight: _sortBy == 'name'
+                        ? FontWeight.w600
+                        : FontWeight.w400,
+                  ),
+                ),
+              ),
             ],
           ),
         ],
@@ -69,21 +107,36 @@ class _SubscriptionAuditScreenState extends ConsumerState<SubscriptionAuditScree
     );
   }
 
-  Widget _buildContent(BuildContext context, ColorScheme colorScheme, List<RecurringPaymentInfo> payments) {
+  Widget _buildContent(
+    BuildContext context,
+    ColorScheme colorScheme,
+    List<RecurringPaymentInfo> payments,
+  ) {
     // Apply filters
-    var filtered = payments.where((p) {
-      if (_filterInterval != null && p.transaction.recurringInterval != _filterInterval) return false;
-      if (_filterCategoryId != null && p.transaction.categoryId != _filterCategoryId) return false;
+    final filtered = payments.where((p) {
+      if (_filterInterval != null &&
+          p.transaction.recurringInterval != _filterInterval) {
+        return false;
+      }
+      if (_filterCategoryId != null &&
+          p.transaction.categoryId != _filterCategoryId) {
+        return false;
+      }
       return true;
     }).toList();
 
     // Sort
     switch (_sortBy) {
       case 'amount':
-        filtered.sort((a, b) => b.transaction.amount.abs().compareTo(a.transaction.amount.abs()));
+        filtered.sort(
+          (a, b) =>
+              b.transaction.amount.abs().compareTo(a.transaction.amount.abs()),
+        );
         break;
       case 'name':
-        filtered.sort((a, b) => (a.category?.name ?? '').compareTo(b.category?.name ?? ''));
+        filtered.sort(
+          (a, b) => (a.category?.name ?? '').compareTo(b.category?.name ?? ''),
+        );
         break;
       default:
         filtered.sort((a, b) => a.daysUntil.compareTo(b.daysUntil));
@@ -93,7 +146,9 @@ class _SubscriptionAuditScreenState extends ConsumerState<SubscriptionAuditScree
     final totalMonthly = filtered.fold<double>(0, (s, p) => s + p.monthlyCost);
     final totalAnnual = filtered.fold<double>(0, (s, p) => s + p.annualCost);
     final overdueCount = filtered.where((p) => p.isOverdue).length;
-    final dueSoonCount = filtered.where((p) => p.isDueSoon || p.isDueToday).length;
+    final dueSoonCount = filtered
+        .where((p) => p.isDueSoon || p.isDueToday)
+        .length;
     final unusedCount = filtered.where((p) => p.isPossiblyUnused).length;
     final upcoming = filtered.where((p) => p.daysUntil > 3).toList();
 
@@ -103,27 +158,40 @@ class _SubscriptionAuditScreenState extends ConsumerState<SubscriptionAuditScree
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: 80, height: 80,
+              width: 80,
+              height: 80,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: colorScheme.primary.withValues(alpha: 0.08),
               ),
-              child: Icon(LucideIcons.rotateCw, size: 36,
-                  color: colorScheme.primary.withValues(alpha: 0.4)),
+              child: Icon(
+                LucideIcons.rotateCw,
+                size: 36,
+                color: colorScheme.primary.withValues(alpha: 0.4),
+              ),
             ),
             const SizedBox(height: 16),
-            Text('No subscriptions found', style: AppTheme.displayStyle(
-              size: 18, weight: FontWeight.w600, color: colorScheme.onSurface)),
+            Text(
+              'No subscriptions found',
+              style: AppTheme.displayStyle(color: colorScheme.onSurface),
+            ),
             const SizedBox(height: 6),
-            Text('Create a recurring transaction to see it here',
-                style: AppTheme.bodyStyle(size: 13, color: colorScheme.onSurfaceVariant)),
+            Text(
+              'Create a recurring transaction to see it here',
+              style: AppTheme.bodyStyle(
+                size: 13,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
           ],
         ),
       );
     }
 
     return ListView(
-      physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+      physics: const BouncingScrollPhysics(
+        parent: AlwaysScrollableScrollPhysics(),
+      ),
       padding: AppConstants.screenPadding,
       children: [
         // ── Stats header ──
@@ -144,7 +212,10 @@ class _SubscriptionAuditScreenState extends ConsumerState<SubscriptionAuditScree
           selectedCategoryId: _filterCategoryId,
           onIntervalChanged: (v) => setState(() => _filterInterval = v),
           onCategoryChanged: (v) => setState(() => _filterCategoryId = v),
-          onClear: () => setState(() { _filterInterval = null; _filterCategoryId = null; }),
+          onClear: () => setState(() {
+            _filterInterval = null;
+            _filterCategoryId = null;
+          }),
           colorScheme: colorScheme,
         ),
         const SizedBox(height: 16),
@@ -156,27 +227,46 @@ class _SubscriptionAuditScreenState extends ConsumerState<SubscriptionAuditScree
             child: Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(6),
                     color: AppColors.error.withValues(alpha: 0.12),
                   ),
-                  child: Text('Overdue', style: AppTheme.bodyStyle(
-                    size: 11, weight: FontWeight.w600, color: AppColors.error)),
+                  child: Text(
+                    'Overdue',
+                    style: AppTheme.bodyStyle(
+                      size: 11,
+                      weight: FontWeight.w600,
+                      color: AppColors.error,
+                    ),
+                  ),
                 ),
                 const SizedBox(width: 8),
-                Text('$overdueCount payment${overdueCount != 1 ? "s" : ""}',
-                    style: AppTheme.bodyStyle(size: 11, color: colorScheme.onSurfaceVariant)),
+                Text(
+                  '$overdueCount payment${overdueCount != 1 ? "s" : ""}',
+                  style: AppTheme.bodyStyle(
+                    size: 11,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
               ],
             ),
           ),
-          ...filtered.where((p) => p.isOverdue).map((p) => _SubscriptionCard(
-            payment: p, colorScheme: colorScheme,
-            onMarkPaid: () => markRecurringAsPaid(context, ref, p),
-            onMarkReviewed: () => _markReviewed(p.transaction.id),
-            onEdit: () => _editTransaction(p.transaction),
-            onDelete: () => _deleteSubscription(p),
-          )),
+          ...filtered
+              .where((p) => p.isOverdue)
+              .map(
+                (p) => _SubscriptionCard(
+                  payment: p,
+                  colorScheme: colorScheme,
+                  onMarkPaid: () => markRecurringAsPaid(context, ref, p),
+                  onMarkReviewed: () => _markReviewed(p.transaction.id),
+                  onEdit: () => _editTransaction(p.transaction),
+                  onDelete: () => _deleteSubscription(p),
+                ),
+              ),
           const SizedBox(height: 12),
         ],
 
@@ -187,27 +277,46 @@ class _SubscriptionAuditScreenState extends ConsumerState<SubscriptionAuditScree
             child: Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(6),
                     color: AppColors.warning.withValues(alpha: 0.12),
                   ),
-                  child: Text('Due Soon', style: AppTheme.bodyStyle(
-                    size: 11, weight: FontWeight.w600, color: AppColors.warning)),
+                  child: Text(
+                    'Due Soon',
+                    style: AppTheme.bodyStyle(
+                      size: 11,
+                      weight: FontWeight.w600,
+                      color: AppColors.warning,
+                    ),
+                  ),
                 ),
                 const SizedBox(width: 8),
-                Text('$dueSoonCount payment${dueSoonCount != 1 ? "s" : ""}',
-                    style: AppTheme.bodyStyle(size: 11, color: colorScheme.onSurfaceVariant)),
+                Text(
+                  '$dueSoonCount payment${dueSoonCount != 1 ? "s" : ""}',
+                  style: AppTheme.bodyStyle(
+                    size: 11,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
               ],
             ),
           ),
-          ...filtered.where((p) => p.isDueSoon || p.isDueToday).map((p) => _SubscriptionCard(
-            payment: p, colorScheme: colorScheme,
-            onMarkPaid: () => markRecurringAsPaid(context, ref, p),
-            onMarkReviewed: () => _markReviewed(p.transaction.id),
-            onEdit: () => _editTransaction(p.transaction),
-            onDelete: () => _deleteSubscription(p),
-          )),
+          ...filtered
+              .where((p) => p.isDueSoon || p.isDueToday)
+              .map(
+                (p) => _SubscriptionCard(
+                  payment: p,
+                  colorScheme: colorScheme,
+                  onMarkPaid: () => markRecurringAsPaid(context, ref, p),
+                  onMarkReviewed: () => _markReviewed(p.transaction.id),
+                  onEdit: () => _editTransaction(p.transaction),
+                  onDelete: () => _deleteSubscription(p),
+                ),
+              ),
           const SizedBox(height: 12),
         ],
 
@@ -217,20 +326,33 @@ class _SubscriptionAuditScreenState extends ConsumerState<SubscriptionAuditScree
             padding: const EdgeInsets.only(bottom: 10),
             child: Row(
               children: [
-                Icon(LucideIcons.calendarDays, size: 16, color: colorScheme.primary.withValues(alpha: 0.6)),
+                Icon(
+                  LucideIcons.calendarDays,
+                  size: 16,
+                  color: colorScheme.primary.withValues(alpha: 0.6),
+                ),
                 const SizedBox(width: 6),
-                Text('Upcoming (${upcoming.length})',
-                    style: AppTheme.bodyStyle(size: 13, weight: FontWeight.w600, color: colorScheme.onSurfaceVariant)),
+                Text(
+                  'Upcoming (${upcoming.length})',
+                  style: AppTheme.bodyStyle(
+                    size: 13,
+                    weight: FontWeight.w600,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
               ],
             ),
           ),
-          ...upcoming.map((p) => _SubscriptionCard(
-            payment: p, colorScheme: colorScheme,
-            onMarkPaid: () => markRecurringAsPaid(context, ref, p),
-            onMarkReviewed: () => _markReviewed(p.transaction.id),
-            onEdit: () => _editTransaction(p.transaction),
-            onDelete: () => _deleteSubscription(p),
-          )),
+          ...upcoming.map(
+            (p) => _SubscriptionCard(
+              payment: p,
+              colorScheme: colorScheme,
+              onMarkPaid: () => markRecurringAsPaid(context, ref, p),
+              onMarkReviewed: () => _markReviewed(p.transaction.id),
+              onEdit: () => _editTransaction(p.transaction),
+              onDelete: () => _deleteSubscription(p),
+            ),
+          ),
         ],
 
         const SizedBox(height: 80),
@@ -257,20 +379,25 @@ class _SubscriptionAuditScreenState extends ConsumerState<SubscriptionAuditScree
       builder: (ctx) => AlertDialog(
         title: Row(
           children: [
-            Icon(LucideIcons.trash2, size: 20, color: AppColors.error),
+            const Icon(LucideIcons.trash2, size: 20, color: AppColors.error),
             const SizedBox(width: 8),
-            Text('Remove subscription?', style: AppTheme.displayStyle(size: 18, weight: FontWeight.w600)),
+            Text('Remove subscription?', style: AppTheme.displayStyle()),
           ],
         ),
         content: Text(
           'Remove "${p.category?.name ?? 'Subscription'}" (₹${p.transaction.amount.abs().toStringAsFixed(0)}/${p.intervalLabel.toLowerCase()})?\n'
           'This will delete the recurring template.',
-          style: AppTheme.bodyStyle(size: 14),
+          style: AppTheme.bodyStyle(),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Cancel', style: AppTheme.bodyStyle(color: localColorScheme.onSurfaceVariant)),
+            child: Text(
+              'Cancel',
+              style: AppTheme.bodyStyle(
+                color: localColorScheme.onSurfaceVariant,
+              ),
+            ),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
@@ -299,7 +426,9 @@ class _SubscriptionAuditScreenState extends ConsumerState<SubscriptionAuditScree
   }
 
   Future<void> _markReviewed(String transactionId) async {
-    await ref.read(settingsNotifierProvider.notifier).markSubscriptionReviewed(transactionId);
+    await ref
+        .read(settingsNotifierProvider.notifier)
+        .markSubscriptionReviewed(transactionId);
     ref.invalidate(recurringTransactionsProvider);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -315,14 +444,6 @@ class _SubscriptionAuditScreenState extends ConsumerState<SubscriptionAuditScree
 
 /// ── Stats header: summary cards ──
 class _StatsHeader extends StatelessWidget {
-  final double totalMonthly;
-  final double totalAnnual;
-  final int activeCount;
-  final int overdueCount;
-  final int dueSoonCount;
-  final int unusedCount;
-  final ColorScheme colorScheme;
-
   const _StatsHeader({
     required this.totalMonthly,
     required this.totalAnnual,
@@ -332,92 +453,136 @@ class _StatsHeader extends StatelessWidget {
     required this.unusedCount,
     required this.colorScheme,
   });
+  final double totalMonthly;
+  final double totalAnnual;
+  final int activeCount;
+  final int overdueCount;
+  final int dueSoonCount;
+  final int unusedCount;
+  final ColorScheme colorScheme;
 
   @override
   Widget build(BuildContext context) {
     final isDark = colorScheme.brightness == Brightness.dark;
     return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(AppConstants.cardRadius),
-        color: isDark ? AppColors.cardDark : AppColors.cardLight,
-        boxShadow: isDark ? AppColors.cardShadowDark : AppColors.cardShadowLight,
-      ),
-      padding: AppConstants.cardPadding,
-      child: Column(
-        children: [
-          // Annual total — hero number (forecast, not actual spend)
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppConstants.cardRadius),
+            color: isDark ? AppColors.cardDark : AppColors.cardLight,
+            boxShadow: isDark
+                ? AppColors.cardShadowDark
+                : AppColors.cardShadowLight,
+          ),
+          padding: AppConstants.cardPadding,
+          child: Column(
             children: [
-              Text('Expected annual cost', style: AppTheme.bodyStyle(
-                size: 11, weight: FontWeight.w500, color: colorScheme.onSurfaceVariant)),
-              const SizedBox(width: 6),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(4),
-                  color: totalAnnual > 0 ? AppColors.warning.withValues(alpha: 0.12) : Colors.transparent,
-                ),
-                child: Text(
-                  Formatters.formatCurrency(totalAnnual),
-                  style: AppTheme.financialStyle(
-                    size: 28, weight: FontWeight.w700, color: colorScheme.onSurface, letterSpacing: -0.8,
+              // Annual total — hero number (forecast, not actual spend)
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    'Expected annual cost',
+                    style: AppTheme.bodyStyle(
+                      size: 11,
+                      weight: FontWeight.w500,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
                   ),
+                  const SizedBox(width: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(4),
+                      color: totalAnnual > 0
+                          ? AppColors.warning.withValues(alpha: 0.12)
+                          : Colors.transparent,
+                    ),
+                    child: Text(
+                      Formatters.formatCurrency(totalAnnual),
+                      style: AppTheme.financialStyle(
+                        size: 28,
+                        weight: FontWeight.w700,
+                        color: colorScheme.onSurface,
+                        letterSpacing: -0.8,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 2),
+              Text(
+                '${Formatters.formatCurrency(totalMonthly)} / month (expected)',
+                style: AppTheme.bodyStyle(
+                  size: 13,
+                  color: colorScheme.onSurfaceVariant,
                 ),
               ),
-            ],
-          ),
-          const SizedBox(height: 2),
-          Text(
-            '${Formatters.formatCurrency(totalMonthly)} / month (expected)',
-            style: AppTheme.bodyStyle(size: 13, color: colorScheme.onSurfaceVariant),
-          ),
-          const SizedBox(height: 14),
+              const SizedBox(height: 14),
 
-          // Stats row
-          Row(
-            children: [
-              _StatBadge(
-                icon: LucideIcons.rotateCw, label: 'Active', value: '$activeCount',
-                color: colorScheme.primary, colorScheme: colorScheme,
+              // Stats row
+              Row(
+                children: [
+                  _StatBadge(
+                    icon: LucideIcons.rotateCw,
+                    label: 'Active',
+                    value: '$activeCount',
+                    color: colorScheme.primary,
+                    colorScheme: colorScheme,
+                  ),
+                  const SizedBox(width: 12),
+                  if (overdueCount > 0)
+                    _StatBadge(
+                      icon: LucideIcons.alertTriangle,
+                      label: 'Overdue',
+                      value: '$overdueCount',
+                      color: AppColors.error,
+                      colorScheme: colorScheme,
+                    ),
+                  if (overdueCount > 0) const SizedBox(width: 12),
+                  if (dueSoonCount > 0)
+                    _StatBadge(
+                      icon: LucideIcons.bell,
+                      label: 'Due soon',
+                      value: '$dueSoonCount',
+                      color: AppColors.warning,
+                      colorScheme: colorScheme,
+                    ),
+                  if (dueSoonCount > 0 && unusedCount > 0)
+                    const SizedBox(width: 12),
+                  if (unusedCount > 0)
+                    _StatBadge(
+                      icon: LucideIcons.rotateCw,
+                      label: 'Unused',
+                      value: '$unusedCount',
+                      color: AppColors.warning,
+                      colorScheme: colorScheme,
+                    ),
+                ],
               ),
-              const SizedBox(width: 12),
-              if (overdueCount > 0)
-                _StatBadge(
-                  icon: LucideIcons.alertTriangle, label: 'Overdue', value: '$overdueCount',
-                  color: AppColors.error, colorScheme: colorScheme,
-                ),
-              if (overdueCount > 0) const SizedBox(width: 12),
-              if (dueSoonCount > 0)
-                _StatBadge(
-                  icon: LucideIcons.bell, label: 'Due soon', value: '$dueSoonCount',
-                  color: AppColors.warning, colorScheme: colorScheme,
-                ),
-              if (dueSoonCount > 0 && unusedCount > 0) const SizedBox(width: 12),
-              if (unusedCount > 0)
-                _StatBadge(
-                  icon: LucideIcons.rotateCw, label: 'Unused', value: '$unusedCount',
-                  color: AppColors.warning, colorScheme: colorScheme,
-                ),
             ],
           ),
-        ],
-      ),
-    ).animate(target: AccessibilityUtils.shouldAnimate(context) ? null : 1.0).fadeIn(duration: AppConstants.animNormal).slideY(begin: -0.05);
+        )
+        .animate(target: AccessibilityUtils.shouldAnimate(context) ? null : 1.0)
+        .fadeIn(duration: AppConstants.animNormal)
+        .slideY(begin: -0.05);
   }
 }
 
 class _StatBadge extends StatelessWidget {
+  const _StatBadge({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.color,
+    required this.colorScheme,
+  });
   final IconData icon;
   final String label;
   final String value;
   final Color color;
   final ColorScheme colorScheme;
-
-  const _StatBadge({
-    required this.icon, required this.label, required this.value,
-    required this.color, required this.colorScheme,
-  });
 
   @override
   Widget build(BuildContext context) {
@@ -432,8 +597,20 @@ class _StatBadge extends StatelessWidget {
           children: [
             Icon(icon, size: 16, color: color),
             const SizedBox(height: 4),
-            Text(value, style: AppTheme.displayStyle(size: 18, weight: FontWeight.w700, color: colorScheme.onSurface)),
-            Text(label, style: AppTheme.bodyStyle(size: 9, color: colorScheme.onSurfaceVariant)),
+            Text(
+              value,
+              style: AppTheme.displayStyle(
+                weight: FontWeight.w700,
+                color: colorScheme.onSurface,
+              ),
+            ),
+            Text(
+              label,
+              style: AppTheme.bodyStyle(
+                size: 9,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
           ],
         ),
       ),
@@ -443,13 +620,6 @@ class _StatBadge extends StatelessWidget {
 
 /// ── Filter row ──
 class _FilterRow extends StatelessWidget {
-  final String? selectedInterval;
-  final String? selectedCategoryId;
-  final ValueChanged<String?> onIntervalChanged;
-  final ValueChanged<String?> onCategoryChanged;
-  final VoidCallback? onClear;
-  final ColorScheme colorScheme;
-
   const _FilterRow({
     required this.selectedInterval,
     required this.selectedCategoryId,
@@ -458,6 +628,12 @@ class _FilterRow extends StatelessWidget {
     this.onClear,
     required this.colorScheme,
   });
+  final String? selectedInterval;
+  final String? selectedCategoryId;
+  final ValueChanged<String?> onIntervalChanged;
+  final ValueChanged<String?> onCategoryChanged;
+  final VoidCallback? onClear;
+  final ColorScheme colorScheme;
 
   @override
   Widget build(BuildContext context) {
@@ -475,19 +651,39 @@ class _FilterRow extends StatelessWidget {
                   borderRadius: BorderRadius.circular(10),
                   color: AppColors.error.withValues(alpha: 0.1),
                 ),
-                child: Icon(LucideIcons.rotateCcw, size: 14, color: AppColors.error),
+                child: const Icon(
+                  LucideIcons.rotateCcw,
+                  size: 14,
+                  color: AppColors.error,
+                ),
               ),
             ),
-          _buildChip('All', selectedInterval == null && selectedCategoryId == null, () {
-            onIntervalChanged(null);
-            onCategoryChanged(null);
-          }),
+          _buildChip(
+            'All',
+            selectedInterval == null && selectedCategoryId == null,
+            () {
+              onIntervalChanged(null);
+              onCategoryChanged(null);
+            },
+          ),
           const SizedBox(width: 6),
-          _buildChip('Monthly', selectedInterval == 'monthly', () => onIntervalChanged('monthly')),
+          _buildChip(
+            'Monthly',
+            selectedInterval == 'monthly',
+            () => onIntervalChanged('monthly'),
+          ),
           const SizedBox(width: 6),
-          _buildChip('Yearly', selectedInterval == 'yearly', () => onIntervalChanged('yearly')),
+          _buildChip(
+            'Yearly',
+            selectedInterval == 'yearly',
+            () => onIntervalChanged('yearly'),
+          ),
           const SizedBox(width: 6),
-          _buildChip('Weekly', selectedInterval == 'weekly', () => onIntervalChanged('weekly')),
+          _buildChip(
+            'Weekly',
+            selectedInterval == 'weekly',
+            () => onIntervalChanged('weekly'),
+          ),
         ],
       ),
     );
@@ -507,9 +703,16 @@ class _FilterRow extends StatelessWidget {
               ? Border.all(color: colorScheme.primary.withValues(alpha: 0.3))
               : null,
         ),
-        child: Text(label, style: AppTheme.bodyStyle(
-          size: 12, weight: selected ? FontWeight.w600 : FontWeight.w400,
-          color: selected ? colorScheme.primary : colorScheme.onSurfaceVariant)),
+        child: Text(
+          label,
+          style: AppTheme.bodyStyle(
+            size: 12,
+            weight: selected ? FontWeight.w600 : FontWeight.w400,
+            color: selected
+                ? colorScheme.primary
+                : colorScheme.onSurfaceVariant,
+          ),
+        ),
       ),
     );
   }
@@ -517,13 +720,6 @@ class _FilterRow extends StatelessWidget {
 
 /// ── Individual subscription card ──
 class _SubscriptionCard extends StatelessWidget {
-  final RecurringPaymentInfo payment;
-  final ColorScheme colorScheme;
-  final VoidCallback onMarkPaid;
-  final VoidCallback? onMarkReviewed;
-  final VoidCallback onEdit;
-  final VoidCallback onDelete;
-
   const _SubscriptionCard({
     required this.payment,
     required this.colorScheme,
@@ -532,6 +728,12 @@ class _SubscriptionCard extends StatelessWidget {
     required this.onEdit,
     required this.onDelete,
   });
+  final RecurringPaymentInfo payment;
+  final ColorScheme colorScheme;
+  final VoidCallback onMarkPaid;
+  final VoidCallback? onMarkReviewed;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -549,12 +751,14 @@ class _SubscriptionCard extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(AppConstants.cardRadiusSmall),
             color: isDark ? AppColors.cardDark : AppColors.cardLight,
-            boxShadow: isDark ? AppColors.cardShadowDark : AppColors.cardShadowLight,
+            boxShadow: isDark
+                ? AppColors.cardShadowDark
+                : AppColors.cardShadowLight,
             border: isOverdue
                 ? Border.all(color: AppColors.error.withValues(alpha: 0.3))
                 : isDueSoon
-                    ? Border.all(color: AppColors.warning.withValues(alpha: 0.25))
-                    : null,
+                ? Border.all(color: AppColors.warning.withValues(alpha: 0.25))
+                : null,
           ),
           padding: const EdgeInsets.all(14),
           child: Column(
@@ -565,41 +769,75 @@ class _SubscriptionCard extends StatelessWidget {
                 children: [
                   // Category icon with urgency ring
                   Container(
-                    width: 42, height: 42,
+                    width: 42,
+                    height: 42,
                     decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(AppConstants.cardRadiusIcon),
+                      borderRadius: BorderRadius.circular(
+                        AppConstants.cardRadiusIcon,
+                      ),
                       color: isOverdue
                           ? AppColors.error.withValues(alpha: 0.12)
                           : isDueSoon
-                              ? AppColors.warning.withValues(alpha: 0.12)
-                              : catColor.withValues(alpha: 0.12),
+                          ? AppColors.warning.withValues(alpha: 0.12)
+                          : catColor.withValues(alpha: 0.12),
                     ),
-                    child: Icon(getCategoryIcon(payment.category?.icon ?? ''),
-                        size: 20,
-                        color: isOverdue ? AppColors.error : isDueSoon ? AppColors.warning : catColor),
+                    child: Icon(
+                      getCategoryIcon(payment.category?.icon ?? ''),
+                      size: 20,
+                      color: isOverdue
+                          ? AppColors.error
+                          : isDueSoon
+                          ? AppColors.warning
+                          : catColor,
+                    ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(payment.category?.name ?? 'Subscription',
+                        Text(
+                          payment.category?.name ?? 'Subscription',
+                          style: AppTheme.bodyStyle(
+                            weight: FontWeight.w600,
+                            color: colorScheme.onSurface,
+                          ),
+                        ),
+                        if (payment.transaction.note != null &&
+                            payment.transaction.note!.isNotEmpty)
+                          Text(
+                            payment.transaction.note!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: AppTheme.bodyStyle(
-                              size: 14, weight: FontWeight.w600, color: colorScheme.onSurface)),
-                        if (payment.transaction.note != null && payment.transaction.note!.isNotEmpty)
-                          Text(payment.transaction.note!, maxLines: 1, overflow: TextOverflow.ellipsis,
-                              style: AppTheme.bodyStyle(size: 11, color: colorScheme.onSurfaceVariant)),
+                              size: 11,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                          ),
                       ],
                     ),
                   ),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      Text(Formatters.formatCurrency(payment.transaction.amount.abs()),
-                          style: AppTheme.financialStyle(
-                            size: 15, weight: FontWeight.w700, color: colorScheme.onSurface, letterSpacing: -0.3)),
-                      Text(payment.intervalLabel,
-                          style: AppTheme.bodyStyle(size: 10, color: colorScheme.onSurfaceVariant)),
+                      Text(
+                        Formatters.formatCurrency(
+                          payment.transaction.amount.abs(),
+                        ),
+                        style: AppTheme.financialStyle(
+                          size: 15,
+                          weight: FontWeight.w700,
+                          color: colorScheme.onSurface,
+                          letterSpacing: -0.3,
+                        ),
+                      ),
+                      Text(
+                        payment.intervalLabel,
+                        style: AppTheme.bodyStyle(
+                          size: 10,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
                     ],
                   ),
                 ],
@@ -623,7 +861,10 @@ class _SubscriptionCard extends StatelessWidget {
                     GestureDetector(
                       onTap: onMarkReviewed,
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(6),
                           color: AppColors.warning.withValues(alpha: 0.12),
@@ -631,11 +872,20 @@ class _SubscriptionCard extends StatelessWidget {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(LucideIcons.eye, size: 10, color: AppColors.warning),
+                            const Icon(
+                              LucideIcons.eye,
+                              size: 10,
+                              color: AppColors.warning,
+                            ),
                             const SizedBox(width: 3),
-                            Text('Needs review',
-                                style: AppTheme.bodyStyle(
-                                  size: 8, weight: FontWeight.w600, color: AppColors.warning)),
+                            Text(
+                              'Needs review',
+                              style: AppTheme.bodyStyle(
+                                size: 8,
+                                weight: FontWeight.w600,
+                                color: AppColors.warning,
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -643,14 +893,24 @@ class _SubscriptionCard extends StatelessWidget {
                   if (isUnused) const SizedBox(width: 6),
                   // Monthly cost indicator
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(6),
-                      color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                      color: colorScheme.surfaceContainerHighest.withValues(
+                        alpha: 0.5,
+                      ),
                     ),
-                    child: Text('${Formatters.formatCurrency(payment.monthlyCost)}/mo',
-                        style: AppTheme.bodyStyle(
-                          size: 9, weight: FontWeight.w600, color: colorScheme.onSurfaceVariant)),
+                    child: Text(
+                      '${Formatters.formatCurrency(payment.monthlyCost)}/mo',
+                      style: AppTheme.bodyStyle(
+                        size: 9,
+                        weight: FontWeight.w600,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
                   ),
                   const SizedBox(width: 8),
 
@@ -666,7 +926,11 @@ class _SubscriptionCard extends StatelessWidget {
                         shape: BoxShape.circle,
                         color: AppColors.success.withValues(alpha: 0.1),
                       ),
-                      child: Icon(LucideIcons.check, size: 16, color: AppColors.success),
+                      child: const Icon(
+                        LucideIcons.check,
+                        size: 16,
+                        color: AppColors.success,
+                      ),
                     ),
                   ),
                   const SizedBox(width: 6),
@@ -680,7 +944,11 @@ class _SubscriptionCard extends StatelessWidget {
                         shape: BoxShape.circle,
                         color: AppColors.error.withValues(alpha: 0.1),
                       ),
-                      child: Icon(LucideIcons.trash2, size: 16, color: AppColors.error),
+                      child: const Icon(
+                        LucideIcons.trash2,
+                        size: 16,
+                        color: AppColors.error,
+                      ),
                     ),
                   ),
                 ],
@@ -694,16 +962,18 @@ class _SubscriptionCard extends StatelessWidget {
 }
 
 class _DueDateBadge extends StatelessWidget {
+  const _DueDateBadge({
+    required this.daysUntil,
+    required this.isOverdue,
+    required this.isDueSoon,
+    required this.nextDate,
+    required this.colorScheme,
+  });
   final int daysUntil;
   final bool isOverdue;
   final bool isDueSoon;
   final DateTime nextDate;
   final ColorScheme colorScheme;
-
-  const _DueDateBadge({
-    required this.daysUntil, required this.isOverdue, required this.isDueSoon,
-    required this.nextDate, required this.colorScheme,
-  });
 
   @override
   Widget build(BuildContext context) {
@@ -714,8 +984,8 @@ class _DueDateBadge extends StatelessWidget {
         color: isOverdue
             ? AppColors.error.withValues(alpha: 0.12)
             : isDueSoon
-                ? AppColors.warning.withValues(alpha: 0.12)
-                : colorScheme.surfaceContainerHighest,
+            ? AppColors.warning.withValues(alpha: 0.12)
+            : colorScheme.surfaceContainerHighest,
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -723,26 +993,40 @@ class _DueDateBadge extends StatelessWidget {
           Icon(
             isOverdue ? LucideIcons.alertTriangle : LucideIcons.clock,
             size: 12,
-            color: isOverdue ? AppColors.error : isDueSoon ? AppColors.warning : colorScheme.onSurfaceVariant,
+            color: isOverdue
+                ? AppColors.error
+                : isDueSoon
+                ? AppColors.warning
+                : colorScheme.onSurfaceVariant,
           ),
           const SizedBox(width: 4),
           Text(
             isOverdue
                 ? 'Overdue ${daysUntil.abs()}d'
                 : isDueSoon && daysUntil == 0
-                    ? 'Today'
-                    : isDueSoon && daysUntil == 1
-                        ? 'Tomorrow'
-                        : '${daysUntil}d',
+                ? 'Today'
+                : isDueSoon && daysUntil == 1
+                ? 'Tomorrow'
+                : '${daysUntil}d',
             style: AppTheme.bodyStyle(
-              size: 11, weight: FontWeight.w600,
-              color: isOverdue ? AppColors.error : isDueSoon ? AppColors.warning : colorScheme.onSurfaceVariant,
+              size: 11,
+              weight: FontWeight.w600,
+              color: isOverdue
+                  ? AppColors.error
+                  : isDueSoon
+                  ? AppColors.warning
+                  : colorScheme.onSurfaceVariant,
             ),
           ),
           if (!isOverdue && daysUntil > 3) ...[
             const SizedBox(width: 4),
-            Text(Formatters.formatDateShort(nextDate),
-                style: AppTheme.bodyStyle(size: 9, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7))),
+            Text(
+              Formatters.formatDateShort(nextDate),
+              style: AppTheme.bodyStyle(
+                size: 9,
+                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+              ),
+            ),
           ],
         ],
       ),
@@ -751,7 +1035,11 @@ class _DueDateBadge extends StatelessWidget {
 }
 
 // ── Free-standing mark-as-paid function (reusable outside home_screen) ──
-void markRecurringAsPaid(BuildContext context, WidgetRef ref, RecurringPaymentInfo payment) {
+void markRecurringAsPaid(
+  BuildContext context,
+  WidgetRef ref,
+  RecurringPaymentInfo payment,
+) {
   HapticFeedback.mediumImpact();
   final notifier = ref.read(transactionNotifierProvider.notifier);
   final messenger = ScaffoldMessenger.of(context);
@@ -766,38 +1054,41 @@ void markRecurringAsPaid(BuildContext context, WidgetRef ref, RecurringPaymentIn
   );
 
   unawaited(
-    notifier.addTransaction(
-      amount: original.amount.abs(),
-      categoryId: original.categoryId,
-      note: original.note ?? payment.category?.name ?? 'Payment',
-      date: DateTime.now(),
-      paymentMethod: original.paymentMethod,
-      isRecurring: false,
-      isIncome: wasIncome,
-    ).then((_) {
-      if (nextDue == null) return;
-      final updated = Transaction(
-        id: original.id,
-        amount: original.amount,
-        categoryId: original.categoryId,
-        accountId: 'default',
-        note: original.note,
-        date: nextDue,
-        paymentMethod: original.paymentMethod,
-        isRecurring: original.isRecurring,
-        isRecurringInstance: original.isRecurringInstance,
-        recurringInterval: original.recurringInterval,
-        recurringEndDate: original.recurringEndDate,
-        receiptImagePath: original.receiptImagePath,
-        createdAt: original.createdAt,
-      );
-      notifier.updateTransaction(updated);
-    }),
+    notifier
+        .addTransaction(
+          amount: original.amount.abs(),
+          categoryId: original.categoryId,
+          note: original.note ?? payment.category?.name ?? 'Payment',
+          date: DateTime.now(),
+          paymentMethod: original.paymentMethod,
+          isIncome: wasIncome,
+        )
+        .then((_) {
+          if (nextDue == null) return;
+          final updated = Transaction(
+            id: original.id,
+            amount: original.amount,
+            categoryId: original.categoryId,
+            accountId: 'default',
+            note: original.note,
+            date: nextDue,
+            paymentMethod: original.paymentMethod,
+            isRecurring: original.isRecurring,
+            isRecurringInstance: original.isRecurringInstance,
+            recurringInterval: original.recurringInterval,
+            recurringEndDate: original.recurringEndDate,
+            receiptImagePath: original.receiptImagePath,
+            createdAt: original.createdAt,
+          );
+          notifier.updateTransaction(updated);
+        }),
   );
 
   messenger.showSnackBar(
     SnackBar(
-      content: Text('${payment.category?.name ?? "Payment"} paid, next cycle scheduled ✓'),
+      content: Text(
+        '${payment.category?.name ?? "Payment"} paid, next cycle scheduled ✓',
+      ),
       behavior: SnackBarBehavior.floating,
       duration: const Duration(seconds: 3),
     ),
@@ -815,79 +1106,109 @@ class _SubscriptionsSkeleton extends StatelessWidget {
       children: [
         // Stats header skeleton
         Container(
-          height: 90,
-          decoration: BoxDecoration(
-            color: colorScheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(AppConstants.cardRadius),
-          ),
-        ).animate(onPlay: (c) => c.repeat())
-          .shimmer(duration: 1200.ms, color: colorScheme.primary.withValues(alpha: 0.08)),
+              height: 90,
+              decoration: BoxDecoration(
+                color: colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(AppConstants.cardRadius),
+              ),
+            )
+            .animate(onPlay: (c) => c.repeat())
+            .shimmer(
+              duration: 1200.ms,
+              color: colorScheme.primary.withValues(alpha: 0.08),
+            ),
         const SizedBox(height: 20),
         // Section header
         Container(
-          width: 120, height: 16,
-          decoration: BoxDecoration(
-            color: colorScheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(4),
-          ),
-        ).animate(onPlay: (c) => c.repeat())
-          .shimmer(duration: 1200.ms, delay: 200.ms, color: colorScheme.primary.withValues(alpha: 0.08)),
+              width: 120,
+              height: 16,
+              decoration: BoxDecoration(
+                color: colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(4),
+              ),
+            )
+            .animate(onPlay: (c) => c.repeat())
+            .shimmer(
+              duration: 1200.ms,
+              delay: 200.ms,
+              color: colorScheme.primary.withValues(alpha: 0.08),
+            ),
         const SizedBox(height: 12),
         // Subscription card skeletons
-        ...List.generate(4, (i) => Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: Container(
-            height: 76,
-            decoration: BoxDecoration(
-              color: colorScheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(AppConstants.cardRadiusSmall),
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Row(
-              children: [
+        ...List.generate(
+          4,
+          (i) => Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child:
                 Container(
-                  width: 40, height: 40,
-                  decoration: BoxDecoration(
-                    color: colorScheme.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(AppConstants.cardRadiusIcon),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Container(
-                        width: 130, height: 14,
-                        decoration: BoxDecoration(
-                          color: colorScheme.surfaceContainerHighest,
-                          borderRadius: BorderRadius.circular(4),
+                      height: 76,
+                      decoration: BoxDecoration(
+                        color: colorScheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(
+                          AppConstants.cardRadiusSmall,
                         ),
                       ),
-                      const SizedBox(height: 8),
-                      Container(
-                        width: 90, height: 10,
-                        decoration: BoxDecoration(
-                          color: colorScheme.surfaceContainerHighest,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
                       ),
-                    ],
-                  ),
-                ),
-                Container(
-                  width: 60, height: 16,
-                  decoration: BoxDecoration(
-                    color: colorScheme.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                ),
-              ],
-            ),
-          ).animate(onPlay: (c) => c.repeat())
-            .shimmer(duration: 1200.ms, delay: ((i + 2) * 150).ms, color: colorScheme.primary.withValues(alpha: 0.08)),
-        )),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: colorScheme.surfaceContainerHighest,
+                              borderRadius: BorderRadius.circular(
+                                AppConstants.cardRadiusIcon,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Container(
+                                  width: 130,
+                                  height: 14,
+                                  decoration: BoxDecoration(
+                                    color: colorScheme.surfaceContainerHighest,
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Container(
+                                  width: 90,
+                                  height: 10,
+                                  decoration: BoxDecoration(
+                                    color: colorScheme.surfaceContainerHighest,
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Container(
+                            width: 60,
+                            height: 16,
+                            decoration: BoxDecoration(
+                              color: colorScheme.surfaceContainerHighest,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                    .animate(onPlay: (c) => c.repeat())
+                    .shimmer(
+                      duration: 1200.ms,
+                      delay: ((i + 2) * 150).ms,
+                      color: colorScheme.primary.withValues(alpha: 0.08),
+                    ),
+          ),
+        ),
       ],
     );
   }

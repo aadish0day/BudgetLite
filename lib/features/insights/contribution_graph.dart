@@ -1,17 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../core/database/database.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/colors.dart';
 import '../../core/utils/constants.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/utils/icon_helper.dart';
-import 'package:intl/intl.dart';
-import '../../core/database/database.dart';
-import '../../providers/transaction_provider.dart';
 import '../../providers/database_provider.dart';
+import '../../providers/transaction_provider.dart';
 
 /// GitHub-style contribution graph showing daily spending intensity
 /// across a full calendar year.
@@ -57,9 +57,13 @@ class _ContributionGraphState extends ConsumerState<ContributionGraph> {
     final daily = <DateTime, double>{};
     // Exclude transfers — balance-neutral, consistent with the calendar and
     // every other spending view.
-    for (final t in allTransactions.where((t) => t.amount > 0 && t.categoryId != 'transfer')) {
+    for (final t in allTransactions.where(
+      (t) => t.amount > 0 && t.categoryId != 'transfer',
+    )) {
       if (t.date.year != _selectedYear) continue;
-      if (_filterCategoryId != null && t.categoryId != _filterCategoryId) continue;
+      if (_filterCategoryId != null && t.categoryId != _filterCategoryId) {
+        continue;
+      }
 
       final dayKey = DateTime(t.date.year, t.date.month, t.date.day);
       daily[dayKey] = (daily[dayKey] ?? 0.0) + t.amount;
@@ -73,7 +77,7 @@ class _ContributionGraphState extends ConsumerState<ContributionGraph> {
     int current = 0;
     int longest = 0;
 
-    final firstDay = DateTime(_selectedYear, 1, 1);
+    final firstDay = DateTime(_selectedYear);
     final today = DateTime.now();
     final isCurrentYear = _selectedYear == today.year;
 
@@ -105,8 +109,11 @@ class _ContributionGraphState extends ConsumerState<ContributionGraph> {
   /// own historical daily spending data (relative, not fixed amounts).
   /// Levels: 0=none, 1=low (≤25th percentile), 2=medium (25th-50th),
   /// 3=high (50th-75th), 4=max (>75th percentile or outlier).
-  int _getIntensityLevel(double dailySpend, double avgDaily,
-      [List<double>? allDailyAmounts]) {
+  int _getIntensityLevel(
+    double dailySpend,
+    double avgDaily, [
+    List<double>? allDailyAmounts,
+  ]) {
     if (dailySpend == 0) return 0;
     if (allDailyAmounts == null || allDailyAmounts.length < 4) {
       // Fallback: use avgDaily when we don't have enough data for quartiles
@@ -119,7 +126,8 @@ class _ContributionGraphState extends ConsumerState<ContributionGraph> {
     }
 
     // Sort non-zero amounts and compute quartile thresholds
-    final sorted = List<double>.from(allDailyAmounts.where((v) => v > 0))..sort();
+    final sorted = List<double>.from(allDailyAmounts.where((v) => v > 0))
+      ..sort();
     if (sorted.isEmpty) return 0;
 
     final n = sorted.length;
@@ -153,16 +161,24 @@ class _ContributionGraphState extends ConsumerState<ContributionGraph> {
     }
   }
 
-  void _showDaySheet(BuildContext context, DateTime date, double spent,
-      List<Transaction> allTransactions, List<Category> categories) {
+  void _showDaySheet(
+    BuildContext context,
+    DateTime date,
+    double spent,
+    List<Transaction> allTransactions,
+    List<Category> categories,
+  ) {
     // Get transactions for this specific day
-    final dayTxns = allTransactions.where((t) =>
-        t.amount > 0 &&
-        t.date.year == date.year &&
-        t.date.month == date.month &&
-        t.date.day == date.day &&
-        (_filterCategoryId == null || t.categoryId == _filterCategoryId)
-    ).toList();
+    final dayTxns = allTransactions
+        .where(
+          (t) =>
+              t.amount > 0 &&
+              t.date.year == date.year &&
+              t.date.month == date.month &&
+              t.date.day == date.day &&
+              (_filterCategoryId == null || t.categoryId == _filterCategoryId),
+        )
+        .toList();
 
     final total = dayTxns.fold<double>(0, (s, t) => s + t.amount);
 
@@ -188,10 +204,13 @@ class _ContributionGraphState extends ConsumerState<ContributionGraph> {
                 children: [
                   Center(
                     child: Container(
-                      width: 40, height: 4,
+                      width: 40,
+                      height: 4,
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(2),
-                        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
+                        color: colorScheme.onSurfaceVariant.withValues(
+                          alpha: 0.3,
+                        ),
                       ),
                     ),
                   ),
@@ -202,7 +221,6 @@ class _ContributionGraphState extends ConsumerState<ContributionGraph> {
                         child: Text(
                           Formatters.formatDate(date),
                           style: AppTheme.displayStyle(
-                            size: 18, weight: FontWeight.w600,
                             color: colorScheme.onSurface,
                           ),
                         ),
@@ -210,13 +228,18 @@ class _ContributionGraphState extends ConsumerState<ContributionGraph> {
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          Text('Spent',
-                              style: AppTheme.bodyStyle(
-                                  size: 11, color: colorScheme.onSurfaceVariant)),
+                          Text(
+                            'Spent',
+                            style: AppTheme.bodyStyle(
+                              size: 11,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                          ),
                           Text(
                             Formatters.formatCurrency(total),
                             style: AppTheme.financialStyle(
-                              size: 20, weight: FontWeight.w700,
+                              size: 20,
+                              weight: FontWeight.w700,
                               color: colorScheme.onSurface,
                             ),
                           ),
@@ -225,12 +248,16 @@ class _ContributionGraphState extends ConsumerState<ContributionGraph> {
                     ],
                   ),
                   const SizedBox(height: 8),
-                  Container(height: 1, color: colorScheme.outline.withValues(alpha: 0.15)),
+                  Container(
+                    height: 1,
+                    color: colorScheme.outline.withValues(alpha: 0.15),
+                  ),
                   const SizedBox(height: 12),
                   Text(
                     '${dayTxns.length} transaction${dayTxns.length != 1 ? 's' : ''}',
                     style: AppTheme.bodyStyle(
-                      size: 12, color: colorScheme.onSurfaceVariant,
+                      size: 12,
+                      color: colorScheme.onSurfaceVariant,
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -240,12 +267,19 @@ class _ContributionGraphState extends ConsumerState<ContributionGraph> {
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(LucideIcons.receiptText, size: 40,
-                                    color: colorScheme.onSurfaceVariant.withValues(alpha: 0.3)),
+                                Icon(
+                                  LucideIcons.receiptText,
+                                  size: 40,
+                                  color: colorScheme.onSurfaceVariant
+                                      .withValues(alpha: 0.3),
+                                ),
                                 const SizedBox(height: 12),
-                                Text('No transactions on this day',
-                                    style: AppTheme.bodyStyle(
-                                        size: 14, color: colorScheme.onSurfaceVariant)),
+                                Text(
+                                  'No transactions on this day',
+                                  style: AppTheme.bodyStyle(
+                                    color: colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
                               ],
                             ),
                           )
@@ -255,49 +289,71 @@ class _ContributionGraphState extends ConsumerState<ContributionGraph> {
                             separatorBuilder: (_, _) => Container(
                               height: 1,
                               margin: const EdgeInsets.symmetric(vertical: 2),
-                              color: colorScheme.outline.withValues(alpha: 0.06),
+                              color: colorScheme.outline.withValues(
+                                alpha: 0.06,
+                              ),
                             ),
                             itemBuilder: (ctx, index) {
                               final t = dayTxns[index];
-                              final cat = categories.where((c) => c.id == t.categoryId).firstOrNull;
+                              final cat = categories
+                                  .where((c) => c.id == t.categoryId)
+                                  .firstOrNull;
                               final catColor = Color(cat?.color ?? 0xFF6B7280);
 
                               return Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 8),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 8,
+                                ),
                                 child: Row(
                                   children: [
                                     Container(
-                                      width: 40, height: 40,
+                                      width: 40,
+                                      height: 40,
                                       decoration: BoxDecoration(
                                         borderRadius: BorderRadius.circular(10),
                                         color: catColor.withValues(alpha: 0.12),
                                       ),
                                       child: Icon(
                                         getCategoryIcon(cat?.icon ?? ''),
-                                        size: 18, color: catColor,
+                                        size: 18,
+                                        color: catColor,
                                       ),
                                     ),
                                     const SizedBox(width: 12),
                                     Expanded(
                                       child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
                                         children: [
-                                          Text(cat?.name ?? 'Unknown',
+                                          Text(
+                                            cat?.name ?? 'Unknown',
+                                            style: AppTheme.bodyStyle(
+                                              weight: FontWeight.w500,
+                                              color: colorScheme.onSurface,
+                                            ),
+                                          ),
+                                          if (t.note != null &&
+                                              t.note!.isNotEmpty)
+                                            Text(
+                                              t.note!,
                                               style: AppTheme.bodyStyle(
-                                                  size: 14, weight: FontWeight.w500,
-                                                  color: colorScheme.onSurface)),
-                                          if (t.note != null && t.note!.isNotEmpty)
-                                            Text(t.note!,
-                                                style: AppTheme.bodyStyle(
-                                                    size: 12, color: colorScheme.onSurfaceVariant),
-                                                maxLines: 1, overflow: TextOverflow.ellipsis),
+                                                size: 12,
+                                                color: colorScheme
+                                                    .onSurfaceVariant,
+                                              ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
                                         ],
                                       ),
                                     ),
-                                    Text('-${Formatters.formatCurrency(t.amount)}',
-                                        style: AppTheme.financialStyle(
-                                            size: 14, weight: FontWeight.w600,
-                                            color: AppColors.error)),
+                                    Text(
+                                      '-${Formatters.formatCurrency(t.amount)}',
+                                      style: AppTheme.financialStyle(
+                                        size: 14,
+                                        color: AppColors.error,
+                                      ),
+                                    ),
                                   ],
                                 ),
                               );
@@ -313,7 +369,12 @@ class _ContributionGraphState extends ConsumerState<ContributionGraph> {
     );
   }
 
-  void _showTooltip(BuildContext context, DateTime date, double spent, int level) {
+  void _showTooltip(
+    BuildContext context,
+    DateTime date,
+    double spent,
+    int level,
+  ) {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = colorScheme.brightness == Brightness.dark;
     final overlay = Overlay.of(context);
@@ -333,66 +394,76 @@ class _ContributionGraphState extends ConsumerState<ContributionGraph> {
           child: Center(
             child: GestureDetector(
               onTap: () {},
-              child: Container(
-                width: 200,
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(14),
-                  color: isDark ? AppColors.elevatedDark : AppColors.cardLight,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.15),
-                      blurRadius: 20,
-                      offset: const Offset(0, 6),
-                    ),
-                  ],
-                  border: Border.all(
-                    color: colorScheme.outline.withValues(alpha: 0.1),
-                  ),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      Formatters.formatDate(date),
-                      style: AppTheme.displayStyle(
-                        size: 15, weight: FontWeight.w600,
-                        color: colorScheme.onSurface,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      spent == 0 ? 'No spend' : 'Spent ${Formatters.formatCurrency(spent)}',
-                      style: AppTheme.bodyStyle(
-                        size: 13, color: colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                    if (spent > 0) ...[
-                      const SizedBox(height: 6),
-                      // Mini intensity indicator
-                      Container(
-                        width: 12, height: 12,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(3),
-                          color: _getCellColor(level, isDark),
+              child:
+                  Container(
+                    width: 200,
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(14),
+                      color: isDark
+                          ? AppColors.elevatedDark
+                          : AppColors.cardLight,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(
+                            alpha: isDark ? 0.4 : 0.15,
+                          ),
+                          blurRadius: 20,
+                          offset: const Offset(0, 6),
                         ),
-                      ),
-                    ],
-                    const SizedBox(height: 12),
-                    Text(
-                      'Tap anywhere to close',
-                      style: AppTheme.bodyStyle(
-                        size: 10, color: colorScheme.onSurfaceVariant,
+                      ],
+                      border: Border.all(
+                        color: colorScheme.outline.withValues(alpha: 0.1),
                       ),
                     ),
-                  ],
-                ),
-              ).animate().scale(
-                begin: const Offset(0.85, 0.85),
-                end: const Offset(1, 1),
-                duration: 200.ms,
-                curve: Curves.easeOutBack,
-              ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          Formatters.formatDate(date),
+                          style: AppTheme.displayStyle(
+                            size: 15,
+                            color: colorScheme.onSurface,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          spent == 0
+                              ? 'No spend'
+                              : 'Spent ${Formatters.formatCurrency(spent)}',
+                          style: AppTheme.bodyStyle(
+                            size: 13,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        if (spent > 0) ...[
+                          const SizedBox(height: 6),
+                          // Mini intensity indicator
+                          Container(
+                            width: 12,
+                            height: 12,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(3),
+                              color: _getCellColor(level, isDark),
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 12),
+                        Text(
+                          'Tap anywhere to close',
+                          style: AppTheme.bodyStyle(
+                            size: 10,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ).animate().scale(
+                    begin: const Offset(0.85, 0.85),
+                    end: const Offset(1, 1),
+                    duration: 200.ms,
+                    curve: Curves.easeOutBack,
+                  ),
             ),
           ),
         ),
@@ -408,8 +479,12 @@ class _ContributionGraphState extends ConsumerState<ContributionGraph> {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = colorScheme.brightness == Brightness.dark;
     final categories = ref.watch(categoriesProvider).valueOrNull ?? [];
-    final activeCategory = categories.where((c) => c.id == _filterCategoryId).firstOrNull;
-    final categoryColor = activeCategory != null ? Color(activeCategory.color) : null;
+    final activeCategory = categories
+        .where((c) => c.id == _filterCategoryId)
+        .firstOrNull;
+    final categoryColor = activeCategory != null
+        ? Color(activeCategory.color)
+        : null;
     final allTransactions = ref.watch(transactionsProvider).valueOrNull ?? [];
 
     if (allTransactions.isEmpty) return const SizedBox.shrink();
@@ -418,9 +493,12 @@ class _ContributionGraphState extends ConsumerState<ContributionGraph> {
     final daily = _buildDailySpend(allTransactions);
 
     // Year setup
-    final firstDay = DateTime(_selectedYear, 1, 1);
-    final daysInYear = _selectedYear % 4 == 0 &&
-        (_selectedYear % 100 != 0 || _selectedYear % 400 == 0) ? 366 : 365;
+    final firstDay = DateTime(_selectedYear);
+    final daysInYear =
+        _selectedYear % 4 == 0 &&
+            (_selectedYear % 100 != 0 || _selectedYear % 400 == 0)
+        ? 366
+        : 365;
 
     _computeStats(daily, daysInYear);
 
@@ -456,15 +534,17 @@ class _ContributionGraphState extends ConsumerState<ContributionGraph> {
     // Month labels for the top
     final monthLabels = <_MonthLabelInfo>[];
     for (int m = 1; m <= 12; m++) {
-      final monthStart = DateTime(_selectedYear, m, 1);
+      final monthStart = DateTime(_selectedYear, m);
       final dayOfYear = monthStart.difference(firstDay).inDays;
       // Column index = (dayOfYear + firstWeekday) ~/ 7
       final col = (dayOfYear + firstWeekday) ~/ 7;
       if (col < numWeeks) {
-        monthLabels.add(_MonthLabelInfo(
-          label: DateFormat('MMM').format(monthStart),
-          col: col,
-        ));
+        monthLabels.add(
+          _MonthLabelInfo(
+            label: DateFormat('MMM').format(monthStart),
+            col: col,
+          ),
+        );
       }
     }
 
@@ -477,12 +557,17 @@ class _ContributionGraphState extends ConsumerState<ContributionGraph> {
         // ── Header ──
         Row(
           children: [
-            Icon(LucideIcons.gitCommitHorizontal, size: 16, color: colorScheme.primary),
+            Icon(
+              LucideIcons.gitCommitHorizontal,
+              size: 16,
+              color: colorScheme.primary,
+            ),
             const SizedBox(width: 6),
             Text(
               'Spending Activity',
               style: AppTheme.displayStyle(
-                size: 16, weight: FontWeight.w600, color: colorScheme.onSurface,
+                size: 16,
+                color: colorScheme.onSurface,
               ),
             ),
           ],
@@ -521,7 +606,9 @@ class _ContributionGraphState extends ConsumerState<ContributionGraph> {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(AppConstants.cardRadius),
             color: isDark ? AppColors.cardDark : AppColors.cardLight,
-            boxShadow: isDark ? AppColors.cardShadowDark : AppColors.cardShadowLight,
+            boxShadow: isDark
+                ? AppColors.cardShadowDark
+                : AppColors.cardShadowLight,
           ),
           padding: const EdgeInsets.fromLTRB(16, 16, 6, 16),
           child: Column(
@@ -536,16 +623,23 @@ class _ContributionGraphState extends ConsumerState<ContributionGraph> {
                       padding: const EdgeInsets.all(6),
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                        color: colorScheme.surfaceContainerHighest.withValues(
+                          alpha: 0.5,
+                        ),
                       ),
-                      child: Icon(LucideIcons.chevronLeft, size: 14, color: colorScheme.onSurfaceVariant),
+                      child: Icon(
+                        LucideIcons.chevronLeft,
+                        size: 14,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   ),
                   const SizedBox(width: 8),
                   Text(
                     '$_selectedYear',
                     style: AppTheme.displayStyle(
-                      size: 14, weight: FontWeight.w600, color: colorScheme.onSurface,
+                      size: 14,
+                      color: colorScheme.onSurface,
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -555,9 +649,15 @@ class _ContributionGraphState extends ConsumerState<ContributionGraph> {
                       padding: const EdgeInsets.all(6),
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                        color: colorScheme.surfaceContainerHighest.withValues(
+                          alpha: 0.5,
+                        ),
                       ),
-                      child: Icon(LucideIcons.chevronRight, size: 14, color: colorScheme.onSurfaceVariant),
+                      child: Icon(
+                        LucideIcons.chevronRight,
+                        size: 14,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   ),
                   const Spacer(),
@@ -567,7 +667,8 @@ class _ContributionGraphState extends ConsumerState<ContributionGraph> {
                         ? 'Avg ₹${avgDaily.toStringAsFixed(0)}/day'
                         : 'No spend data',
                     style: AppTheme.bodyStyle(
-                      size: 10, color: colorScheme.onSurfaceVariant,
+                      size: 10,
+                      color: colorScheme.onSurfaceVariant,
                     ),
                   ),
                 ],
@@ -594,7 +695,10 @@ class _ContributionGraphState extends ConsumerState<ContributionGraph> {
                           child: Text(
                             label,
                             style: AppTheme.bodyStyle(
-                              size: 8, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+                              size: 8,
+                              color: colorScheme.onSurfaceVariant.withValues(
+                                alpha: 0.5,
+                              ),
                             ),
                           ),
                         );
@@ -613,15 +717,20 @@ class _ContributionGraphState extends ConsumerState<ContributionGraph> {
                               height: 14,
                               child: Row(
                                 children: List.generate(numWeeks, (w) {
-                                  final monthLabel = monthLabels.where((m) => m.col == w).firstOrNull;
+                                  final monthLabel = monthLabels
+                                      .where((m) => m.col == w)
+                                      .firstOrNull;
                                   return SizedBox(
                                     width: 14,
                                     child: monthLabel != null
                                         ? Text(
                                             monthLabel.label,
                                             style: AppTheme.bodyStyle(
-                                              size: 8, weight: FontWeight.w600,
-                                              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                                              size: 8,
+                                              weight: FontWeight.w600,
+                                              color: colorScheme
+                                                  .onSurfaceVariant
+                                                  .withValues(alpha: 0.6),
                                             ),
                                           )
                                         : null,
@@ -635,16 +744,23 @@ class _ContributionGraphState extends ConsumerState<ContributionGraph> {
                               return Row(
                                 children: List.generate(numWeeks, (col) {
                                   final idx = col * 7 + row;
-                                  final info = idx < cellData.length ? cellData[idx] : _CellInfo.empty;
+                                  final info = idx < cellData.length
+                                      ? cellData[idx]
+                                      : _CellInfo.empty;
                                   final cellColor = info.level >= 0
-                                      ? _getCellColor(info.level, isDark, categoryColor)
+                                      ? _getCellColor(
+                                          info.level,
+                                          isDark,
+                                          categoryColor,
+                                        )
                                       : Colors.transparent;
 
                                   Color? borderColor;
                                   // Check if today
                                   if (info.date != null &&
                                       info.date!.year == DateTime.now().year &&
-                                      info.date!.month == DateTime.now().month &&
+                                      info.date!.month ==
+                                          DateTime.now().month &&
                                       info.date!.day == DateTime.now().day) {
                                     borderColor = colorScheme.primary;
                                   }
@@ -652,12 +768,20 @@ class _ContributionGraphState extends ConsumerState<ContributionGraph> {
                                   return GestureDetector(
                                     onTap: info.date != null && info.spent! > 0
                                         ? () => _showDaySheet(
-                                            context, info.date!, info.spent!,
-                                            allTransactions, categories)
+                                            context,
+                                            info.date!,
+                                            info.spent!,
+                                            allTransactions,
+                                            categories,
+                                          )
                                         : null,
                                     onLongPress: info.date != null
                                         ? () => _showTooltip(
-                                            context, info.date!, info.spent ?? 0.0, info.level)
+                                            context,
+                                            info.date!,
+                                            info.spent ?? 0.0,
+                                            info.level,
+                                          )
                                         : null,
                                     child: Container(
                                       width: 14,
@@ -667,7 +791,10 @@ class _ContributionGraphState extends ConsumerState<ContributionGraph> {
                                         borderRadius: BorderRadius.circular(3),
                                         color: cellColor,
                                         border: borderColor != null
-                                            ? Border.all(color: borderColor, width: 1.5)
+                                            ? Border.all(
+                                                color: borderColor,
+                                                width: 1.5,
+                                              )
                                             : null,
                                       ),
                                     ),
@@ -698,15 +825,20 @@ class _ContributionGraphState extends ConsumerState<ContributionGraph> {
                       onTap: () => setState(() => _filterCategoryId = null),
                     ),
                     const SizedBox(width: 6),
-                    ...categories.where((c) => c.type == 'expense').map((cat) => Padding(
-                      padding: const EdgeInsets.only(right: 6),
-                      child: _FilterChip(
-                        label: cat.name,
-                        selected: _filterCategoryId == cat.id,
-                        color: Color(cat.color),
-                        onTap: () => setState(() => _filterCategoryId = cat.id),
-                      ),
-                    )),
+                    ...categories
+                        .where((c) => c.type == 'expense')
+                        .map(
+                          (cat) => Padding(
+                            padding: const EdgeInsets.only(right: 6),
+                            child: _FilterChip(
+                              label: cat.name,
+                              selected: _filterCategoryId == cat.id,
+                              color: Color(cat.color),
+                              onTap: () =>
+                                  setState(() => _filterCategoryId = cat.id),
+                            ),
+                          ),
+                        ),
                   ],
                 ),
               ),
@@ -720,23 +852,33 @@ class _ContributionGraphState extends ConsumerState<ContributionGraph> {
                   Text(
                     'Less',
                     style: AppTheme.bodyStyle(
-                      size: 9, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+                      size: 9,
+                      color: colorScheme.onSurfaceVariant.withValues(
+                        alpha: 0.5,
+                      ),
                     ),
                   ),
                   const SizedBox(width: 6),
-                  ...List.generate(5, (i) => Container(
-                    width: 12, height: 12,
-                    margin: const EdgeInsets.symmetric(horizontal: 1.5),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(2),
-                      color: _getCellColor(i, isDark, categoryColor),
+                  ...List.generate(
+                    5,
+                    (i) => Container(
+                      width: 12,
+                      height: 12,
+                      margin: const EdgeInsets.symmetric(horizontal: 1.5),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(2),
+                        color: _getCellColor(i, isDark, categoryColor),
+                      ),
                     ),
-                  )),
+                  ),
                   const SizedBox(width: 6),
                   Text(
                     'More',
                     style: AppTheme.bodyStyle(
-                      size: 9, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+                      size: 9,
+                      color: colorScheme.onSurfaceVariant.withValues(
+                        alpha: 0.5,
+                      ),
                     ),
                   ),
                 ],
@@ -750,34 +892,33 @@ class _ContributionGraphState extends ConsumerState<ContributionGraph> {
 }
 
 class _CellInfo {
-  final DateTime? date;
-  final double? spent;
-  final int level; // -1 for empty cell
+  // -1 for empty cell
 
   _CellInfo({this.date, this.spent, this.level = 0});
+  final DateTime? date;
+  final double? spent;
+  final int level;
 
   static final empty = _CellInfo(level: -1);
 }
 
 class _MonthLabelInfo {
+  const _MonthLabelInfo({required this.label, required this.col});
   final String label;
   final int col;
-
-  const _MonthLabelInfo({required this.label, required this.col});
 }
 
 class _StatBadge extends StatelessWidget {
-  final IconData icon;
-  final String value;
-  final String label;
-  final Color color;
-
   const _StatBadge({
     required this.icon,
     required this.value,
     required this.label,
     required this.color,
   });
+  final IconData icon;
+  final String value;
+  final String label;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
@@ -805,7 +946,8 @@ class _StatBadge extends StatelessWidget {
                   child: Text(
                     value,
                     style: AppTheme.bodyStyle(
-                      size: 11, weight: FontWeight.w600,
+                      size: 11,
+                      weight: FontWeight.w600,
                       color: colorScheme.onSurface,
                     ),
                     overflow: TextOverflow.ellipsis,
@@ -816,7 +958,8 @@ class _StatBadge extends StatelessWidget {
             Text(
               label,
               style: AppTheme.bodyStyle(
-                size: 9, color: colorScheme.onSurfaceVariant,
+                size: 9,
+                color: colorScheme.onSurfaceVariant,
               ),
             ),
           ],
@@ -827,17 +970,16 @@ class _StatBadge extends StatelessWidget {
 }
 
 class _FilterChip extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final Color color;
-  final VoidCallback onTap;
-
   const _FilterChip({
     required this.label,
     required this.selected,
     required this.color,
     required this.onTap,
   });
+  final String label;
+  final bool selected;
+  final Color color;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {

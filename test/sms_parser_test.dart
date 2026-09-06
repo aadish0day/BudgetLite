@@ -1,10 +1,11 @@
-import 'package:flutter_test/flutter_test.dart';
 import 'package:budget_lite/core/utils/sms_parser.dart';
+import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('SmsParser - Real Kotak Bank SMS Samples', () {
     test('Kotak Sample 1: Sent Rs.50.00 to VPA', () {
-      const sms = 'Sent Rs.50.00 from Kotak Bank AC X5729 to chaurasiayavijaykumar@oksbi on 08-07-26.UPI Ref 655562388656. Not you, https://kotak.com/KBANKT/Fraud';
+      const sms =
+          'Sent Rs.50.00 from Kotak Bank AC X5729 to chaurasiayavijaykumar@oksbi on 08-07-26.UPI Ref 655562388656. Not you, https://kotak.com/KBANKT/Fraud';
       final parsed = SmsParser.parseMessage(sms);
 
       expect(parsed, isNotNull);
@@ -17,7 +18,8 @@ void main() {
     });
 
     test('Kotak Sample 2: Sent Rs.1500.00 to Name', () {
-      const sms = 'Sent Rs.1500.00 from XXXXXX5729 to RABITHAKABEERNALAKAN on 08/06/2026. UPI ref no. 652525717686. Not you? Tap https://kotk.in/KOTAKD/FNJ0xJ to report -Kotak';
+      const sms =
+          'Sent Rs.1500.00 from XXXXXX5729 to RABITHAKABEERNALAKAN on 08/06/2026. UPI ref no. 652525717686. Not you? Tap https://kotk.in/KOTAKD/FNJ0xJ to report -Kotak';
       final parsed = SmsParser.parseMessage(sms);
 
       expect(parsed, isNotNull);
@@ -30,7 +32,8 @@ void main() {
     });
 
     test('Kotak Sample 3: Sent Rs.160.00 to Name', () {
-      const sms = 'Sent Rs.160.00 from XXXXXX5729 to MATIBUR RAHMAN BORBH on 11/06/2026. UPI ref no. 652811048543. Not you? Tap https://kotk.in/KOTAKD/FRT6IT to report -Kotak';
+      const sms =
+          'Sent Rs.160.00 from XXXXXX5729 to MATIBUR RAHMAN BORBH on 11/06/2026. UPI ref no. 652811048543. Not you? Tap https://kotk.in/KOTAKD/FRT6IT to report -Kotak';
       final parsed = SmsParser.parseMessage(sms);
 
       expect(parsed, isNotNull);
@@ -43,7 +46,8 @@ void main() {
     });
 
     test('Kotak Sample 4: Received Rs.40.00 from VPA', () {
-      const sms = 'Received Rs.40.00 in your Kotak Bank AC X5729 from parvati.das27@okicici on 19-05-26.UPI Ref:613922544929.';
+      const sms =
+          'Received Rs.40.00 in your Kotak Bank AC X5729 from parvati.das27@okicici on 19-05-26.UPI Ref:613922544929.';
       final parsed = SmsParser.parseMessage(sms);
 
       expect(parsed, isNotNull);
@@ -56,7 +60,8 @@ void main() {
     });
 
     test('Kotak Sample 5: AutoPay debited towards Spotify', () {
-      const sms = 'Your Kotak Bank account has been successfully debited with Rs. 69.00 on 19/05/2026 for UPI AutoPay towards SPOTIFY INDIA PVT LTD. Refer UM no. KBA3d4bb20829cc44769642832b34faf@kotak811. Regards, Kotak Bank';
+      const sms =
+          'Your Kotak Bank account has been successfully debited with Rs. 69.00 on 19/05/2026 for UPI AutoPay towards SPOTIFY INDIA PVT LTD. Refer UM no. KBA3d4bb20829cc44769642832b34faf@kotak811. Regards, Kotak Bank';
       final parsed = SmsParser.parseMessage(sms);
 
       expect(parsed, isNotNull);
@@ -70,7 +75,8 @@ void main() {
     });
 
     test('Kotak Sample 6: Received Rs.390.00 from VPA', () {
-      const sms = 'Received Rs.390.00 in your Kotak Bank AC X5729 from parvati.das27@okicici on 05-06-26.UPI Ref:615627994059.';
+      const sms =
+          'Received Rs.390.00 in your Kotak Bank AC X5729 from parvati.das27@okicici on 05-06-26.UPI Ref:615627994059.';
       final parsed = SmsParser.parseMessage(sms);
 
       expect(parsed, isNotNull);
@@ -134,7 +140,8 @@ void main() {
 
   group('SmsParser - Amount Edge Cases', () {
     test('Parses INR 499 without decimal (Netflix)', () {
-      const sms = 'Alert: Spent INR 499 on Netflix Recharge at NETFLIX via Netbanking.';
+      const sms =
+          'Alert: Spent INR 499 on Netflix Recharge at NETFLIX via Netbanking.';
       final parsed = SmsParser.parseMessage(sms);
 
       expect(parsed, isNotNull);
@@ -144,7 +151,8 @@ void main() {
     });
 
     test('Parses Rs 1499 (no space after Rs, no decimal)', () {
-      const sms = 'Thank you for using Paytm. Rs 1499 spent at ZARA store on 22-07-2026.';
+      const sms =
+          'Thank you for using Paytm. Rs 1499 spent at ZARA store on 22-07-2026.';
       final parsed = SmsParser.parseMessage(sms);
 
       expect(parsed, isNotNull);
@@ -154,7 +162,8 @@ void main() {
     });
 
     test('Parses amount with balance remaining text', () {
-      const sms = 'Your card was charged Rs 350.00 at STARBUCKS. Remaining balance Rs 45000.';
+      const sms =
+          'Your card was charged Rs 350.00 at STARBUCKS. Remaining balance Rs 45000.';
       final parsed = SmsParser.parseMessage(sms);
 
       expect(parsed, isNotNull);
@@ -166,7 +175,8 @@ void main() {
 
   group('SmsParser - Direction Detection Edge Cases', () {
     test('Transferred from is debit', () {
-      const sms = 'Rs. 2000.00 transferred from your account to AMAZON on 15-07-2026. UPI Ref: 12345';
+      const sms =
+          'Rs. 2000.00 transferred from your account to AMAZON on 15-07-2026. UPI Ref: 12345';
       final parsed = SmsParser.parseMessage(sms);
 
       expect(parsed, isNotNull);
@@ -175,7 +185,8 @@ void main() {
     });
 
     test('Added to your is credit', () {
-      const sms = 'Rs. 500.00 added to your account from PARENTS on 15-07-2026. UPI Ref: 67890';
+      const sms =
+          'Rs. 500.00 added to your account from PARENTS on 15-07-2026. UPI Ref: 67890';
       final parsed = SmsParser.parseMessage(sms);
 
       expect(parsed, isNotNull);
@@ -184,7 +195,8 @@ void main() {
     });
 
     test('Debit SMS with towards keyword extracts merchant', () {
-      const sms = 'Rs. 349.00 debited towards NETFLIX SUBSCRIPTION on 10-06-2026. UPI Ref: 123456';
+      const sms =
+          'Rs. 349.00 debited towards NETFLIX SUBSCRIPTION on 10-06-2026. UPI Ref: 123456';
       final parsed = SmsParser.parseMessage(sms);
 
       expect(parsed, isNotNull);
@@ -194,7 +206,8 @@ void main() {
     });
 
     test('Debit with towards keyword (AutoPay)', () {
-      const sms = 'Your account debited Rs. 69.00 on 19/05/2026 for UPI AutoPay towards SPOTIFY INDIA PVT LTD.';
+      const sms =
+          'Your account debited Rs. 69.00 on 19/05/2026 for UPI AutoPay towards SPOTIFY INDIA PVT LTD.';
       final parsed = SmsParser.parseMessage(sms);
 
       expect(parsed, isNotNull);
@@ -204,7 +217,8 @@ void main() {
     });
 
     test('ParsedSmsTxn produces stable unique id for same SMS', () {
-      const sms = 'Sent Rs.50.00 from Kotak Bank AC X5729 to chaurasiayavijaykumar@oksbi on 08-07-26.';
+      const sms =
+          'Sent Rs.50.00 from Kotak Bank AC X5729 to chaurasiayavijaykumar@oksbi on 08-07-26.';
       final date = DateTime(2026, 7, 8);
       final p1 = SmsParser.parseMessage(sms, dateOverride: date);
       final p2 = SmsParser.parseMessage(sms, dateOverride: date);
@@ -215,12 +229,35 @@ void main() {
     });
 
     test('includeMerchantNote: false leaves note field clean and empty', () {
-      const sms = 'Sent Rs.50.00 from Kotak Bank AC X5729 to chaurasiayavijaykumar@oksbi on 08-07-26.';
-      final parsed = SmsParser.parseMessage(sms, includeMerchantNote: false);
+      const sms =
+          'Sent Rs.50.00 from Kotak Bank AC X5729 to chaurasiayavijaykumar@oksbi on 08-07-26.';
+      final parsed = SmsParser.parseMessage(sms);
 
       expect(parsed, isNotNull);
       expect(parsed!.amount, 50.0);
       expect(parsed.note, equals(''));
+    });
+
+    test('Refund containing payment words and fraud warning is income', () {
+      const sms =
+          'Refund of Rs 500 for order paid on Swiggy credited. Call 1800123456 if unauthorized debit';
+      final parsed = SmsParser.parse(sms);
+
+      expect(parsed, isNotNull);
+      expect(parsed!.amount, 500.0);
+      expect(parsed.isIncome, true);
+      expect(parsed.categoryId, 'income');
+      expect(parsed.id, startsWith('sms_500.0_'));
+    });
+
+    test('Credit SMS with report fraud if not you is income', () {
+      const sms =
+          'Rs. 1200.00 credited to your A/c for order paid. Report fraud if not you.';
+      final parsed = SmsParser.parseMessage(sms);
+
+      expect(parsed, isNotNull);
+      expect(parsed!.amount, 1200.0);
+      expect(parsed.isIncome, true);
     });
   });
 }

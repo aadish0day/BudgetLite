@@ -50,57 +50,41 @@ class AppColors {
 
   // ── Shadows as borders — light mode ──
   static List<BoxShadow> get borderShadowLight => [
-    BoxShadow(
-      color: const Color(0x0F000000),
-      blurRadius: 1,
-      offset: const Offset(0, 0),
-    ),
-    BoxShadow(
-      color: const Color(0x0D000000),
+    const BoxShadow(color: Color(0x0F000000), blurRadius: 1),
+    const BoxShadow(
+      color: Color(0x0D000000),
       blurRadius: 2,
-      offset: const Offset(0, 1),
+      offset: Offset(0, 1),
     ),
-    BoxShadow(
-      color: const Color(0x0A000000),
+    const BoxShadow(
+      color: Color(0x0A000000),
       blurRadius: 4,
-      offset: const Offset(0, 2),
+      offset: Offset(0, 2),
     ),
   ];
 
   static List<BoxShadow> get borderShadowLightHover => [
-    BoxShadow(
-      color: const Color(0x14000000),
-      blurRadius: 1,
-      offset: const Offset(0, 0),
-    ),
-    BoxShadow(
-      color: const Color(0x12000000),
+    const BoxShadow(color: Color(0x14000000), blurRadius: 1),
+    const BoxShadow(
+      color: Color(0x12000000),
       blurRadius: 2,
-      offset: const Offset(0, 1),
+      offset: Offset(0, 1),
     ),
-    BoxShadow(
-      color: const Color(0x0E000000),
+    const BoxShadow(
+      color: Color(0x0E000000),
       blurRadius: 4,
-      offset: const Offset(0, 2),
+      offset: Offset(0, 2),
     ),
   ];
 
   // ── Shadows as borders — dark mode ──
   // Dark mode simplifies to a single white ring (layered depth not visible).
   static List<BoxShadow> get borderShadowDark => [
-    BoxShadow(
-      color: const Color(0x14FFFFFF),
-      blurRadius: 1,
-      offset: const Offset(0, 0),
-    ),
+    const BoxShadow(color: Color(0x14FFFFFF), blurRadius: 1),
   ];
 
   static List<BoxShadow> get borderShadowDarkHover => [
-    BoxShadow(
-      color: const Color(0x21FFFFFF),
-      blurRadius: 1,
-      offset: const Offset(0, 0),
-    ),
+    const BoxShadow(color: Color(0x21FFFFFF), blurRadius: 1),
   ];
 
   // ── Legacy shadows (keep for backward compat) ──
@@ -136,10 +120,7 @@ class AppColors {
   ];
 
   // ── Glass surface (for signature moments) ──
-  static BoxDecoration glassDecoration({
-    required bool isDark,
-    Color? tint,
-  }) {
+  static BoxDecoration glassDecoration({required bool isDark, Color? tint}) {
     final surface = isDark ? cardDark : cardLight;
     final borderColor = isDark
         ? const Color(0x14FFFFFF)

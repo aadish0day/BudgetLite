@@ -37,5 +37,4 @@ class Formatters {
     final prev = DateTime(now.year, now.month - 1);
     return formatMonthKey(prev);
   }
-
 }

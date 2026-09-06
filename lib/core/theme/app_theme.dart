@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'colors.dart';
+
 import '../utils/constants.dart';
+import 'colors.dart';
 
 class AppTheme {
   AppTheme._();
@@ -67,7 +68,6 @@ class AppTheme {
   static ThemeData _lightTheme() {
     final colorScheme = ColorScheme.light(
       primary: AppColors.primary,
-      onPrimary: Colors.white,
       primaryContainer: AppColors.primaryLight.withValues(alpha: 0.15),
       onPrimaryContainer: AppColors.primary,
       secondary: AppColors.secondary,
@@ -76,7 +76,6 @@ class AppTheme {
       onSecondaryContainer: AppColors.secondary,
       tertiary: AppColors.tertiary,
       error: AppColors.error,
-      onError: Colors.white,
       surface: AppColors.surfaceLight,
       onSurface: AppColors.onSurfaceLight,
       onSurfaceVariant: AppColors.onSurfaceVariantLight,
@@ -110,7 +109,10 @@ class AppTheme {
     return _buildTheme(colorScheme, isDark: true);
   }
 
-  static ThemeData _buildTheme(ColorScheme colorScheme, {required bool isDark}) {
+  static ThemeData _buildTheme(
+    ColorScheme colorScheme, {
+    required bool isDark,
+  }) {
     final bodyFont = GoogleFonts.inter();
 
     return ThemeData(
@@ -270,9 +272,7 @@ class AppTheme {
         backgroundColor: isDark ? AppColors.primaryDark : AppColors.primary,
         foregroundColor: isDark ? const Color(0xFF003738) : Colors.white,
         elevation: isDark ? 0 : 4,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
 
       // ── Input decoration — clean, crisp ──
@@ -346,23 +346,19 @@ class AppTheme {
 
       // ── Chip theme ──
       chipTheme: ChipThemeData(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       ),
 
       // ── Dialog ──
       dialogTheme: DialogThemeData(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         backgroundColor: isDark ? AppColors.cardDark : AppColors.cardLight,
       ),
 
       // ── Bottom sheet — elevated, rounded top ──
       bottomSheetTheme: BottomSheetThemeData(
-        shape: RoundedRectangleBorder(
+        shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
         modalElevation: 0,
@@ -374,17 +370,18 @@ class AppTheme {
         activeTrackColor: isDark ? AppColors.primaryDark : AppColors.primary,
         inactiveTrackColor: colorScheme.primaryContainer,
         thumbColor: isDark ? AppColors.primaryDark : AppColors.primary,
-        overlayColor: (isDark ? AppColors.primaryDark : AppColors.primary).withValues(alpha: 0.12),
+        overlayColor: (isDark ? AppColors.primaryDark : AppColors.primary)
+            .withValues(alpha: 0.12),
         activeTickMarkColor: isDark ? AppColors.primaryDark : AppColors.primary,
       ),
 
       // ── Snackbar — floating, rounded ──
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-        backgroundColor: isDark ? AppColors.elevatedDark : AppColors.onSurfaceLight,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        backgroundColor: isDark
+            ? AppColors.elevatedDark
+            : AppColors.onSurfaceLight,
         contentTextStyle: GoogleFonts.inter(
           fontSize: 14,
           fontWeight: FontWeight.w500,

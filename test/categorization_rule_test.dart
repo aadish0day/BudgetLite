@@ -1,5 +1,5 @@
-import 'package:flutter_test/flutter_test.dart';
 import 'package:budget_lite/core/utils/categorization_rule.dart';
+import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('CategorizationRule', () {

@@ -1,20 +1,21 @@
 /// A keyword-to-category mapping rule for auto-categorization.
 class CategorizationRule {
-  final String keyword;       // comma-separated keywords
-  String categoryId;           // the category to assign
+  // the category to assign
 
   CategorizationRule({required this.keyword, required this.categoryId});
-
-  Map<String, dynamic> toJson() => {
-    'keyword': keyword,
-    'categoryId': categoryId,
-  };
 
   factory CategorizationRule.fromJson(Map<String, dynamic> json) =>
       CategorizationRule(
         keyword: json['keyword'] as String,
         categoryId: json['categoryId'] as String,
       );
+  final String keyword; // comma-separated keywords
+  String categoryId;
+
+  Map<String, dynamic> toJson() => {
+    'keyword': keyword,
+    'categoryId': categoryId,
+  };
 
   /// Build a regex from the comma-separated keywords for matching.
   /// Handles both `', '` and `','` formats. Keywords are escaped so
@@ -29,7 +30,7 @@ class CategorizationRule {
         .toList();
     if (parts.isEmpty) {
       // No usable keywords — a regex that can never match.
-      return RegExp(r'(?!x)x');
+      return RegExp('(?!x)x');
     }
     return RegExp(parts.join('|'), caseSensitive: false);
   }
@@ -53,7 +54,8 @@ class CategorizationRule {
       categoryId: 'shopping',
     ),
     CategorizationRule(
-      keyword: 'bill, electricity, water, internet, recharge, phone, jio, airtel',
+      keyword:
+          'bill, electricity, water, internet, recharge, phone, jio, airtel',
       categoryId: 'bills',
     ),
     CategorizationRule(

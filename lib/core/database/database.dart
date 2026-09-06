@@ -1,21 +1,25 @@
 import 'dart:io';
+
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+
 import 'tables.dart';
 
 part 'database.g.dart';
 
-@DriftDatabase(tables: [
-  Accounts,
-  Categories,
-  Transactions,
-  Budgets,
-  Goals,
-  MonthlyIncome,
-  AppSettings,
-])
+@DriftDatabase(
+  tables: [
+    Accounts,
+    Categories,
+    Transactions,
+    Budgets,
+    Goals,
+    MonthlyIncome,
+    AppSettings,
+  ],
+)
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
@@ -49,9 +53,13 @@ class AppDatabase extends _$AppDatabase {
 
   /// Migrate existing transaction data: copies legacy merchant names from 'note' into 'payee' and clears 'note'
   Future<void> migrateLegacyPayees() async {
-    final list = await (select(transactions)..where((t) => t.payee.isNull() & t.note.isNotNull())).get();
+    final list = await (select(
+      transactions,
+    )..where((t) => t.payee.isNull() & t.note.isNotNull())).get();
     for (final txn in list) {
-      if (txn.note != null && txn.note!.trim().isNotEmpty && (txn.payee == null || txn.payee!.isEmpty)) {
+      if (txn.note != null &&
+          txn.note!.trim().isNotEmpty &&
+          (txn.payee == null || txn.payee!.isEmpty)) {
         await (update(transactions)..where((t) => t.id.equals(txn.id))).write(
           TransactionsCompanion(
             payee: Value(txn.note),
@@ -132,44 +140,55 @@ class AppDatabase extends _$AppDatabase {
       ]);
     });
 
-    await into(accounts).insert(AccountsCompanion.insert(
-      id: 'default',
-      name: 'Main Account',
-      balance: const Value(0),
-      currency: const Value('INR'),
-    ));
+    await into(accounts).insert(
+      AccountsCompanion.insert(
+        id: 'default',
+        name: 'Main Account',
+        balance: const Value(0),
+        currency: const Value('INR'),
+      ),
+    );
   }
+
   /// Watch the default account as a stream (for live balance updates).
   Stream<Account> watchDefaultAccount() {
-    return (select(accounts)..where((a) => a.id.equals('default')))
-        .watchSingle();
+    return (select(
+      accounts,
+    )..where((a) => a.id.equals('default'))).watchSingle();
   }
 
   /// Get the default account.
   Future<Account> getDefaultAccount() {
-    return (select(accounts)..where((a) => a.id.equals('default')))
-        .getSingle();
+    return (select(accounts)..where((a) => a.id.equals('default'))).getSingle();
   }
 
   /// Update the balance of an account.
   Future<void> updateAccountBalance(String accountId, double newBalance) async {
-    await (update(accounts)..where((a) => a.id.equals(accountId)))
-        .write(AccountsCompanion(balance: Value(newBalance)));
+    await (update(accounts)..where((a) => a.id.equals(accountId))).write(
+      AccountsCompanion(balance: Value(newBalance)),
+    );
   }
 
   /// Get number of transactions tied to a category.
   Future<int> getTransactionCountForCategory(String categoryId) async {
-    final query = select(transactions)..where((t) => t.categoryId.equals(categoryId));
+    final query = select(transactions)
+      ..where((t) => t.categoryId.equals(categoryId));
     final list = await query.get();
     return list.length;
   }
 
   /// Delete a category after reassigning existing transactions and budgets to targetCategoryId.
-  Future<void> deleteCategoryWithReassignment(String categoryId, String targetCategoryId) async {
+  Future<void> deleteCategoryWithReassignment(
+    String categoryId,
+    String targetCategoryId,
+  ) async {
     await transaction(() async {
-      await (update(transactions)..where((t) => t.categoryId.equals(categoryId)))
+      await (update(transactions)
+            ..where((t) => t.categoryId.equals(categoryId)))
           .write(TransactionsCompanion(categoryId: Value(targetCategoryId)));
-      await (delete(budgets)..where((b) => b.categoryId.equals(categoryId))).go();
+      await (delete(
+        budgets,
+      )..where((b) => b.categoryId.equals(categoryId))).go();
       await (delete(categories)..where((c) => c.id.equals(categoryId))).go();
     });
   }
@@ -195,6 +214,11 @@ LazyDatabase _openConnection() {
   return LazyDatabase(() async {
     final dbFolder = await getApplicationDocumentsDirectory();
     final file = File(p.join(dbFolder.path, 'budget_lite.db'));
-    return NativeDatabase(file);
+    return NativeDatabase(
+      file,
+      setup: (rawDb) {
+        rawDb.execute('PRAGMA foreign_keys = ON;');
+      },
+    );
   });
 }

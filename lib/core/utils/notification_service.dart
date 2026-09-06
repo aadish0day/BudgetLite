@@ -1,32 +1,34 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
-import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz_data;
+import 'package:timezone/timezone.dart' as tz;
+
 import '../database/database.dart' show Transaction;
 
 class NotificationService {
-  static final NotificationService _instance = NotificationService._();
   NotificationService._();
+  static final NotificationService _instance = NotificationService._();
 
   static NotificationService get instance => _instance;
 
-  final FlutterLocalNotificationsPlugin _plugin = FlutterLocalNotificationsPlugin();
+  final FlutterLocalNotificationsPlugin _plugin =
+      FlutterLocalNotificationsPlugin();
   bool _initialized = false;
   bool _timezoneInitialized = false;
 
   final Set<String> _firedAlerts = {};
 
-  Future<void> initialize({void Function(String? payload)? onNotificationTap}) async {
+  Future<void> initialize({
+    void Function(String? payload)? onNotificationTap,
+  }) async {
     if (_initialized) return;
 
     await _initTimezones();
 
-    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const iosSettings = DarwinInitializationSettings(
-      requestAlertPermission: true,
-      requestBadgePermission: true,
-      requestSoundPermission: true,
+    const androidSettings = AndroidInitializationSettings(
+      '@mipmap/ic_launcher',
     );
+    const iosSettings = DarwinInitializationSettings();
     const initSettings = InitializationSettings(
       android: androidSettings,
       iOS: iosSettings,
@@ -63,7 +65,8 @@ class NotificationService {
         await showNotification(
           id: ('80_${categoryId}_$month'.hashCode).abs() % 100000,
           title: 'Budget Alert: $categoryName',
-          body: 'You have used ${(ratio * 100).toStringAsFixed(0)}% of your $categoryName budget.',
+          body:
+              'You have used ${(ratio * 100).toStringAsFixed(0)}% of your $categoryName budget.',
           payload: 'budget:$categoryId',
         );
       }
@@ -102,7 +105,9 @@ class NotificationService {
           tz.setLocalLocation(tz.getLocation(name));
         } catch (_) {
           // Unknown/aliased identifier — fall back to a fixed-offset zone.
-          tz.setLocalLocation(_fixedOffsetLocation(DateTime.now().timeZoneOffset));
+          tz.setLocalLocation(
+            _fixedOffsetLocation(DateTime.now().timeZoneOffset),
+          );
         }
       } catch (_) {
         // Platform lookup failed — leave tz.local at its default.
@@ -170,7 +175,7 @@ class NotificationService {
     final location = tz.local;
     final tzDate = tz.TZDateTime.from(scheduledDate, location);
 
-    final androidDetails = AndroidNotificationDetails(
+    const androidDetails = AndroidNotificationDetails(
       'payment_reminders',
       'Payment Reminders',
       channelDescription: 'Notifications for upcoming recurring payments',
@@ -179,7 +184,7 @@ class NotificationService {
       icon: '@mipmap/ic_launcher',
     );
     const iosDetails = DarwinNotificationDetails();
-    final details = NotificationDetails(
+    const details = NotificationDetails(
       android: androidDetails,
       iOS: iosDetails,
     );
@@ -191,7 +196,6 @@ class NotificationService {
       tzDate,
       details,
       androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-      matchDateTimeComponents: null,
       uiLocalNotificationDateInterpretation:
           UILocalNotificationDateInterpretation.absoluteTime,
       payload: payload,
@@ -210,7 +214,7 @@ class NotificationService {
     final location = tz.local;
     final tzDate = tz.TZDateTime.from(nextDueDate, location);
 
-    final androidDetails = AndroidNotificationDetails(
+    const androidDetails = AndroidNotificationDetails(
       'payment_reminders',
       'Payment Reminders',
       channelDescription: 'Notifications for upcoming recurring payments',
@@ -219,7 +223,7 @@ class NotificationService {
       icon: '@mipmap/ic_launcher',
     );
     const iosDetails = DarwinNotificationDetails();
-    final details = NotificationDetails(
+    const details = NotificationDetails(
       android: androidDetails,
       iOS: iosDetails,
     );
@@ -239,7 +243,6 @@ class NotificationService {
         tzDate,
         details,
         androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-        matchDateTimeComponents: null,
         uiLocalNotificationDateInterpretation:
             UILocalNotificationDateInterpretation.absoluteTime,
         payload: transaction.id,
@@ -316,7 +319,8 @@ class NotificationService {
       tzDate,
       details,
       androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-      uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+      uiLocalNotificationDateInterpretation:
+          UILocalNotificationDateInterpretation.absoluteTime,
     );
   }
 
@@ -392,7 +396,16 @@ class NotificationService {
     final targetYear = totalMonths ~/ 12;
     final targetMonth = (totalMonths % 12) + 1;
     final lastDayOfTargetMonth = DateTime(targetYear, targetMonth + 1, 0).day;
-    final targetDay = date.day > lastDayOfTargetMonth ? lastDayOfTargetMonth : date.day;
-    return DateTime(targetYear, targetMonth, targetDay, date.hour, date.minute, date.second);
+    final targetDay = date.day > lastDayOfTargetMonth
+        ? lastDayOfTargetMonth
+        : date.day;
+    return DateTime(
+      targetYear,
+      targetMonth,
+      targetDay,
+      date.hour,
+      date.minute,
+      date.second,
+    );
   }
 }

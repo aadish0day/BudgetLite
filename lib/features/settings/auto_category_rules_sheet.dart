@@ -14,10 +14,12 @@ class AutoCategoryRulesSheet extends ConsumerStatefulWidget {
   const AutoCategoryRulesSheet({super.key});
 
   @override
-  ConsumerState<AutoCategoryRulesSheet> createState() => _AutoCategoryRulesSheetState();
+  ConsumerState<AutoCategoryRulesSheet> createState() =>
+      _AutoCategoryRulesSheetState();
 }
 
-class _AutoCategoryRulesSheetState extends ConsumerState<AutoCategoryRulesSheet> {
+class _AutoCategoryRulesSheetState
+    extends ConsumerState<AutoCategoryRulesSheet> {
   bool _showAddForm = false;
   String _newKeyword = '';
   String _newCategoryId = 'food';
@@ -26,7 +28,12 @@ class _AutoCategoryRulesSheetState extends ConsumerState<AutoCategoryRulesSheet>
     if (_newKeyword.trim().isEmpty) return;
     final notifier = ref.read(autoCategorizationRulesProvider.notifier);
     final current = [...ref.read(autoCategorizationRulesProvider)];
-    current.add(CategorizationRule(keyword: _newKeyword.trim(), categoryId: _newCategoryId));
+    current.add(
+      CategorizationRule(
+        keyword: _newKeyword.trim(),
+        categoryId: _newCategoryId,
+      ),
+    );
     notifier.setRules(current);
     setState(() {
       _showAddForm = false;
@@ -59,7 +66,8 @@ class _AutoCategoryRulesSheetState extends ConsumerState<AutoCategoryRulesSheet>
           Padding(
             padding: const EdgeInsets.only(top: 12, bottom: 4),
             child: Container(
-              width: 40, height: 4,
+              width: 40,
+              height: 4,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(2),
                 color: colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
@@ -71,14 +79,16 @@ class _AutoCategoryRulesSheetState extends ConsumerState<AutoCategoryRulesSheet>
             padding: const EdgeInsets.fromLTRB(24, 12, 24, 16),
             child: Row(
               children: [
-                Icon(LucideIcons.brainCircuit, size: 20, color: colorScheme.primary),
+                Icon(
+                  LucideIcons.brainCircuit,
+                  size: 20,
+                  color: colorScheme.primary,
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     'Auto-Categorization Rules',
-                    style: AppTheme.displayStyle(
-                      size: 18, weight: FontWeight.w600, color: colorScheme.onSurface,
-                    ),
+                    style: AppTheme.displayStyle(color: colorScheme.onSurface),
                   ),
                 ),
                 IconButton(
@@ -96,20 +106,33 @@ class _AutoCategoryRulesSheetState extends ConsumerState<AutoCategoryRulesSheet>
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(12),
-                color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+                color: colorScheme.surfaceContainerHighest.withValues(
+                  alpha: 0.4,
+                ),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('New Rule', style: AppTheme.bodyStyle(
-                    size: 12, weight: FontWeight.w600, color: colorScheme.onSurfaceVariant)),
+                  Text(
+                    'New Rule',
+                    style: AppTheme.bodyStyle(
+                      size: 12,
+                      weight: FontWeight.w600,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
                   const SizedBox(height: 8),
                   TextField(
                     autofocus: true,
                     decoration: InputDecoration(
                       hintText: 'Keywords (comma-separated)',
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                     ),
                     onChanged: (v) => _newKeyword = v,
                   ),
@@ -122,19 +145,32 @@ class _AutoCategoryRulesSheetState extends ConsumerState<AutoCategoryRulesSheet>
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(10),
                             color: colorScheme.surface,
-                            border: Border.all(color: colorScheme.outline.withValues(alpha: 0.2)),
+                            border: Border.all(
+                              color: colorScheme.outline.withValues(alpha: 0.2),
+                            ),
                           ),
                           child: DropdownButtonHideUnderline(
                             child: DropdownButton<String>(
                               value: allCats.any((c) => c.id == _newCategoryId)
-                                  ? _newCategoryId : (allCats.isNotEmpty ? allCats.first.id : 'food'),
+                                  ? _newCategoryId
+                                  : (allCats.isNotEmpty
+                                        ? allCats.first.id
+                                        : 'food'),
                               isExpanded: true,
                               style: AppTheme.bodyStyle(size: 13),
-                              items: allCats.map((c) => DropdownMenuItem(
-                                value: c.id,
-                                child: Text(c.name, style: AppTheme.bodyStyle(size: 13)),
-                              )).toList(),
-                              onChanged: (v) => setState(() => _newCategoryId = v ?? 'food'),
+                              items: allCats
+                                  .map(
+                                    (c) => DropdownMenuItem(
+                                      value: c.id,
+                                      child: Text(
+                                        c.name,
+                                        style: AppTheme.bodyStyle(size: 13),
+                                      ),
+                                    ),
+                                  )
+                                  .toList(),
+                              onChanged: (v) =>
+                                  setState(() => _newCategoryId = v ?? 'food'),
                             ),
                           ),
                         ),
@@ -143,7 +179,10 @@ class _AutoCategoryRulesSheetState extends ConsumerState<AutoCategoryRulesSheet>
                       FilledButton(
                         onPressed: _newKeyword.trim().isEmpty ? null : _addRule,
                         style: FilledButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 10,
+                          ),
                         ),
                         child: const Text('Add'),
                       ),
@@ -162,11 +201,20 @@ class _AutoCategoryRulesSheetState extends ConsumerState<AutoCategoryRulesSheet>
               child: Center(
                 child: Column(
                   children: [
-                    Icon(LucideIcons.listRestart, size: 48,
-                        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.3)),
+                    Icon(
+                      LucideIcons.listRestart,
+                      size: 48,
+                      color: colorScheme.onSurfaceVariant.withValues(
+                        alpha: 0.3,
+                      ),
+                    ),
                     const SizedBox(height: 12),
-                    Text('No custom rules', style: AppTheme.bodyStyle(
-                      size: 14, color: colorScheme.onSurfaceVariant)),
+                    Text(
+                      'No custom rules',
+                      style: AppTheme.bodyStyle(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -179,7 +227,9 @@ class _AutoCategoryRulesSheetState extends ConsumerState<AutoCategoryRulesSheet>
                 itemCount: rules.length,
                 itemBuilder: (context, index) {
                   final rule = rules[index];
-                  final cat = allCats.where((c) => c.id == rule.categoryId).firstOrNull;
+                  final cat = allCats
+                      .where((c) => c.id == rule.categoryId)
+                      .firstOrNull;
                   final catColor = Color(cat?.color ?? 0xFF6B7280);
 
                   return Padding(
@@ -188,27 +238,43 @@ class _AutoCategoryRulesSheetState extends ConsumerState<AutoCategoryRulesSheet>
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(12),
-                        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-                        border: Border.all(color: colorScheme.outline.withValues(alpha: 0.06)),
+                        color: colorScheme.surfaceContainerHighest.withValues(
+                          alpha: 0.3,
+                        ),
+                        border: Border.all(
+                          color: colorScheme.outline.withValues(alpha: 0.06),
+                        ),
                       ),
                       child: Row(
                         children: [
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
                             decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(8),
                               color: catColor.withValues(alpha: 0.15),
                             ),
-                            child: Text(cat?.name ?? 'Unknown',
+                            child: Text(
+                              cat?.name ?? 'Unknown',
                               style: AppTheme.bodyStyle(
-                                size: 11, weight: FontWeight.w600, color: catColor)),
+                                size: 11,
+                                weight: FontWeight.w600,
+                                color: catColor,
+                              ),
+                            ),
                           ),
                           const SizedBox(width: 10),
                           Expanded(
-                            child: Text(rule.keyword,
+                            child: Text(
+                              rule.keyword,
                               style: AppTheme.bodyStyle(
-                                size: 11, color: colorScheme.onSurfaceVariant),
-                              maxLines: 2, overflow: TextOverflow.ellipsis,
+                                size: 11,
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
                           GestureDetector(
@@ -219,7 +285,11 @@ class _AutoCategoryRulesSheetState extends ConsumerState<AutoCategoryRulesSheet>
                                 shape: BoxShape.circle,
                                 color: AppColors.error.withValues(alpha: 0.1),
                               ),
-                              child: Icon(LucideIcons.trash2, size: 14, color: AppColors.error),
+                              child: const Icon(
+                                LucideIcons.trash2,
+                                size: 14,
+                                color: AppColors.error,
+                              ),
                             ),
                           ),
                         ],
@@ -236,7 +306,10 @@ class _AutoCategoryRulesSheetState extends ConsumerState<AutoCategoryRulesSheet>
             child: Text(
               'Changes are saved automatically. When adding a transaction, '
               'the note text is checked against these keywords.',
-              style: AppTheme.bodyStyle(size: 11, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7)),
+              style: AppTheme.bodyStyle(
+                size: 11,
+                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+              ),
             ),
           ),
         ],

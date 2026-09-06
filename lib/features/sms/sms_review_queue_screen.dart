@@ -1,25 +1,29 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+
+import '../../core/services/sms_listener_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/colors.dart';
 import '../../core/utils/constants.dart';
+import '../../core/utils/duplicate_detector.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/utils/sms_parser.dart';
-import '../../core/utils/duplicate_detector.dart';
-import '../../providers/transaction_provider.dart';
 import '../../providers/database_provider.dart';
 import '../../providers/settings_provider.dart';
-import '../../core/services/sms_listener_service.dart';
+import '../../providers/transaction_provider.dart';
 
 /// Screen for reviewing pending SMS-detected transactions.
 class SmsReviewQueueScreen extends ConsumerStatefulWidget {
   const SmsReviewQueueScreen({super.key});
 
   @override
-  ConsumerState<SmsReviewQueueScreen> createState() => _SmsReviewQueueScreenState();
+  ConsumerState<SmsReviewQueueScreen> createState() =>
+      _SmsReviewQueueScreenState();
 }
 
 class _SmsReviewQueueScreenState extends ConsumerState<SmsReviewQueueScreen> {
@@ -39,14 +43,24 @@ class _SmsReviewQueueScreenState extends ConsumerState<SmsReviewQueueScreen> {
           ),
           if (queue.isNotEmpty)
             PopupMenuButton<String>(
-              icon: Icon(LucideIcons.ellipsisVertical, size: 18, color: colorScheme.onSurfaceVariant),
+              icon: Icon(
+                LucideIcons.ellipsisVertical,
+                size: 18,
+                color: colorScheme.onSurfaceVariant,
+              ),
               onSelected: (v) {
                 if (v == 'confirm_all') _confirmAll();
                 if (v == 'discard_all') _discardAll();
               },
               itemBuilder: (_) => [
-                const PopupMenuItem(value: 'confirm_all', child: Text('Confirm all')),
-                const PopupMenuItem(value: 'discard_all', child: Text('Discard all')),
+                const PopupMenuItem(
+                  value: 'confirm_all',
+                  child: Text('Confirm all'),
+                ),
+                const PopupMenuItem(
+                  value: 'discard_all',
+                  child: Text('Discard all'),
+                ),
               ],
             ),
         ],
@@ -60,13 +74,21 @@ class _SmsReviewQueueScreenState extends ConsumerState<SmsReviewQueueScreen> {
                 Container(
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(AppConstants.cardRadiusSmall),
+                    borderRadius: BorderRadius.circular(
+                      AppConstants.cardRadiusSmall,
+                    ),
                     color: colorScheme.primary.withValues(alpha: 0.08),
-                    border: Border.all(color: colorScheme.primary.withValues(alpha: 0.15)),
+                    border: Border.all(
+                      color: colorScheme.primary.withValues(alpha: 0.15),
+                    ),
                   ),
                   child: Row(
                     children: [
-                      Icon(LucideIcons.messageSquare, size: 20, color: colorScheme.primary),
+                      Icon(
+                        LucideIcons.messageSquare,
+                        size: 20,
+                        color: colorScheme.primary,
+                      ),
                       const SizedBox(width: 10),
                       Expanded(
                         child: Column(
@@ -75,13 +97,15 @@ class _SmsReviewQueueScreenState extends ConsumerState<SmsReviewQueueScreen> {
                             Text(
                               '${queue.length} pending transaction${queue.length != 1 ? 's' : ''}',
                               style: AppTheme.displayStyle(
-                                size: 16, weight: FontWeight.w600, color: colorScheme.onSurface,
+                                size: 16,
+                                color: colorScheme.onSurface,
                               ),
                             ),
                             Text(
                               'Review and confirm each to add to your ledger',
                               style: AppTheme.bodyStyle(
-                                size: 12, color: colorScheme.onSurfaceVariant,
+                                size: 12,
+                                color: colorScheme.onSurfaceVariant,
                               ),
                             ),
                           ],
@@ -100,11 +124,18 @@ class _SmsReviewQueueScreenState extends ConsumerState<SmsReviewQueueScreen> {
                       child: FilledButton.icon(
                         onPressed: _confirmAll,
                         icon: const Icon(LucideIcons.checkCheck, size: 16),
-                        label: Text('Confirm all (${queue.length})',
-                            style: AppTheme.bodyStyle(size: 13, weight: FontWeight.w600)),
+                        label: Text(
+                          'Confirm all (${queue.length})',
+                          style: AppTheme.bodyStyle(
+                            size: 13,
+                            weight: FontWeight.w600,
+                          ),
+                        ),
                         style: FilledButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 10),
-                          backgroundColor: AppColors.success.withValues(alpha: 0.15),
+                          backgroundColor: AppColors.success.withValues(
+                            alpha: 0.15,
+                          ),
                           foregroundColor: AppColors.success,
                         ),
                       ),
@@ -114,12 +145,19 @@ class _SmsReviewQueueScreenState extends ConsumerState<SmsReviewQueueScreen> {
                       child: OutlinedButton.icon(
                         onPressed: _discardAll,
                         icon: const Icon(LucideIcons.x, size: 16),
-                        label: Text('Discard all',
-                            style: AppTheme.bodyStyle(size: 13, weight: FontWeight.w500)),
+                        label: Text(
+                          'Discard all',
+                          style: AppTheme.bodyStyle(
+                            size: 13,
+                            weight: FontWeight.w500,
+                          ),
+                        ),
                         style: OutlinedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 10),
                           foregroundColor: AppColors.error,
-                          side: BorderSide(color: AppColors.error.withValues(alpha: 0.3)),
+                          side: BorderSide(
+                            color: AppColors.error.withValues(alpha: 0.3),
+                          ),
                         ),
                       ),
                     ),
@@ -133,31 +171,51 @@ class _SmsReviewQueueScreenState extends ConsumerState<SmsReviewQueueScreen> {
                   padding: const EdgeInsets.only(bottom: 8),
                   child: Row(
                     children: [
-                      Text('Swipe left to discard, tap to review',
-                          style: AppTheme.bodyStyle(
-                            size: 11, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7))),
+                      Text(
+                        'Swipe left to discard, tap to review',
+                        style: AppTheme.bodyStyle(
+                          size: 11,
+                          color: colorScheme.onSurfaceVariant.withValues(
+                            alpha: 0.7,
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ),
 
                 // Queue items
-                ...queue.map((txn) => _QueueItemCard(
-                  txn: txn,
-                  colorScheme: colorScheme,
-                  onConfirm: () => _confirmItem(txn.id),
-                  onConfirmWithCategory: (catId, note) => _confirmItem(txn.id, overrideCategory: catId, overrideNote: note),
-                  onDiscard: () => _discardItem(txn.id),
-                )),
+                ...queue.map(
+                  (txn) => _QueueItemCard(
+                    txn: txn,
+                    colorScheme: colorScheme,
+                    onConfirm: () => _confirmItem(txn.id),
+                    onConfirmWithCategory: (catId, note) => _confirmItem(
+                      txn.id,
+                      overrideCategory: catId,
+                      overrideNote: note,
+                    ),
+                    onDiscard: () => _discardItem(txn.id),
+                  ),
+                ),
                 const SizedBox(height: 80),
               ],
             ),
     );
   }
 
-  Future<void> _confirmItem(String id, {String? overrideCategory, String? overrideNote}) async {
+  Future<void> _confirmItem(
+    String id, {
+    String? overrideCategory,
+    String? overrideNote,
+  }) async {
     if (!mounted) return;
     final notifier = ref.read(smsReviewQueueProvider.notifier);
-    await notifier.confirmItem(id, overrideCategory: overrideCategory, overrideNote: overrideNote);
+    await notifier.confirmItem(
+      id,
+      overrideCategory: overrideCategory,
+      overrideNote: overrideNote,
+    );
     ref.invalidate(transactionsProvider);
     if (mounted) {
       final colorScheme = Theme.of(context).colorScheme;
@@ -165,14 +223,20 @@ class _SmsReviewQueueScreenState extends ConsumerState<SmsReviewQueueScreen> {
         SnackBar(
           content: Text(
             'Transaction confirmed ✓',
-            style: AppTheme.bodyStyle(size: 13, weight: FontWeight.w500, color: colorScheme.onSurface),
+            style: AppTheme.bodyStyle(
+              size: 13,
+              weight: FontWeight.w500,
+              color: colorScheme.onSurface,
+            ),
           ),
           backgroundColor: colorScheme.surfaceContainerHighest,
           behavior: SnackBarBehavior.floating,
           duration: const Duration(seconds: 2),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
-            side: BorderSide(color: colorScheme.outline.withValues(alpha: 0.12)),
+            side: BorderSide(
+              color: colorScheme.outline.withValues(alpha: 0.12),
+            ),
           ),
         ),
       );
@@ -192,19 +256,28 @@ class _SmsReviewQueueScreenState extends ConsumerState<SmsReviewQueueScreen> {
       builder: (ctx) => AlertDialog(
         title: Row(
           children: [
-            Icon(LucideIcons.checkCheck, size: 20, color: AppColors.success),
+            const Icon(
+              LucideIcons.checkCheck,
+              size: 20,
+              color: AppColors.success,
+            ),
             const SizedBox(width: 8),
-            Text('Confirm all?', style: AppTheme.displayStyle(size: 18, weight: FontWeight.w600)),
+            Text('Confirm all?', style: AppTheme.displayStyle()),
           ],
         ),
         content: Text(
           'Add all ${ref.read(smsReviewQueueProvider).length} pending transactions to your ledger?',
-          style: AppTheme.bodyStyle(size: 14),
+          style: AppTheme.bodyStyle(),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Cancel', style: AppTheme.bodyStyle(color: localColorScheme.onSurfaceVariant)),
+            child: Text(
+              'Cancel',
+              style: AppTheme.bodyStyle(
+                color: localColorScheme.onSurfaceVariant,
+              ),
+            ),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
@@ -223,14 +296,20 @@ class _SmsReviewQueueScreenState extends ConsumerState<SmsReviewQueueScreen> {
           SnackBar(
             content: Text(
               'All transactions confirmed ✓',
-              style: AppTheme.bodyStyle(size: 13, weight: FontWeight.w500, color: colorScheme.onSurface),
+              style: AppTheme.bodyStyle(
+                size: 13,
+                weight: FontWeight.w500,
+                color: colorScheme.onSurface,
+              ),
             ),
             backgroundColor: colorScheme.surfaceContainerHighest,
             behavior: SnackBarBehavior.floating,
             duration: const Duration(seconds: 2),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(14),
-              side: BorderSide(color: colorScheme.outline.withValues(alpha: 0.12)),
+              side: BorderSide(
+                color: colorScheme.outline.withValues(alpha: 0.12),
+              ),
             ),
           ),
         );
@@ -246,19 +325,24 @@ class _SmsReviewQueueScreenState extends ConsumerState<SmsReviewQueueScreen> {
       builder: (ctx) => AlertDialog(
         title: Row(
           children: [
-            Icon(LucideIcons.x, size: 20, color: AppColors.error),
+            const Icon(LucideIcons.x, size: 20, color: AppColors.error),
             const SizedBox(width: 8),
-            Text('Discard all?', style: AppTheme.displayStyle(size: 18, weight: FontWeight.w600)),
+            Text('Discard all?', style: AppTheme.displayStyle()),
           ],
         ),
         content: Text(
           'Remove all pending SMS transactions? This cannot be undone.',
-          style: AppTheme.bodyStyle(size: 14),
+          style: AppTheme.bodyStyle(),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Cancel', style: AppTheme.bodyStyle(color: localColorScheme.onSurfaceVariant)),
+            child: Text(
+              'Cancel',
+              style: AppTheme.bodyStyle(
+                color: localColorScheme.onSurfaceVariant,
+              ),
+            ),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
@@ -284,7 +368,9 @@ class _SmsReviewQueueScreenState extends ConsumerState<SmsReviewQueueScreen> {
       final req = await listener.requestPermission();
       if (!req && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('SMS permission is required to scan inbox')),
+          const SnackBar(
+            content: Text('SMS permission is required to scan inbox'),
+          ),
         );
         return;
       }
@@ -307,18 +393,29 @@ class _SmsReviewQueueScreenState extends ConsumerState<SmsReviewQueueScreen> {
     for (final sms in messages) {
       final parsed = SmsParser.parseMessage(
         sms.body,
-        keywordToCategory: keywordToCategory.isNotEmpty ? keywordToCategory : null,
-        dateOverride: DateTime.fromMillisecondsSinceEpoch(sms.timestamp, isUtc: true).toLocal(),
+        keywordToCategory: keywordToCategory.isNotEmpty
+            ? keywordToCategory
+            : null,
+        dateOverride: DateTime.fromMillisecondsSinceEpoch(
+          sms.timestamp,
+          isUtc: true,
+        ).toLocal(),
       );
-      if (parsed != null && !queueNotifier.isProcessed(parsed.id) && !queueNotifier.isAlreadyInQueue(parsed.id)) {
-        queueNotifier.addToQueue(parsed);
+      if (parsed != null &&
+          !queueNotifier.isProcessed(parsed.id) &&
+          !queueNotifier.isAlreadyInQueue(parsed.id)) {
+        unawaited(queueNotifier.addToQueue(parsed));
         added++;
       }
     }
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(added > 0 ? 'Found $added new transaction${added != 1 ? 's' : ''}' : 'No new SMS transactions found'),
+          content: Text(
+            added > 0
+                ? 'Found $added new transaction${added != 1 ? 's' : ''}'
+                : 'No new SMS transactions found',
+          ),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -328,9 +425,9 @@ class _SmsReviewQueueScreenState extends ConsumerState<SmsReviewQueueScreen> {
 
 /// Empty state for the review queue
 class _EmptyQueue extends StatelessWidget {
+  const _EmptyQueue({required this.colorScheme, required this.onScanInbox});
   final ColorScheme colorScheme;
   final VoidCallback onScanInbox;
-  const _EmptyQueue({required this.colorScheme, required this.onScanInbox});
 
   @override
   Widget build(BuildContext context) {
@@ -339,20 +436,31 @@ class _EmptyQueue extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width: 80, height: 80,
+            width: 80,
+            height: 80,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: colorScheme.primary.withValues(alpha: 0.08),
             ),
-            child: Icon(LucideIcons.inbox, size: 36,
-                color: colorScheme.primary.withValues(alpha: 0.4)),
+            child: Icon(
+              LucideIcons.inbox,
+              size: 36,
+              color: colorScheme.primary.withValues(alpha: 0.4),
+            ),
           ),
           const SizedBox(height: 16),
-          Text('All caught up', style: AppTheme.displayStyle(
-            size: 18, weight: FontWeight.w600, color: colorScheme.onSurface)),
+          Text(
+            'All caught up',
+            style: AppTheme.displayStyle(color: colorScheme.onSurface),
+          ),
           const SizedBox(height: 6),
-          Text('No pending SMS transactions to review',
-              style: AppTheme.bodyStyle(size: 13, color: colorScheme.onSurfaceVariant)),
+          Text(
+            'No pending SMS transactions to review',
+            style: AppTheme.bodyStyle(
+              size: 13,
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
           const SizedBox(height: 16),
           FilledButton.icon(
             onPressed: onScanInbox,
@@ -367,12 +475,6 @@ class _EmptyQueue extends StatelessWidget {
 
 /// Individual queue item with swipe-to-discard, duplicate detection, pocket money linking, editable note, and category picker
 class _QueueItemCard extends ConsumerStatefulWidget {
-  final ParsedSmsTxn txn;
-  final ColorScheme colorScheme;
-  final VoidCallback onConfirm;
-  final void Function(String catId, String? note) onConfirmWithCategory;
-  final VoidCallback onDiscard;
-
   const _QueueItemCard({
     required this.txn,
     required this.colorScheme,
@@ -380,6 +482,11 @@ class _QueueItemCard extends ConsumerStatefulWidget {
     required this.onConfirmWithCategory,
     required this.onDiscard,
   });
+  final ParsedSmsTxn txn;
+  final ColorScheme colorScheme;
+  final VoidCallback onConfirm;
+  final void Function(String catId, String? note) onConfirmWithCategory;
+  final VoidCallback onDiscard;
 
   @override
   ConsumerState<_QueueItemCard> createState() => _QueueItemCardState();
@@ -433,7 +540,7 @@ class _QueueItemCardState extends ConsumerState<_QueueItemCard> {
         child: const Icon(LucideIcons.x, color: Colors.white, size: 24),
       ),
       confirmDismiss: (_) async {
-        HapticFeedback.mediumImpact();
+        unawaited(HapticFeedback.mediumImpact());
         return true;
       },
       onDismissed: (_) {
@@ -444,12 +551,16 @@ class _QueueItemCardState extends ConsumerState<_QueueItemCard> {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(AppConstants.cardRadiusSmall),
           color: isDark ? AppColors.cardDark : AppColors.cardLight,
-          boxShadow: isDark ? AppColors.cardShadowDark : AppColors.cardShadowLight,
+          boxShadow: isDark
+              ? AppColors.cardShadowDark
+              : AppColors.cardShadowLight,
           border: Border(
             left: BorderSide(
               color: hasDuplicate
                   ? AppColors.error
-                  : (widget.txn.isIncome ? AppColors.success : AppColors.warning),
+                  : (widget.txn.isIncome
+                        ? AppColors.success
+                        : AppColors.warning),
               width: 3,
             ),
           ),
@@ -462,15 +573,24 @@ class _QueueItemCardState extends ConsumerState<_QueueItemCard> {
             if (hasDuplicate && matchedDup != null)
               Container(
                 margin: const EdgeInsets.only(bottom: 8),
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(8),
                   color: AppColors.error.withValues(alpha: 0.1),
-                  border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
+                  border: Border.all(
+                    color: AppColors.error.withValues(alpha: 0.3),
+                  ),
                 ),
                 child: Row(
                   children: [
-                    Icon(LucideIcons.alertTriangle, size: 14, color: AppColors.error),
+                    const Icon(
+                      LucideIcons.alertTriangle,
+                      size: 14,
+                      color: AppColors.error,
+                    ),
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
@@ -490,7 +610,8 @@ class _QueueItemCardState extends ConsumerState<_QueueItemCard> {
             Row(
               children: [
                 Container(
-                  width: 38, height: 38,
+                  width: 38,
+                  height: 38,
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(10),
                     color: widget.txn.isIncome
@@ -498,9 +619,13 @@ class _QueueItemCardState extends ConsumerState<_QueueItemCard> {
                         : AppColors.warning.withValues(alpha: 0.12),
                   ),
                   child: Icon(
-                    widget.txn.isIncome ? LucideIcons.arrowDownLeft : LucideIcons.arrowUpRight,
+                    widget.txn.isIncome
+                        ? LucideIcons.arrowDownLeft
+                        : LucideIcons.arrowUpRight,
                     size: 18,
-                    color: widget.txn.isIncome ? AppColors.success : AppColors.warning,
+                    color: widget.txn.isIncome
+                        ? AppColors.success
+                        : AppColors.warning,
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -511,21 +636,31 @@ class _QueueItemCardState extends ConsumerState<_QueueItemCard> {
                       Row(
                         children: [
                           Icon(
-                            widget.txn.isIncome ? LucideIcons.plusCircle : LucideIcons.minusCircle,
+                            widget.txn.isIncome
+                                ? LucideIcons.plusCircle
+                                : LucideIcons.minusCircle,
                             size: 14,
-                            color: widget.txn.isIncome ? AppColors.success : AppColors.error,
+                            color: widget.txn.isIncome
+                                ? AppColors.success
+                                : AppColors.error,
                           ),
                           const SizedBox(width: 4),
                           Text(
                             '${widget.txn.isIncome ? '+' : '-'}${Formatters.formatCurrency(widget.txn.amount)}',
                             style: AppTheme.financialStyle(
-                              size: 18, weight: FontWeight.w700,
-                              color: widget.txn.isIncome ? AppColors.success : widget.colorScheme.onSurface,
+                              size: 18,
+                              weight: FontWeight.w700,
+                              color: widget.txn.isIncome
+                                  ? AppColors.success
+                                  : widget.colorScheme.onSurface,
                             ),
                           ),
                           const SizedBox(width: 6),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
                             decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(6),
                               color: widget.txn.isIncome
@@ -537,7 +672,9 @@ class _QueueItemCardState extends ConsumerState<_QueueItemCard> {
                               style: AppTheme.bodyStyle(
                                 size: 9,
                                 weight: FontWeight.w600,
-                                color: widget.txn.isIncome ? AppColors.success : widget.colorScheme.onSurfaceVariant,
+                                color: widget.txn.isIncome
+                                    ? AppColors.success
+                                    : widget.colorScheme.onSurfaceVariant,
                               ),
                             ),
                           ),
@@ -547,16 +684,25 @@ class _QueueItemCardState extends ConsumerState<_QueueItemCard> {
                       Text(
                         '${Formatters.formatDateShort(widget.txn.date)} · detected ${Formatters.formatDateShort(widget.txn.detectedAt)}',
                         style: AppTheme.bodyStyle(
-                          size: 10, color: widget.colorScheme.onSurfaceVariant.withValues(alpha: 0.7)),
+                          size: 10,
+                          color: widget.colorScheme.onSurfaceVariant.withValues(
+                            alpha: 0.7,
+                          ),
+                        ),
                       ),
                     ],
                   ),
                 ),
                 // Category badge
                 GestureDetector(
-                  onTap: () => setState(() => _showCategoryPicker = !_showCategoryPicker),
+                  onTap: () => setState(
+                    () => _showCategoryPicker = !_showCategoryPicker,
+                  ),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(8),
                       color: widget.colorScheme.primary.withValues(alpha: 0.1),
@@ -565,13 +711,20 @@ class _QueueItemCardState extends ConsumerState<_QueueItemCard> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          _editingCategory ?? widget.txn.categoryId.toUpperCase(),
+                          _editingCategory ??
+                              widget.txn.categoryId.toUpperCase(),
                           style: AppTheme.bodyStyle(
-                            size: 10, weight: FontWeight.w600,
-                            color: widget.colorScheme.primary),
+                            size: 10,
+                            weight: FontWeight.w600,
+                            color: widget.colorScheme.primary,
+                          ),
                         ),
                         const SizedBox(width: 2),
-                        Icon(LucideIcons.chevronDown, size: 12, color: widget.colorScheme.primary),
+                        Icon(
+                          LucideIcons.chevronDown,
+                          size: 12,
+                          color: widget.colorScheme.primary,
+                        ),
                       ],
                     ),
                   ),
@@ -586,29 +739,42 @@ class _QueueItemCardState extends ConsumerState<_QueueItemCard> {
                 controller: _noteCtrl,
                 focusNode: _noteFocus,
                 style: AppTheme.bodyStyle(
-                  size: 13, color: widget.colorScheme.onSurface),
+                  size: 13,
+                  color: widget.colorScheme.onSurface,
+                ),
                 decoration: InputDecoration(
                   hintText: 'Add personal note (optional)...',
                   hintStyle: AppTheme.bodyStyle(
-                    size: 13, color: widget.colorScheme.onSurfaceVariant.withValues(alpha: 0.5)),
+                    size: 13,
+                    color: widget.colorScheme.onSurfaceVariant.withValues(
+                      alpha: 0.5,
+                    ),
+                  ),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
                     borderSide: BorderSide(
-                      color: widget.colorScheme.outline.withValues(alpha: 0.15)),
+                      color: widget.colorScheme.outline.withValues(alpha: 0.15),
+                    ),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
                     borderSide: BorderSide(
-                      color: widget.colorScheme.outline.withValues(alpha: 0.15)),
+                      color: widget.colorScheme.outline.withValues(alpha: 0.15),
+                    ),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
                     borderSide: BorderSide(
-                      color: widget.colorScheme.primary.withValues(alpha: 0.4)),
+                      color: widget.colorScheme.primary.withValues(alpha: 0.4),
+                    ),
                   ),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
                   filled: true,
-                  fillColor: widget.colorScheme.surfaceContainerHighest.withValues(alpha: 0.2),
+                  fillColor: widget.colorScheme.surfaceContainerHighest
+                      .withValues(alpha: 0.2),
                   isDense: true,
                 ),
                 maxLines: 2,
@@ -643,13 +809,24 @@ class _QueueItemCardState extends ConsumerState<_QueueItemCard> {
                 GestureDetector(
                   onTap: widget.onDiscard,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 7,
+                    ),
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: AppColors.error.withValues(alpha: 0.2)),
+                      border: Border.all(
+                        color: AppColors.error.withValues(alpha: 0.2),
+                      ),
                     ),
-                    child: Text('Discard', style: AppTheme.bodyStyle(
-                      size: 12, color: AppColors.error, weight: FontWeight.w500)),
+                    child: Text(
+                      'Discard',
+                      style: AppTheme.bodyStyle(
+                        size: 12,
+                        color: AppColors.error,
+                        weight: FontWeight.w500,
+                      ),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -660,7 +837,10 @@ class _QueueItemCardState extends ConsumerState<_QueueItemCard> {
                     _noteCtrl.text.trim(),
                   ),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 7,
+                    ),
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(8),
                       color: AppColors.success.withValues(alpha: 0.12),
@@ -668,10 +848,20 @@ class _QueueItemCardState extends ConsumerState<_QueueItemCard> {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(LucideIcons.check, size: 14, color: AppColors.success),
+                        const Icon(
+                          LucideIcons.check,
+                          size: 14,
+                          color: AppColors.success,
+                        ),
                         const SizedBox(width: 4),
-                        Text('Confirm', style: AppTheme.bodyStyle(
-                          size: 12, color: AppColors.success, weight: FontWeight.w600)),
+                        Text(
+                          'Confirm',
+                          style: AppTheme.bodyStyle(
+                            size: 12,
+                            color: AppColors.success,
+                            weight: FontWeight.w600,
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -687,24 +877,25 @@ class _QueueItemCardState extends ConsumerState<_QueueItemCard> {
 
 /// Inline category picker for changing the category on a pending SMS item
 class _CategoryPicker extends ConsumerWidget {
-  final String currentCategoryId;
-  final ValueChanged<String> onChanged;
-  final ColorScheme colorScheme;
-  final bool isIncome;
-
   const _CategoryPicker({
     required this.currentCategoryId,
     required this.onChanged,
     required this.colorScheme,
     this.isIncome = false,
   });
+  final String currentCategoryId;
+  final ValueChanged<String> onChanged;
+  final ColorScheme colorScheme;
+  final bool isIncome;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final categories = ref.watch(categoriesProvider).valueOrNull ?? [];
     // Show income categories for income items, expense for expense items
     final catList = isIncome
-        ? categories.where((c) => c.type == 'income' || c.type == 'expense').toList()
+        ? categories
+              .where((c) => c.type == 'income' || c.type == 'expense')
+              .toList()
         : categories.where((c) => c.type == 'expense').toList();
 
     return Container(
@@ -714,7 +905,8 @@ class _CategoryPicker extends ConsumerWidget {
         color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
       ),
       child: Wrap(
-        spacing: 6, runSpacing: 6,
+        spacing: 6,
+        runSpacing: 6,
         children: [
           // Clear/reset option
           GestureDetector(
@@ -723,10 +915,18 @@ class _CategoryPicker extends ConsumerWidget {
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: colorScheme.outline.withValues(alpha: 0.2)),
+                border: Border.all(
+                  color: colorScheme.outline.withValues(alpha: 0.2),
+                ),
               ),
-              child: Text('Cancel', style: AppTheme.bodyStyle(
-                size: 11, weight: FontWeight.w500, color: colorScheme.onSurfaceVariant)),
+              child: Text(
+                'Cancel',
+                style: AppTheme.bodyStyle(
+                  size: 11,
+                  weight: FontWeight.w500,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
             ),
           ),
           ...catList.map((cat) {
@@ -735,7 +935,10 @@ class _CategoryPicker extends ConsumerWidget {
             return GestureDetector(
               onTap: () => onChanged(cat.id),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
+                ),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(8),
                   color: selected
@@ -745,9 +948,14 @@ class _CategoryPicker extends ConsumerWidget {
                       ? Border.all(color: catColor.withValues(alpha: 0.4))
                       : null,
                 ),
-                child: Text(cat.name, style: AppTheme.bodyStyle(
-                  size: 11, weight: selected ? FontWeight.w600 : FontWeight.w400,
-                  color: selected ? catColor : colorScheme.onSurfaceVariant)),
+                child: Text(
+                  cat.name,
+                  style: AppTheme.bodyStyle(
+                    size: 11,
+                    weight: selected ? FontWeight.w600 : FontWeight.w400,
+                    color: selected ? catColor : colorScheme.onSurfaceVariant,
+                  ),
+                ),
               ),
             );
           }),

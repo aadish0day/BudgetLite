@@ -1,7 +1,9 @@
 import 'dart:typed_data';
+
+import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:intl/intl.dart';
+
 import '../../providers/insights_provider.dart';
 
 class PdfReportGenerator {
@@ -9,8 +11,12 @@ class PdfReportGenerator {
     final pdf = pw.Document();
 
     final dateFormat = DateFormat('MMM d, yyyy');
-    final currencyFormat = NumberFormat.currency(symbol: 'Rs. ', decimalDigits: 2);
-    final periodStr = '${dateFormat.format(report.startDate)} - ${dateFormat.format(report.endDate)}';
+    final currencyFormat = NumberFormat.currency(
+      symbol: 'Rs. ',
+      decimalDigits: 2,
+    );
+    final periodStr =
+        '${dateFormat.format(report.startDate)} - ${dateFormat.format(report.endDate)}';
     final generatedStr = dateFormat.format(report.generatedAt);
 
     pdf.addPage(
@@ -95,8 +101,12 @@ class PdfReportGenerator {
                 _buildPdfSummaryCard(
                   'Net Savings',
                   currencyFormat.format(report.netSavings),
-                  report.netSavings >= 0 ? PdfColors.blue700 : PdfColors.orange700,
-                  report.netSavings >= 0 ? PdfColors.blue50 : PdfColors.orange50,
+                  report.netSavings >= 0
+                      ? PdfColors.blue700
+                      : PdfColors.orange700,
+                  report.netSavings >= 0
+                      ? PdfColors.blue50
+                      : PdfColors.orange50,
                 ),
               ],
             ),
@@ -104,7 +114,10 @@ class PdfReportGenerator {
 
             // ── Secondary Stats Strip ──
             pw.Container(
-              padding: const pw.EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              padding: const pw.EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: 10,
+              ),
               decoration: pw.BoxDecoration(
                 color: PdfColors.grey100,
                 borderRadius: pw.BorderRadius.circular(6),
@@ -113,9 +126,18 @@ class PdfReportGenerator {
               child: pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceAround,
                 children: [
-                  _buildPdfStatItem('Total Transactions', '${report.transactionCount}'),
-                  _buildPdfStatItem('Current No-Spend Streak', '${report.currentNoSpendStreak} days'),
-                  _buildPdfStatItem('Longest Streak', '${report.longestNoSpendStreak} days'),
+                  _buildPdfStatItem(
+                    'Total Transactions',
+                    '${report.transactionCount}',
+                  ),
+                  _buildPdfStatItem(
+                    'Current No-Spend Streak',
+                    '${report.currentNoSpendStreak} days',
+                  ),
+                  _buildPdfStatItem(
+                    'Longest Streak',
+                    '${report.longestNoSpendStreak} days',
+                  ),
                 ],
               ),
             ),
@@ -131,30 +153,51 @@ class PdfReportGenerator {
               ),
             ),
             pw.SizedBox(height: 8),
-            report.byCategory.isEmpty
-                ? pw.Text('No category spending recorded for this date range.',
-                    style: const pw.TextStyle(color: PdfColors.grey600, fontSize: 10))
-                : pw.TableHelper.fromTextArray(
-                    border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
-                    headerStyle: pw.TextStyle(
-                      fontWeight: pw.FontWeight.bold,
-                      fontSize: 10,
-                      color: PdfColors.white,
-                    ),
-                    headerDecoration: const pw.BoxDecoration(color: PdfColors.teal800),
-                    cellStyle: const pw.TextStyle(fontSize: 10),
-                    cellPadding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                    headers: ['Category', 'Txn Count', 'Amount Spent', '% of Total'],
-                    data: report.byCategory.map((c) {
-                      final pct = report.totalSpent > 0 ? (c.amount / report.totalSpent * 100) : 0.0;
-                      return [
-                        c.categoryName,
-                        '${c.count}',
-                        currencyFormat.format(c.amount),
-                        '${pct.toStringAsFixed(1)}%',
-                      ];
-                    }).toList(),
-                  ),
+            if (report.byCategory.isEmpty)
+              pw.Text(
+                'No category spending recorded for this date range.',
+                style: const pw.TextStyle(
+                  color: PdfColors.grey600,
+                  fontSize: 10,
+                ),
+              )
+            else
+              pw.TableHelper.fromTextArray(
+                border: pw.TableBorder.all(
+                  color: PdfColors.grey300,
+                  width: 0.5,
+                ),
+                headerStyle: pw.TextStyle(
+                  fontWeight: pw.FontWeight.bold,
+                  fontSize: 10,
+                  color: PdfColors.white,
+                ),
+                headerDecoration: const pw.BoxDecoration(
+                  color: PdfColors.teal800,
+                ),
+                cellStyle: const pw.TextStyle(fontSize: 10),
+                cellPadding: const pw.EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 6,
+                ),
+                headers: [
+                  'Category',
+                  'Txn Count',
+                  'Amount Spent',
+                  '% of Total',
+                ],
+                data: report.byCategory.map((c) {
+                  final pct = report.totalSpent > 0
+                      ? (c.amount / report.totalSpent * 100)
+                      : 0.0;
+                  return [
+                    c.categoryName,
+                    '${c.count}',
+                    currencyFormat.format(c.amount),
+                    '${pct.toStringAsFixed(1)}%',
+                  ];
+                }).toList(),
+              ),
             pw.SizedBox(height: 24),
 
             // ── Monthly Breakdown Table ──
@@ -169,15 +212,23 @@ class PdfReportGenerator {
               ),
               pw.SizedBox(height: 8),
               pw.TableHelper.fromTextArray(
-                border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+                border: pw.TableBorder.all(
+                  color: PdfColors.grey300,
+                  width: 0.5,
+                ),
                 headerStyle: pw.TextStyle(
                   fontWeight: pw.FontWeight.bold,
                   fontSize: 10,
                   color: PdfColors.white,
                 ),
-                headerDecoration: const pw.BoxDecoration(color: PdfColors.grey800),
+                headerDecoration: const pw.BoxDecoration(
+                  color: PdfColors.grey800,
+                ),
                 cellStyle: const pw.TextStyle(fontSize: 10),
-                cellPadding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                cellPadding: const pw.EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 6,
+                ),
                 headers: ['Month', 'Income', 'Spent', 'Net Saved', 'Txns'],
                 data: report.byMonth.map((m) {
                   final net = m.income - m.spent;
@@ -201,11 +252,17 @@ class PdfReportGenerator {
               children: [
                 pw.Text(
                   'Generated by BudgetLite — Offline-first Budgeting App',
-                  style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600),
+                  style: const pw.TextStyle(
+                    fontSize: 9,
+                    color: PdfColors.grey600,
+                  ),
                 ),
                 pw.Text(
                   'Page 1 of 1',
-                  style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600),
+                  style: const pw.TextStyle(
+                    fontSize: 9,
+                    color: PdfColors.grey600,
+                  ),
                 ),
               ],
             ),
@@ -271,10 +328,7 @@ class PdfReportGenerator {
         pw.SizedBox(height: 2),
         pw.Text(
           label,
-          style: const pw.TextStyle(
-            fontSize: 9,
-            color: PdfColors.grey700,
-          ),
+          style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700),
         ),
       ],
     );
