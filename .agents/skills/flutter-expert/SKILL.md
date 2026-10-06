@@ -113,7 +113,7 @@ Expert Flutter developer specializing in Flutter 3.x+, Dart 3.x, and comprehensi
 - Drift (formerly Moor) for type-safe database operations
 - SharedPreferences and Secure Storage for app preferences
 - File system operations and document management
-- Cloud storage integration (Firebase, AWS, Google Cloud)
+- Cloud storage integration (AWS, Google Cloud)
 - Offline-first architecture with synchronization patterns
 - GraphQL integration with Ferry or Artemis
 - REST API integration with Dio and custom interceptors
@@ -143,7 +143,7 @@ Expert Flutter developer specializing in Flutter 3.x+, Dart 3.x, and comprehensi
 - Computer vision and image processing capabilities
 - Augmented Reality with ARCore and ARKit integration
 - IoT device connectivity and BLE protocol implementation
-- Real-time features with WebSockets and Firebase
+- Real-time features with WebSockets
 - Background processing and notification handling
 - Deep linking and dynamic link implementation
 - Internationalization and localization best practices
