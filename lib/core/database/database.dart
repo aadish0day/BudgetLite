@@ -197,6 +197,27 @@ class AppDatabase extends _$AppDatabase {
   }
 
   /// Delete ALL stored data (transactions, budgets, goals, recurring definitions, settings, tags)
+  /// Watch recent transactions limited to [limit] rows for lightweight list display
+  Stream<List<Transaction>> watchRecentTransactions({int limit = 5}) {
+    return (select(transactions)
+          ..orderBy([
+            (t) => OrderingTerm(expression: t.date, mode: OrderingMode.desc),
+          ])
+          ..limit(limit))
+        .watch();
+  }
+
+  /// Watch active recurring transactions template records using index
+  Stream<List<Transaction>> watchRecurringTransactions() {
+    return (select(transactions)
+          ..where((t) =>
+              t.isRecurring.equals(true) & t.isRecurringInstance.equals(false))
+          ..orderBy([
+            (t) => OrderingTerm(expression: t.date, mode: OrderingMode.desc),
+          ]))
+        .watch();
+  }
+
   /// and re-seed default account and categories.
   Future<void> clearAllData() async {
     await transaction(() async {
@@ -223,6 +244,16 @@ LazyDatabase _openConnection() {
         rawDb.execute('PRAGMA journal_mode = WAL;');
         rawDb.execute('PRAGMA synchronous = NORMAL;');
         rawDb.execute('PRAGMA foreign_keys = ON;');
+        rawDb.execute('PRAGMA temp_store = MEMORY;');
+        rawDb.execute('PRAGMA cache_size = -2000;');
+        rawDb.execute('PRAGMA mmap_size = 33554432;');
+        rawDb.execute('PRAGMA wal_autocheckpoint = 1000;');
+        rawDb.execute(
+          'CREATE INDEX IF NOT EXISTS idx_transactions_date_category ON transactions (date, category_id);',
+        );
+        rawDb.execute(
+          'CREATE INDEX IF NOT EXISTS idx_transactions_recurring_active ON transactions (is_recurring, is_recurring_instance);',
+        );
       },
     );
   });

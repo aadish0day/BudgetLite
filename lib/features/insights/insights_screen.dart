@@ -36,9 +36,9 @@ class InsightsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = colorScheme.brightness == Brightness.dark;
-    final categories = ref.watch(categoriesProvider).valueOrNull ?? [];
+    final categoryMap = ref.watch(categoryMapProvider);
+    final categorySpending = ref.watch(categorySpendingMapProvider);
     final transactionsAsync = ref.watch(thisMonthTransactionsProvider);
-    final transactions = transactionsAsync.valueOrNull ?? [];
     final allTransactions = ref.watch(transactionsProvider).valueOrNull ?? [];
     final budgets = ref.watch(thisMonthBudgetsProvider).valueOrNull ?? [];
     final incomeThisMonth =
@@ -46,15 +46,6 @@ class InsightsScreen extends ConsumerWidget {
     final totalSpentThisMonth =
         ref.watch(totalSpentThisMonthProvider).valueOrNull ?? 0.0;
     final spendingInsightsAsync = ref.watch(spendingInsightsProvider);
-
-    // Exclude transfer entries from spending (transfers are balance-neutral)
-    final categorySpending = <String, double>{};
-    for (final t in transactions.where(
-      (t) => t.amount > 0 && t.categoryId != 'transfer',
-    )) {
-      categorySpending[t.categoryId] =
-          (categorySpending[t.categoryId] ?? 0) + t.amount;
-    }
 
     final totalSpent = categorySpending.values.fold<double>(0, (a, b) => a + b);
 
@@ -128,14 +119,15 @@ class InsightsScreen extends ConsumerWidget {
                             child: Row(
                               children: [
                                 Expanded(
-                                  child: Stack(
-                                    alignment: Alignment.center,
-                                    children: [
-                                      PieChart(
+                                  child: RepaintBoundary(
+                                    child: Stack(
+                                      alignment: Alignment.center,
+                                      children: [
+                                        PieChart(
                                         PieChartData(
                                           sections: _buildPieSections(
                                             categorySpending,
-                                            categories,
+                                            categoryMap,
                                             colorScheme,
                                           ),
                                           centerSpaceRadius: 44,
@@ -212,6 +204,7 @@ class InsightsScreen extends ConsumerWidget {
                                     ],
                                   ),
                                 ),
+                              ),
                                 const SizedBox(width: 16),
                                 Column(
                                   mainAxisAlignment: MainAxisAlignment.center,
@@ -223,9 +216,7 @@ class InsightsScreen extends ConsumerWidget {
                                           ))
                                           .take(5)
                                           .map((entry) {
-                                            final cat = categories
-                                                .where((c) => c.id == entry.key)
-                                                .firstOrNull;
+                                            final cat = categoryMap[entry.key];
                                             final pct = totalSpent > 0
                                                 ? (entry.value /
                                                       totalSpent *
@@ -319,16 +310,18 @@ class InsightsScreen extends ConsumerWidget {
                 ),
               ),
               const SizedBox(height: 16),
-              _MonthOverMonthChart(
-                onBarTapped: (int monthIndex) {
-                  final now = DateTime.now();
-                  final targetDate = DateTime(
-                    now.year,
-                    now.month - 5 + monthIndex,
-                  );
-                  ref.read(calendarFocusTargetProvider.notifier).state =
-                      targetDate;
-                },
+              RepaintBoundary(
+                child: _MonthOverMonthChart(
+                  onBarTapped: (int monthIndex) {
+                    final now = DateTime.now();
+                    final targetDate = DateTime(
+                      now.year,
+                      now.month - 5 + monthIndex,
+                    );
+                    ref.read(calendarFocusTargetProvider.notifier).state =
+                        targetDate;
+                  },
+                ),
               ),
               const SizedBox(height: 24),
 
@@ -363,9 +356,7 @@ class InsightsScreen extends ConsumerWidget {
                       padding: AppConstants.cardPadding,
                       child: Column(
                         children: budgets.map((budget) {
-                          final category = categories
-                              .where((c) => c.id == budget.categoryId)
-                              .firstOrNull;
+                          final category = categoryMap[budget.categoryId];
                           final spent =
                               categorySpending[budget.categoryId] ?? 0;
                           final allocated = budget.allocatedAmount;
@@ -498,30 +489,32 @@ class InsightsScreen extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(height: 16),
-                Container(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(
-                          AppConstants.cardRadius,
+                RepaintBoundary(
+                  child: Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(
+                            AppConstants.cardRadius,
+                          ),
+                          color: isDark
+                              ? AppColors.cardDark
+                              : AppColors.cardLight,
+                          boxShadow: isDark
+                              ? AppColors.cardShadowDark
+                              : AppColors.cardShadowLight,
                         ),
-                        color: isDark
-                            ? AppColors.cardDark
-                            : AppColors.cardLight,
-                        boxShadow: isDark
-                            ? AppColors.cardShadowDark
-                            : AppColors.cardShadowLight,
-                      ),
-                      padding: AppConstants.cardPadding,
-                      child: SizedBox(
-                        height: 200,
-                        child: _WeeklyChart(transactions: allTransactions),
-                      ),
-                    )
-                    .animate(
-                      target: AccessibilityUtils.shouldAnimate(context)
-                          ? null
-                          : 1.0,
-                    )
-                    .fadeIn(duration: AppConstants.animSlow, delay: 150.ms),
+                        padding: AppConstants.cardPadding,
+                        child: SizedBox(
+                          height: 200,
+                          child: _WeeklyChart(transactions: allTransactions),
+                        ),
+                      )
+                      .animate(
+                        target: AccessibilityUtils.shouldAnimate(context)
+                            ? null
+                            : 1.0,
+                      )
+                      .fadeIn(duration: AppConstants.animSlow, delay: 150.ms),
+                ),
                 const SizedBox(height: 24),
               ],
 
@@ -534,37 +527,39 @@ class InsightsScreen extends ConsumerWidget {
                 ),
               ),
               const SizedBox(height: 16),
-              Container(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(
-                        AppConstants.cardRadius,
+              RepaintBoundary(
+                child: Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(
+                          AppConstants.cardRadius,
+                        ),
+                        color: isDark ? AppColors.cardDark : AppColors.cardLight,
+                        boxShadow: isDark
+                            ? AppColors.cardShadowDark
+                            : AppColors.cardShadowLight,
                       ),
-                      color: isDark ? AppColors.cardDark : AppColors.cardLight,
-                      boxShadow: isDark
-                          ? AppColors.cardShadowDark
-                          : AppColors.cardShadowLight,
-                    ),
-                    padding: AppConstants.cardPadding,
-                    child: const SizedBox(
-                      height: 200,
-                      child: _DayOfWeekChart(),
-                    ),
-                  )
-                  .animate(
-                    target: AccessibilityUtils.shouldAnimate(context)
-                        ? null
-                        : 1.0,
-                  )
-                  .fadeIn(duration: AppConstants.animSlow, delay: 200.ms),
+                      padding: AppConstants.cardPadding,
+                      child: const SizedBox(
+                        height: 200,
+                        child: _DayOfWeekChart(),
+                      ),
+                    )
+                    .animate(
+                      target: AccessibilityUtils.shouldAnimate(context)
+                          ? null
+                          : 1.0,
+                    )
+                    .fadeIn(duration: AppConstants.animSlow, delay: 200.ms),
+              ),
               const SizedBox(height: 24),
 
               // Monthly trend — with cumulative/monthly toggle
-              const _TrendChartWithToggle(),
+              const RepaintBoundary(child: _TrendChartWithToggle()),
               // ── Interactive Spend Calendar ──
               const SizedBox(height: 24),
-              const SpendCalendar(),
+              const RepaintBoundary(child: SpendCalendar()),
               // ── Year in Review ──
-              const YearInReview(),
+              const RepaintBoundary(child: YearInReview()),
               const SizedBox(height: 100),
             ],
           ),
@@ -575,12 +570,12 @@ class InsightsScreen extends ConsumerWidget {
 
   List<PieChartSectionData> _buildPieSections(
     Map<String, double> spending,
-    List<Category> categories,
+    Map<String, Category> categoryMap,
     ColorScheme colorScheme,
   ) {
     final total = spending.values.fold<double>(0, (a, b) => a + b);
     return spending.entries.map((entry) {
-      final cat = categories.where((c) => c.id == entry.key).firstOrNull;
+      final cat = categoryMap[entry.key];
       final pct = total > 0 ? (entry.value / total * 100) : 0.0;
       return PieChartSectionData(
         value: entry.value,

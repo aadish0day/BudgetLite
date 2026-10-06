@@ -37,7 +37,7 @@ class HomeScreen extends ConsumerWidget {
     final totalSpent = ref.watch(totalSpentThisMonthProvider);
     final monthlyIncome = ref.watch(monthlyIncomeProvider);
     final budgets = ref.watch(thisMonthBudgetsProvider);
-    final transactions = ref.watch(thisMonthTransactionsProvider);
+    final transactions = ref.watch(recentTransactionsProvider);
     final initialBalance = ref.watch(initialBalanceProvider).valueOrNull ?? 0.0;
 
     return Scaffold(
@@ -184,11 +184,10 @@ class HomeScreen extends ConsumerWidget {
             ),
 
             transactions.when(
-              data: (txns) => txns.take(5).isEmpty
+              data: (txns) => txns.isEmpty
                   ? const EmptyState()
                   : Column(
                       children: txns
-                          .take(5)
                           .map((t) => TransactionRow(transaction: t))
                           .toList(),
                     ),
@@ -887,41 +886,23 @@ class _UpcomingPayments extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = colorScheme.brightness == Brightness.dark;
-    final allTransactions = ref.watch(transactionsProvider).valueOrNull ?? [];
-    final categories = ref.watch(categoriesProvider).valueOrNull ?? [];
+    final recurringList =
+        ref.watch(recurringTransactionsProvider).valueOrNull ?? [];
     final isBalanceHidden =
         ref.watch(balanceHiddenProvider).valueOrNull ?? false;
 
-    // Find recurring transactions and calculate next due date
-    final upcoming = <_UpcomingPayment>[];
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    for (final t in allTransactions.where((t) => t.isRecurring)) {
-      final nextDate = NotificationService.calculateNextDueDate(
-        lastDate: t.date,
-        interval: t.recurringInterval,
-      );
-      if (nextDate != null) {
-        final nextDay = DateTime(nextDate.year, nextDate.month, nextDate.day);
-        final daysUntil = nextDay.difference(today).inDays;
-        if (daysUntil <= 30) {
-          final category = categories
-              .where((c) => c.id == t.categoryId)
-              .firstOrNull;
-          upcoming.add(
-            _UpcomingPayment(
-              transaction: t,
-              category: category,
-              nextDate: nextDate,
-              daysUntil: daysUntil,
-            ),
-          );
-        }
-      }
-    }
-
-    // Sort by days until due (closest first)
-    upcoming.sort((a, b) => a.daysUntil.compareTo(b.daysUntil));
+    // Filter payments due within 30 days
+    final upcoming = recurringList
+        .where((r) => r.daysUntil <= 30)
+        .map(
+          (r) => _UpcomingPayment(
+            transaction: r.transaction,
+            category: r.category,
+            nextDate: r.nextDate,
+            daysUntil: r.daysUntil,
+          ),
+        )
+        .toList();
 
     if (upcoming.isEmpty) return const SizedBox.shrink();
 

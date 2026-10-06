@@ -471,18 +471,11 @@ class _BudgetSlotState extends State<_BudgetSlot> {
                       ),
                       Consumer(
                         builder: (context, ref, _) {
-                          final txns =
-                              ref
-                                  .watch(thisMonthTransactionsProvider)
-                                  .valueOrNull ??
-                              [];
-                          final spentInCat = txns
-                              .where(
-                                (t) =>
-                                    t.categoryId == widget.category.id &&
-                                    t.amount > 0,
-                              )
-                              .fold<double>(0, (sum, t) => sum + t.amount);
+                          final spentInCat = ref.watch(
+                            categorySpendingMapProvider.select(
+                              (m) => m[widget.category.id] ?? 0.0,
+                            ),
+                          );
                           final pct = widget.allocatedAmount > 0
                               ? (spentInCat / widget.allocatedAmount * 100)
                                     .clamp(0, 100)
@@ -511,18 +504,11 @@ class _BudgetSlotState extends State<_BudgetSlot> {
                   const SizedBox(height: 6),
                   Consumer(
                     builder: (context, ref, _) {
-                      final txns =
-                          ref
-                              .watch(thisMonthTransactionsProvider)
-                              .valueOrNull ??
-                          [];
-                      final spentInCat = txns
-                          .where(
-                            (t) =>
-                                t.categoryId == widget.category.id &&
-                                t.amount > 0,
-                          )
-                          .fold<double>(0, (sum, t) => sum + t.amount);
+                      final spentInCat = ref.watch(
+                        categorySpendingMapProvider.select(
+                          (m) => m[widget.category.id] ?? 0.0,
+                        ),
+                      );
                       final ratio = widget.allocatedAmount > 0
                           ? (spentInCat / widget.allocatedAmount).clamp(
                               0.0,

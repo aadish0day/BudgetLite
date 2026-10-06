@@ -22,10 +22,7 @@ class TransactionRow extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colorScheme = Theme.of(context).colorScheme;
-    final categories = ref.watch(categoriesProvider).valueOrNull ?? [];
-    final category = categories
-        .where((c) => c.id == transaction.categoryId)
-        .firstOrNull;
+    final category = ref.watch(categoryMapProvider)[transaction.categoryId];
     final catColor = Color(category?.color ?? 0xFF6B7280);
     final isBalanceHidden =
         ref.watch(balanceHiddenProvider).valueOrNull ?? false;

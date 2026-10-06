@@ -8,7 +8,6 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'core/theme/app_theme.dart';
 import 'core/theme/colors.dart';
-import 'core/utils/accessibility_utils.dart';
 import 'core/utils/formatters.dart';
 import 'core/utils/notification_service.dart';
 import 'core/utils/sms_parser.dart';
@@ -263,7 +262,6 @@ class _MainShellState extends ConsumerState<_MainShell> {
     final rawTab = ref.watch(currentTabProvider);
     final isBudgetEnabled =
         ref.watch(budgetModuleEnabledProvider).valueOrNull ?? true;
-    final shouldAnimate = AccessibilityUtils.shouldAnimate(context);
 
     final navLabels = [
       'Home',
@@ -297,8 +295,9 @@ class _MainShellState extends ConsumerState<_MainShell> {
       }
     });
 
-    ref.listen(transactionsProvider, (prev, next) {
-      next.whenData((txns) {
+    ref.listen(recurringTransactionsProvider, (prev, next) {
+      next.whenData((recurringList) {
+        final txns = recurringList.map((r) => r.transaction).toList();
         NotificationService.instance.rescheduleAll(txns);
       });
     });
@@ -346,31 +345,10 @@ class _MainShellState extends ConsumerState<_MainShell> {
         }
       },
       child: Scaffold(
-        body: shouldAnimate
-            ? AnimatedSwitcher(
-                duration: const Duration(milliseconds: 350),
-                switchInCurve: Curves.easeOutCubic,
-                switchOutCurve: Curves.easeInCubic,
-                transitionBuilder: (child, animation) {
-                  return ScaleTransition(
-                    scale: Tween<double>(begin: 0.97, end: 1).animate(
-                      CurvedAnimation(
-                        parent: animation,
-                        curve: Curves.easeOutCubic,
-                      ),
-                    ),
-                    child: FadeTransition(
-                      opacity: Tween<double>(
-                        begin: 0.3,
-                        end: 1,
-                      ).animate(animation),
-                      child: child,
-                    ),
-                  );
-                },
-                child: screens[currentTab],
-              )
-            : screens[currentTab],
+        body: IndexedStack(
+          index: currentTab,
+          children: screens,
+        ),
         bottomNavigationBar: SafeArea(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),

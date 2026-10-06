@@ -146,5 +146,90 @@ void main() {
       expect(budgets.first.allocatedAmount, 15000.0);
       expect(budgets.first.rollover, isTrue);
     });
+
+    test('watchRecentTransactions limits results correctly', () async {
+      final accountId = uuid.v4();
+      await db.into(db.accounts).insert(
+            AccountsCompanion.insert(
+              id: accountId,
+              name: 'Test Account',
+            ),
+          );
+      final categories = await db.select(db.categories).get();
+      final cat = categories.first;
+
+      for (int i = 0; i < 10; i++) {
+        await db.into(db.transactions).insert(
+              TransactionsCompanion.insert(
+                id: uuid.v4(),
+                accountId: accountId,
+                categoryId: cat.id,
+                amount: 10.0 * (i + 1),
+                date: DateTime.now().subtract(Duration(minutes: 10 - i)),
+              ),
+            );
+      }
+
+      final recent = await db.watchRecentTransactions().first;
+      expect(recent.length, 5);
+      // Verify ordering: newest first
+      expect(recent.first.amount, 100);
+    });
+
+    test('watchRecurringTransactions returns only active recurring rules', () async {
+      final accountId = uuid.v4();
+      await db.into(db.accounts).insert(
+            AccountsCompanion.insert(
+              id: accountId,
+              name: 'Test Account',
+            ),
+          );
+      final categories = await db.select(db.categories).get();
+      final cat = categories.first;
+
+      // Regular transaction
+      await db.into(db.transactions).insert(
+            TransactionsCompanion.insert(
+              id: uuid.v4(),
+              accountId: accountId,
+              categoryId: cat.id,
+              amount: 50,
+              date: DateTime.now(),
+            ),
+          );
+
+      // Recurring rule template
+      await db.into(db.transactions).insert(
+            TransactionsCompanion.insert(
+              id: uuid.v4(),
+              accountId: accountId,
+              categoryId: cat.id,
+              amount: 99,
+              date: DateTime.now(),
+              isRecurring: const drift.Value(true),
+              recurringInterval: const drift.Value('monthly'),
+              isRecurringInstance: const drift.Value(false),
+            ),
+          );
+
+      // Recurring instance (not the template)
+      await db.into(db.transactions).insert(
+            TransactionsCompanion.insert(
+              id: uuid.v4(),
+              accountId: accountId,
+              categoryId: cat.id,
+              amount: 99,
+              date: DateTime.now(),
+              isRecurring: const drift.Value(true),
+              recurringInterval: const drift.Value('monthly'),
+              isRecurringInstance: const drift.Value(true),
+            ),
+          );
+
+      final recurring = await db.watchRecurringTransactions().first;
+      expect(recurring.length, 1);
+      expect(recurring.first.amount, 99.0);
+      expect(recurring.first.isRecurringInstance, isFalse);
+    });
   });
 }

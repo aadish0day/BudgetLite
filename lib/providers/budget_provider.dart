@@ -272,3 +272,16 @@ final categoryBudgetUsageProvider = FutureProvider.autoDispose
       if (info.effectiveAllocated <= 0) return 0.0;
       return (info.spent / info.effectiveAllocated).clamp(0, 2).toDouble();
     });
+
+/// Pre-computed map of category ID -> total spent this month for fine-grained select()
+final categorySpendingMapProvider =
+    Provider.autoDispose<Map<String, double>>((ref) {
+      final txns = ref.watch(thisMonthTransactionsProvider).valueOrNull ?? [];
+      final map = <String, double>{};
+      for (final t in txns) {
+        if (t.amount > 0 && t.categoryId != 'transfer') {
+          map[t.categoryId] = (map[t.categoryId] ?? 0.0) + t.amount;
+        }
+      }
+      return map;
+    });

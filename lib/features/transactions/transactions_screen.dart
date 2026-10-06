@@ -217,6 +217,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     final transactions = ref.watch(
       hasDateFilter ? transactionsProvider : thisMonthTransactionsProvider,
     );
+    final categoryMap = ref.watch(categoryMapProvider);
     final categories = ref.watch(categoriesProvider).valueOrNull ?? [];
     return Scaffold(
       appBar: AppBar(
@@ -312,80 +313,67 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                     final dailyNet = dailyIncome - dailyExpense;
 
                     return Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // ── Group Header with Date & Daily Net Summary ──
-                            Padding(
-                              padding: const EdgeInsets.only(
-                                top: 14,
-                                bottom: 8,
-                                left: 4,
-                                right: 4,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // ── Group Header with Date & Daily Net Summary ──
+                        Padding(
+                          padding: const EdgeInsets.only(
+                            top: 14,
+                            bottom: 8,
+                            left: 4,
+                            right: 4,
+                          ),
+                          child: Row(
+                            mainAxisAlignment:
+                                MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                dateKey,
+                                style: AppTheme.displayStyle(
+                                  size: 13,
+                                  weight: FontWeight.w700,
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurface,
+                                ),
                               ),
-                              child: Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(
-                                    dateKey,
-                                    style: AppTheme.displayStyle(
-                                      size: 13,
-                                      weight: FontWeight.w700,
-                                      color: Theme.of(
-                                        context,
-                                      ).colorScheme.onSurface,
-                                    ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 3,
+                                ),
+                                decoration: BoxDecoration(
+                                  color:
+                                      (dailyNet >= 0
+                                              ? AppColors.success
+                                              : AppColors.error)
+                                          .withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  'Net: ${dailyNet >= 0 ? "+" : ""}${Formatters.formatCurrency(dailyNet)}',
+                                  style: AppTheme.financialStyle(
+                                    size: 11,
+                                    weight: FontWeight.w700,
+                                    color: dailyNet >= 0
+                                        ? AppColors.success
+                                        : AppColors.error,
                                   ),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                      vertical: 3,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color:
-                                          (dailyNet >= 0
-                                                  ? AppColors.success
-                                                  : AppColors.error)
-                                              .withValues(alpha: 0.1),
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: Text(
-                                      'Net: ${dailyNet >= 0 ? "+" : ""}${Formatters.formatCurrency(dailyNet)}',
-                                      style: AppTheme.financialStyle(
-                                        size: 11,
-                                        weight: FontWeight.w700,
-                                        color: dailyNet >= 0
-                                            ? AppColors.success
-                                            : AppColors.error,
-                                      ),
-                                    ),
-                                  ),
-                                ],
+                                ),
                               ),
-                            ),
-                            ...groupTxns.map(
-                              (t) => _TransactionCard(
-                                transaction: t,
-                                category: categories
-                                    .where((c) => c.id == t.categoryId)
-                                    .firstOrNull,
-                                onTap: () => _editTransaction(t),
-                                onDelete: _deleteWithUndo,
-                              ),
-                            ),
-                          ],
-                        )
-                        .animate(
-                          target: AccessibilityUtils.shouldAnimate(context)
-                              ? null
-                              : 1.0,
-                        )
-                        .fadeIn(
-                          duration: AppConstants.animNormal,
-                          delay:
-                              AppConstants.staggerDelay *
-                              (groupIndex > 10 ? 10 : groupIndex),
-                        );
+                            ],
+                          ),
+                        ),
+                        ...groupTxns.map(
+                          (t) => _TransactionCard(
+                            transaction: t,
+                            category: categoryMap[t.categoryId],
+                            onTap: () => _editTransaction(t),
+                            onDelete: _deleteWithUndo,
+                          ),
+                        ),
+                      ],
+                    );
                   },
                 );
               },
@@ -988,7 +976,7 @@ class _TransactionCard extends StatelessWidget {
                 ],
               ),
             ],
-          ).animate().fadeIn(duration: 300.ms).slideX(begin: -0.02, duration: 300.ms),
+          ),
         ),
       ),
     );

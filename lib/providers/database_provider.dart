@@ -14,6 +14,12 @@ final categoriesProvider = FutureProvider.autoDispose<List<Category>>((
   return db.select(db.categories).get();
 });
 
+/// O(1) hash map of category ID -> Category for zero-overhead widget lookups
+final categoryMapProvider = Provider.autoDispose<Map<String, Category>>((ref) {
+  final categories = ref.watch(categoriesProvider).valueOrNull ?? [];
+  return {for (final c in categories) c.id: c};
+});
+
 final accountsProvider = FutureProvider.autoDispose<List<Account>>((ref) async {
   final db = ref.watch(databaseProvider);
   return db.select(db.accounts).get();

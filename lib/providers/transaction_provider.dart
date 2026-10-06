@@ -58,6 +58,13 @@ final thisMonthTransactionsProvider =
       );
     });
 
+/// Stream only the 5 most recent transactions for lightweight home screen display
+final recentTransactionsProvider =
+    StreamProvider.autoDispose<List<Transaction>>((ref) {
+      final db = ref.watch(databaseProvider);
+      return db.watchRecentTransactions();
+    });
+
 /// Total spending this month (excludes transfers — they are balance-neutral,
 /// consistent with the Insights screen).
 final totalSpentThisMonthProvider = StreamProvider.autoDispose<double>((ref) {
@@ -680,10 +687,18 @@ class SmsReviewQueueNotifier extends StateNotifier<List<ParsedSmsTxn>> {
   int get pendingCount => state.length;
 }
 
+/// Stream-based provider for active recurring transaction templates
+final recurringTransactionsRawProvider =
+    StreamProvider.autoDispose<List<Transaction>>((ref) {
+      final db = ref.watch(databaseProvider);
+      return db.watchRecurringTransactions();
+    });
+
 /// Provider for all recurring transactions with computed next due dates
 final recurringTransactionsProvider =
     FutureProvider.autoDispose<List<RecurringPaymentInfo>>((ref) async {
-      final transactions = await ref.watch(transactionsProvider.future);
+      final recurringTxns =
+          await ref.watch(recurringTransactionsRawProvider.future);
       final categories = await ref.watch(categoriesProvider.future);
       final settingsNotifier = ref.read(settingsNotifierProvider.notifier);
 
@@ -691,7 +706,7 @@ final recurringTransactionsProvider =
       final now = DateTime.now();
       final today = DateTime(now.year, now.month, now.day);
 
-      for (final t in transactions.where((t) => t.isRecurring)) {
+      for (final t in recurringTxns) {
         final nextDate = NotificationService.calculateNextDueDate(
           lastDate: t.date,
           interval: t.recurringInterval,
