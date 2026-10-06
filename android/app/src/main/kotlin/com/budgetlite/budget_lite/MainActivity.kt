@@ -22,6 +22,11 @@ class MainActivity : FlutterFragmentActivity() {
         smsService?.onRequestPermissionsResult(requestCode, permissions, grantResults)
     }
 
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        smsService?.onActivityResult(requestCode, resultCode, data)
+    }
+
     override fun onDestroy() {
         smsService?.destroy()
         smsService = null

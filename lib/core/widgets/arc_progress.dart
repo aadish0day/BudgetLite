@@ -19,6 +19,7 @@ class ArcProgress extends StatelessWidget {
     this.strokeWidth = 4,
     this.center,
     this.showTrack = true,
+    this.semanticLabel,
   });
 
   /// Progress value from 0.0 to 1.0. Values outside [0,1] are clamped.
@@ -39,13 +40,19 @@ class ArcProgress extends StatelessWidget {
   /// Whether to show a subtle track behind the arc. Default true.
   final bool showTrack;
 
+  /// Accessible label for screen readers.
+  final String? semanticLabel;
+
   @override
   Widget build(BuildContext context) {
     final clamped = progress.clamp(0.0, 1.0);
 
-    return SizedBox(
-      width: size,
-      height: size,
+    return Semantics(
+      label: semanticLabel ?? 'Progress',
+      value: '${(clamped * 100).toInt()}%',
+      child: SizedBox(
+        width: size,
+        height: size,
       child: TweenAnimationBuilder<double>(
         tween: Tween(begin: 0, end: clamped),
         duration: 800.ms,
@@ -67,8 +74,9 @@ class ArcProgress extends StatelessWidget {
           );
         },
       ),
-    );
-  }
+    ),
+  );
+}
 }
 
 class _ArcPainter extends CustomPainter {

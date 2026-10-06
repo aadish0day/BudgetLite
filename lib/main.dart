@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:quick_actions/quick_actions.dart';
 import 'app.dart';
 
@@ -11,6 +12,9 @@ final quickActionCallbackProvider = StateProvider<void Function(int tabIndex)?>(
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+
+  // Strict offline-first enforcement: disable remote font fetching
+  GoogleFonts.config.allowRuntimeFetching = false;
 
   runApp(const ProviderScope(child: BudgetLiteApp()));
 }

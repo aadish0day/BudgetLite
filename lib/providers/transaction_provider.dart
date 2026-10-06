@@ -106,53 +106,60 @@ class TransactionNotifier extends StateNotifier<AsyncValue<void>> {
     DateTime? recurringEndDate,
     String? payee,
   }) async {
-    final db = ref.read(databaseProvider);
-    final uuid = const Uuid().v4();
+    state = const AsyncLoading();
+    try {
+      final db = ref.read(databaseProvider);
+      final uuid = const Uuid().v4();
 
-    double finalAmount = amount;
-    if (isIncome == true) {
-      finalAmount = -amount.abs();
-    } else {
-      final cat = await (db.select(
-        db.categories,
-      )..where((c) => c.id.equals(categoryId))).getSingleOrNull();
-      if (cat != null && cat.type == 'income') {
+      double finalAmount = amount;
+      if (isIncome == true) {
         finalAmount = -amount.abs();
       } else {
-        finalAmount = amount.abs();
+        final cat = await (db.select(
+          db.categories,
+        )..where((c) => c.id.equals(categoryId))).getSingleOrNull();
+        if (cat != null && cat.type == 'income') {
+          finalAmount = -amount.abs();
+        } else {
+          finalAmount = amount.abs();
+        }
       }
+
+      await db
+          .into(db.transactions)
+          .insert(
+            TransactionsCompanion.insert(
+              id: uuid,
+              amount: finalAmount,
+              categoryId: categoryId,
+              accountId: 'default',
+              note: Value(note),
+              date: date,
+              paymentMethod: Value(paymentMethod),
+              isRecurring: Value(isRecurring),
+              isRecurringInstance: const Value(false),
+              recurringInterval: Value(recurringInterval),
+              recurringEndDate: Value(recurringEndDate),
+              receiptImagePath: Value(receiptImagePath),
+              payee: Value(payee),
+            ),
+          );
+
+      ref.invalidate(transactionsProvider);
+      ref.invalidate(thisMonthTransactionsProvider);
+      ref.invalidate(totalSpentThisMonthProvider);
+      ref.invalidate(totalIncomeThisMonthProvider);
+      ref.invalidate(budgetHealthProvider);
+      ref.invalidate(spendingVelocityProvider);
+      ref.invalidate(spendingInsightsProvider);
+      ref.invalidate(effectiveCategoryBudgetProvider(categoryId));
+
+      unawaited(_checkBudgetAlerts(categoryId, date));
+      state = const AsyncData(null);
+    } catch (e, st) {
+      state = AsyncError(e, st);
+      rethrow;
     }
-
-    await db
-        .into(db.transactions)
-        .insert(
-          TransactionsCompanion.insert(
-            id: uuid,
-            amount: finalAmount,
-            categoryId: categoryId,
-            accountId: 'default',
-            note: Value(note),
-            date: date,
-            paymentMethod: Value(paymentMethod),
-            isRecurring: Value(isRecurring),
-            isRecurringInstance: const Value(false),
-            recurringInterval: Value(recurringInterval),
-            recurringEndDate: Value(recurringEndDate),
-            receiptImagePath: Value(receiptImagePath),
-            payee: Value(payee),
-          ),
-        );
-
-    ref.invalidate(transactionsProvider);
-    ref.invalidate(thisMonthTransactionsProvider);
-    ref.invalidate(totalSpentThisMonthProvider);
-    ref.invalidate(totalIncomeThisMonthProvider);
-    ref.invalidate(budgetHealthProvider);
-    ref.invalidate(spendingVelocityProvider);
-    ref.invalidate(spendingInsightsProvider);
-    ref.invalidate(effectiveCategoryBudgetProvider(categoryId));
-
-    unawaited(_checkBudgetAlerts(categoryId, date));
   }
 
   /// Add multiple split transactions atomically inside a single SQLite transaction.
@@ -161,70 +168,52 @@ class TransactionNotifier extends StateNotifier<AsyncValue<void>> {
     required List<TransactionsCompanion> items,
     required double totalAmount,
   }) async {
-    final db = ref.read(databaseProvider);
-    final categoryIds = <String>{};
-    DateTime? alertDate;
+    state = const AsyncLoading();
+    try {
+      final db = ref.read(databaseProvider);
+      final categoryIds = <String>{};
+      DateTime? alertDate;
 
-    await db.transaction(() async {
-      for (final item in items) {
-        await db.into(db.transactions).insert(item);
-        if (item.categoryId.present) {
-          categoryIds.add(item.categoryId.value);
+      await db.transaction(() async {
+        for (final item in items) {
+          await db.into(db.transactions).insert(item);
+          if (item.categoryId.present) {
+            categoryIds.add(item.categoryId.value);
+          }
+          if (item.date.present && alertDate == null) {
+            alertDate = item.date.value;
+          }
         }
-        if (item.date.present && alertDate == null) {
-          alertDate = item.date.value;
-        }
-      }
-    });
+      });
 
-    ref.invalidate(transactionsProvider);
-    ref.invalidate(thisMonthTransactionsProvider);
-    ref.invalidate(totalSpentThisMonthProvider);
-    ref.invalidate(totalIncomeThisMonthProvider);
-    ref.invalidate(budgetHealthProvider);
-    ref.invalidate(spendingVelocityProvider);
-    ref.invalidate(spendingInsightsProvider);
-    for (final catId in categoryIds) {
-      ref.invalidate(effectiveCategoryBudgetProvider(catId));
-    }
-
-    if (alertDate != null) {
+      ref.invalidate(transactionsProvider);
+      ref.invalidate(thisMonthTransactionsProvider);
+      ref.invalidate(totalSpentThisMonthProvider);
+      ref.invalidate(totalIncomeThisMonthProvider);
+      ref.invalidate(budgetHealthProvider);
+      ref.invalidate(spendingVelocityProvider);
+      ref.invalidate(spendingInsightsProvider);
       for (final catId in categoryIds) {
-        unawaited(_checkBudgetAlerts(catId, alertDate!));
+        ref.invalidate(effectiveCategoryBudgetProvider(catId));
       }
+
+      if (alertDate != null) {
+        for (final catId in categoryIds) {
+          unawaited(_checkBudgetAlerts(catId, alertDate!));
+        }
+      }
+      state = const AsyncData(null);
+    } catch (e, st) {
+      state = AsyncError(e, st);
+      rethrow;
     }
   }
 
   Future<void> updateTransaction(Transaction transaction) async {
-    final db = ref.read(databaseProvider);
-    await db.update(db.transactions).replace(transaction);
-    ref.invalidate(transactionsProvider);
-    ref.invalidate(thisMonthTransactionsProvider);
-    ref.invalidate(totalSpentThisMonthProvider);
-    ref.invalidate(totalIncomeThisMonthProvider);
-    ref.invalidate(budgetHealthProvider);
-    ref.invalidate(spendingVelocityProvider);
-    ref.invalidate(spendingInsightsProvider);
-    ref.invalidate(effectiveCategoryBudgetProvider(transaction.categoryId));
-
-    unawaited(_checkBudgetAlerts(transaction.categoryId, transaction.date));
-  }
-
-  Future<void> deleteTransaction(String id) async {
-    final db = ref.read(databaseProvider);
-
-    final transaction = await (db.select(
-      db.transactions,
-    )..where((t) => t.id.equals(id))).getSingleOrNull();
-    if (transaction != null && transaction.receiptImagePath != null) {
-      try {
-        final file = File(transaction.receiptImagePath!);
-        if (file.existsSync()) await file.delete();
-      } catch (_) {}
-    }
-
-    if (transaction != null) {
-      await (db.delete(db.transactions)..where((t) => t.id.equals(id))).go();
+    state = const AsyncLoading();
+    try {
+      final db = ref.read(databaseProvider);
+      await db.update(db.transactions).replace(transaction);
       ref.invalidate(transactionsProvider);
       ref.invalidate(thisMonthTransactionsProvider);
       ref.invalidate(totalSpentThisMonthProvider);
@@ -235,6 +224,45 @@ class TransactionNotifier extends StateNotifier<AsyncValue<void>> {
       ref.invalidate(effectiveCategoryBudgetProvider(transaction.categoryId));
 
       unawaited(_checkBudgetAlerts(transaction.categoryId, transaction.date));
+      state = const AsyncData(null);
+    } catch (e, st) {
+      state = AsyncError(e, st);
+      rethrow;
+    }
+  }
+
+  Future<void> deleteTransaction(String id) async {
+    state = const AsyncLoading();
+    try {
+      final db = ref.read(databaseProvider);
+
+      final transaction = await (db.select(
+        db.transactions,
+      )..where((t) => t.id.equals(id))).getSingleOrNull();
+      if (transaction != null && transaction.receiptImagePath != null) {
+        try {
+          final file = File(transaction.receiptImagePath!);
+          if (file.existsSync()) await file.delete();
+        } catch (_) {}
+      }
+
+      if (transaction != null) {
+        await (db.delete(db.transactions)..where((t) => t.id.equals(id))).go();
+        ref.invalidate(transactionsProvider);
+        ref.invalidate(thisMonthTransactionsProvider);
+        ref.invalidate(totalSpentThisMonthProvider);
+        ref.invalidate(totalIncomeThisMonthProvider);
+        ref.invalidate(budgetHealthProvider);
+        ref.invalidate(spendingVelocityProvider);
+        ref.invalidate(spendingInsightsProvider);
+        ref.invalidate(effectiveCategoryBudgetProvider(transaction.categoryId));
+
+        unawaited(_checkBudgetAlerts(transaction.categoryId, transaction.date));
+      }
+      state = const AsyncData(null);
+    } catch (e, st) {
+      state = AsyncError(e, st);
+      rethrow;
     }
   }
 
@@ -654,7 +682,7 @@ class SmsReviewQueueNotifier extends StateNotifier<List<ParsedSmsTxn>> {
 
 /// Provider for all recurring transactions with computed next due dates
 final recurringTransactionsProvider =
-    FutureProvider<List<RecurringPaymentInfo>>((ref) async {
+    FutureProvider.autoDispose<List<RecurringPaymentInfo>>((ref) async {
       final transactions = await ref.watch(transactionsProvider.future);
       final categories = await ref.watch(categoriesProvider.future);
       final settingsNotifier = ref.read(settingsNotifierProvider.notifier);

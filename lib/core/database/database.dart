@@ -22,6 +22,7 @@ part 'database.g.dart';
 )
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
+  AppDatabase.forTesting(super.e);
 
   @override
   int get schemaVersion => 5;
@@ -171,10 +172,12 @@ class AppDatabase extends _$AppDatabase {
 
   /// Get number of transactions tied to a category.
   Future<int> getTransactionCountForCategory(String categoryId) async {
-    final query = select(transactions)
-      ..where((t) => t.categoryId.equals(categoryId));
-    final list = await query.get();
-    return list.length;
+    final count = transactions.id.count();
+    final query = selectOnly(transactions)
+      ..addColumns([count])
+      ..where(transactions.categoryId.equals(categoryId));
+    final row = await query.getSingleOrNull();
+    return row?.read(count) ?? 0;
   }
 
   /// Delete a category after reassigning existing transactions and budgets to targetCategoryId.
@@ -217,6 +220,8 @@ LazyDatabase _openConnection() {
     return NativeDatabase(
       file,
       setup: (rawDb) {
+        rawDb.execute('PRAGMA journal_mode = WAL;');
+        rawDb.execute('PRAGMA synchronous = NORMAL;');
         rawDb.execute('PRAGMA foreign_keys = ON;');
       },
     );

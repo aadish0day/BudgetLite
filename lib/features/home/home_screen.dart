@@ -162,14 +162,19 @@ class HomeScreen extends ConsumerWidget {
                       color: colorScheme.onSurface,
                     ),
                   ),
-                  GestureDetector(
-                    onTap: () =>
+                  TextButton(
+                    onPressed: () =>
                         ref.read(currentTabProvider.notifier).state = 1,
+                    style: TextButton.styleFrom(
+                      minimumSize: const Size(48, 48),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      tapTargetSize: MaterialTapTargetSize.padded,
+                    ),
                     child: Text(
                       'View All',
                       style: AppTheme.bodyStyle(
-                        size: 12,
-                        weight: FontWeight.w500,
+                        size: 13,
+                        weight: FontWeight.w600,
                         color: colorScheme.primary,
                       ),
                     ),
@@ -1042,27 +1047,21 @@ class _UpcomingPayments extends ConsumerWidget {
                             Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                // Mark as Paid button with scale-on-press
-                                GestureDetector(
-                                  onTap: () =>
+                                // Mark as Paid button with accessibility tooltip and 48x48 hit target
+                                IconButton(
+                                  onPressed: () =>
                                       _markAsPaid(context, ref, payment),
-                                  behavior: HitTestBehavior.opaque,
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(8),
-                                    child: Container(
-                                      padding: const EdgeInsets.all(6),
-                                      decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        color: AppColors.success.withValues(
-                                          alpha: 0.1,
-                                        ),
-                                      ),
-                                      child: const Icon(
-                                        LucideIcons.check,
-                                        size: 18,
-                                        color: AppColors.success,
-                                      ),
-                                    ),
+                                  tooltip:
+                                      'Mark ${payment.category?.name ?? "payment"} as paid',
+                                  style: IconButton.styleFrom(
+                                    minimumSize: const Size(48, 48),
+                                    backgroundColor: AppColors.success
+                                        .withValues(alpha: 0.1),
+                                  ),
+                                  icon: const Icon(
+                                    LucideIcons.check,
+                                    size: 18,
+                                    color: AppColors.success,
                                   ),
                                 ),
                                 const SizedBox(width: 8),

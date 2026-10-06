@@ -1330,19 +1330,16 @@ class _ManageCategoriesSheet extends ConsumerWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         IconButton(
-                          constraints: const BoxConstraints(),
-                          padding: const EdgeInsets.all(8),
-                          icon: const Icon(LucideIcons.pencil, size: 18),
+                          tooltip: 'Edit ${cat.name}',
+                          icon: const Icon(LucideIcons.pencil, size: 20),
                           onPressed: () =>
                               _showEditCategoryDialog(context, ref, cat),
                         ),
-                        const SizedBox(width: 4),
                         IconButton(
-                          constraints: const BoxConstraints(),
-                          padding: const EdgeInsets.all(8),
+                          tooltip: 'Delete ${cat.name}',
                           icon: const Icon(
                             LucideIcons.trash2,
-                            size: 18,
+                            size: 20,
                             color: AppColors.error,
                           ),
                           onPressed: () => _deleteCategorySafely(

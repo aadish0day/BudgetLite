@@ -3,7 +3,6 @@ import '../core/database/database.dart';
 
 final databaseProvider = Provider<AppDatabase>((ref) {
   final db = AppDatabase();
-  db.migrateLegacyPayees();
   ref.onDispose(db.close);
   return db;
 });

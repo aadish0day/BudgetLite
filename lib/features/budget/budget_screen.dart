@@ -558,88 +558,100 @@ class _BudgetSlotState extends State<_BudgetSlot> {
                   const SizedBox(height: 8),
                   Row(
                     children: [
-                      SizedBox(
-                        width: 100,
-                        height: 36,
-                        child: TextField(
-                          controller: _ctrl,
-                          keyboardType: TextInputType.number,
-                          style: AppTheme.financialStyle(
-                            size: 13,
-                            color: colorScheme.onSurface,
-                          ),
-                          decoration: InputDecoration(
-                            prefixText: '₹ ',
-                            prefixStyle: AppTheme.financialStyle(
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(
+                          minWidth: 100,
+                          maxWidth: 120,
+                          minHeight: 44,
+                        ),
+                        child: Semantics(
+                          label:
+                              'Budget allocation for ${widget.category.name}',
+                          textField: true,
+                          child: TextField(
+                            controller: _ctrl,
+                            keyboardType: TextInputType.number,
+                            style: AppTheme.financialStyle(
                               size: 13,
-                              color: colorScheme.onSurfaceVariant,
+                              color: colorScheme.onSurface,
                             ),
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 6,
-                            ),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: BorderSide(
-                                color: colorScheme.outline.withValues(
-                                  alpha: 0.2,
+                            decoration: InputDecoration(
+                              prefixText: '₹ ',
+                              prefixStyle: AppTheme.financialStyle(
+                                size: 13,
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 10,
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide: BorderSide(
+                                  color: colorScheme.outline.withValues(
+                                    alpha: 0.2,
+                                  ),
                                 ),
                               ),
+                              filled: true,
+                              fillColor: colorScheme.surfaceContainerHighest
+                                  .withValues(alpha: 0.3),
                             ),
-                            filled: true,
-                            fillColor: colorScheme.surfaceContainerHighest
-                                .withValues(alpha: 0.3),
                           ),
                         ),
                       ),
                       const SizedBox(width: 8),
-                      GestureDetector(
-                        onTap: () => setState(() => _rollover = !_rollover),
-                        onTapDown: (_) =>
-                            setState(() => _isRolloverPressed = true),
-                        onTapUp: (_) =>
-                            setState(() => _isRolloverPressed = false),
-                        onTapCancel: () =>
-                            setState(() => _isRolloverPressed = false),
-                        child: AnimatedScale(
-                          scale: _isRolloverPressed ? 0.92 : 1.0,
-                          duration: const Duration(milliseconds: 120),
-                          curve: Curves.easeOut,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(6),
-                              color: _rollover
-                                  ? catColor.withValues(alpha: 0.12)
-                                  : Colors.transparent,
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  _rollover
-                                      ? LucideIcons.rotateCw
-                                      : LucideIcons.rotateCw,
-                                  size: 14,
-                                  color: _rollover
-                                      ? catColor
-                                      : colorScheme.onSurfaceVariant,
-                                ),
-                                const SizedBox(width: 2),
-                                Text(
-                                  'Rollover',
-                                  style: AppTheme.bodyStyle(
-                                    size: 10,
-                                    weight: FontWeight.w500,
+                      Semantics(
+                        button: true,
+                        checked: _rollover,
+                        label:
+                            'Toggle rollover for ${widget.category.name}',
+                        child: GestureDetector(
+                          onTap: () => setState(() => _rollover = !_rollover),
+                          onTapDown: (_) =>
+                              setState(() => _isRolloverPressed = true),
+                          onTapUp: (_) =>
+                              setState(() => _isRolloverPressed = false),
+                          onTapCancel: () =>
+                              setState(() => _isRolloverPressed = false),
+                          child: AnimatedScale(
+                            scale: _isRolloverPressed ? 0.92 : 1.0,
+                            duration: const Duration(milliseconds: 120),
+                            curve: Curves.easeOut,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 8,
+                              ),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(6),
+                                color: _rollover
+                                    ? catColor.withValues(alpha: 0.12)
+                                    : Colors.transparent,
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    LucideIcons.rotateCw,
+                                    size: 14,
                                     color: _rollover
                                         ? catColor
                                         : colorScheme.onSurfaceVariant,
                                   ),
-                                ),
-                              ],
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    'Rollover',
+                                    style: AppTheme.bodyStyle(
+                                      size: 10,
+                                      weight: FontWeight.w500,
+                                      color: _rollover
+                                        ? catColor
+                                        : colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         ),
@@ -650,6 +662,7 @@ class _BudgetSlotState extends State<_BudgetSlot> {
               ),
             ),
             IconButton(
+              tooltip: 'Save budget for ${widget.category.name}',
               onPressed: () {
                 final text = _ctrl.text.trim();
                 final amount = double.tryParse(text);

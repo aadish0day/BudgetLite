@@ -339,8 +339,8 @@ final spendingInsightsProvider = FutureProvider.autoDispose<List<SpendingInsight
   }
 
   // 5. Savings rate
-  final incomeThisMonth = await ref.read(totalIncomeThisMonthProvider.future);
-  final spentThisMonth = await ref.read(totalSpentThisMonthProvider.future);
+  final incomeThisMonth = await ref.watch(totalIncomeThisMonthProvider.future);
+  final spentThisMonth = await ref.watch(totalSpentThisMonthProvider.future);
   if (incomeThisMonth > 0) {
     final savingsRate =
         ((incomeThisMonth - spentThisMonth) / incomeThisMonth * 100).clamp(
@@ -411,8 +411,8 @@ Future<List<CategoryDelta>> _calculateCategoryDeltas(
   Ref ref,
   DateTime now,
 ) async {
-  final thisMonthTxns = await ref.read(thisMonthTransactionsProvider.future);
-  final categories = await ref.read(categoriesProvider.future);
+  final thisMonthTxns = await ref.watch(thisMonthTransactionsProvider.future);
+  final categories = await ref.watch(categoriesProvider.future);
 
   // Build trailing 3-month average (months: now-3, now-2, now-1)
   final trailingMonths = List.generate(3, (i) {

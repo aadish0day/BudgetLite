@@ -906,112 +906,114 @@ class _CsvImportSheetState extends ConsumerState<CsvImportSheet> {
     int imported = 0;
     int skipped = 0;
 
-    for (final idx in _selectedRows) {
-      final row = _result!.transactions[idx];
+    await db.transaction(() async {
+      for (final idx in _selectedRows) {
+        final row = _result!.transactions[idx];
 
-      // Map description to category using keyword matching (similar to SmsParser)
-      String categoryId = _categoryName; // default to user-selected
-      final desc = row.description.toLowerCase();
+        // Map description to category using keyword matching (similar to SmsParser)
+        String categoryId = _categoryName; // default to user-selected
+        final desc = row.description.toLowerCase();
 
-      if (desc.contains('swiggy') ||
-          desc.contains('zomato') ||
-          desc.contains('food') ||
-          desc.contains('restaurant') ||
-          desc.contains('cafe') ||
-          desc.contains('mcdonald') ||
-          desc.contains('kfc') ||
-          desc.contains('pizza') ||
-          desc.contains('groceri') ||
-          desc.contains('fresh') ||
-          desc.contains('supermarket')) {
-        categoryId = 'food';
-      } else if (desc.contains('uber') ||
-          desc.contains('ola') ||
-          desc.contains('metro') ||
-          desc.contains('petrol') ||
-          desc.contains('fuel') ||
-          desc.contains('taxi') ||
-          desc.contains('railway') ||
-          desc.contains('cab')) {
-        categoryId = 'transport';
-      } else if (desc.contains('rent') ||
-          desc.contains('housing') ||
-          desc.contains('pg ')) {
-        categoryId = 'rent';
-      } else if (desc.contains('amazon') ||
-          desc.contains('flipkart') ||
-          desc.contains('myntra') ||
-          desc.contains('zara') ||
-          desc.contains('cloth') ||
-          desc.contains('shoe') ||
-          desc.contains('shopping') ||
-          desc.contains('store') ||
-          desc.contains('mart')) {
-        categoryId = 'shopping';
-      } else if (desc.contains('bill') ||
-          desc.contains('electricity') ||
-          desc.contains('broadband') ||
-          desc.contains('recharge') ||
-          desc.contains('water') ||
-          desc.contains('gas') ||
-          desc.contains('insurance') ||
-          desc.contains('netflix') ||
-          desc.contains('subscription') ||
-          desc.contains('phone') ||
-          desc.contains('jio') ||
-          desc.contains('airtel')) {
-        categoryId = 'bills';
-      } else if (desc.contains('salary') || desc.contains('credit')) {
-        categoryId = 'income';
+        if (desc.contains('swiggy') ||
+            desc.contains('zomato') ||
+            desc.contains('food') ||
+            desc.contains('restaurant') ||
+            desc.contains('cafe') ||
+            desc.contains('mcdonald') ||
+            desc.contains('kfc') ||
+            desc.contains('pizza') ||
+            desc.contains('groceri') ||
+            desc.contains('fresh') ||
+            desc.contains('supermarket')) {
+          categoryId = 'food';
+        } else if (desc.contains('uber') ||
+            desc.contains('ola') ||
+            desc.contains('metro') ||
+            desc.contains('petrol') ||
+            desc.contains('fuel') ||
+            desc.contains('taxi') ||
+            desc.contains('railway') ||
+            desc.contains('cab')) {
+          categoryId = 'transport';
+        } else if (desc.contains('rent') ||
+            desc.contains('housing') ||
+            desc.contains('pg ')) {
+          categoryId = 'rent';
+        } else if (desc.contains('amazon') ||
+            desc.contains('flipkart') ||
+            desc.contains('myntra') ||
+            desc.contains('zara') ||
+            desc.contains('cloth') ||
+            desc.contains('shoe') ||
+            desc.contains('shopping') ||
+            desc.contains('store') ||
+            desc.contains('mart')) {
+          categoryId = 'shopping';
+        } else if (desc.contains('bill') ||
+            desc.contains('electricity') ||
+            desc.contains('broadband') ||
+            desc.contains('recharge') ||
+            desc.contains('water') ||
+            desc.contains('gas') ||
+            desc.contains('insurance') ||
+            desc.contains('netflix') ||
+            desc.contains('subscription') ||
+            desc.contains('phone') ||
+            desc.contains('jio') ||
+            desc.contains('airtel')) {
+          categoryId = 'bills';
+        } else if (desc.contains('salary') || desc.contains('credit')) {
+          categoryId = 'income';
+        }
+
+        // Check for duplicates
+        final dupCheck = DuplicateDetector.findDuplicates(
+          existingTransactions: existingTxns,
+          amount: row.amount.abs(),
+          categoryId: categoryId,
+          date: row.date,
+          note: row.description,
+        );
+
+        final dupKey =
+            '${row.date.year}-${row.date.month}-${row.date.day}|'
+            '${row.amount.toStringAsFixed(2)}|${row.description.toLowerCase()}';
+        if (dupCheck.isNotEmpty || importedKeys.contains(dupKey)) {
+          skipped++;
+          continue;
+        }
+        importedKeys.add(dupKey);
+
+        // Import the transaction
+        try {
+          final uuid = const Uuid().v4();
+          // CsvImporter already signs amounts correctly (credits negative =
+          // income). Only flip to negative when keyword matching detects an
+          // income row that arrived with a positive sign.
+          final finalAmount = categoryId == 'income' && row.amount > 0
+              ? -row.amount.abs()
+              : row.amount;
+
+          await db
+              .into(db.transactions)
+              .insert(
+                TransactionsCompanion.insert(
+                  id: uuid,
+                  amount: finalAmount,
+                  categoryId: categoryId,
+                  accountId: 'default',
+                  note: Value(row.description),
+                  date: row.date,
+                  paymentMethod: const Value('bank'),
+                ),
+              );
+
+          imported++;
+        } catch (e) {
+          skipped++;
+        }
       }
-
-      // Check for duplicates
-      final dupCheck = DuplicateDetector.findDuplicates(
-        existingTransactions: existingTxns,
-        amount: row.amount.abs(),
-        categoryId: categoryId,
-        date: row.date,
-        note: row.description,
-      );
-
-      final dupKey =
-          '${row.date.year}-${row.date.month}-${row.date.day}|'
-          '${row.amount.toStringAsFixed(2)}|${row.description.toLowerCase()}';
-      if (dupCheck.isNotEmpty || importedKeys.contains(dupKey)) {
-        skipped++;
-        continue;
-      }
-      importedKeys.add(dupKey);
-
-      // Import the transaction
-      try {
-        final uuid = const Uuid().v4();
-        // CsvImporter already signs amounts correctly (credits negative =
-        // income). Only flip to negative when keyword matching detects an
-        // income row that arrived with a positive sign.
-        final finalAmount = categoryId == 'income' && row.amount > 0
-            ? -row.amount.abs()
-            : row.amount;
-
-        await db
-            .into(db.transactions)
-            .insert(
-              TransactionsCompanion.insert(
-                id: uuid,
-                amount: finalAmount,
-                categoryId: categoryId,
-                accountId: 'default',
-                note: Value(row.description),
-                date: row.date,
-                paymentMethod: const Value('bank'),
-              ),
-            );
-
-        imported++;
-      } catch (e) {
-        skipped++;
-      }
-    }
+    });
 
     // Invalidate providers
     ref.invalidate(transactionsProvider);

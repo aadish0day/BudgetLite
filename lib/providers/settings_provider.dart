@@ -12,11 +12,11 @@ import '../core/utils/accessibility_utils.dart';
 import '../core/utils/categorization_rule.dart';
 import 'database_provider.dart';
 
-final settingsProvider = FutureProvider.family<String?, String>((
+final settingsProvider = FutureProvider.autoDispose.family<String?, String>((
   ref,
   key,
 ) async {
-  final db = ref.read(databaseProvider);
+  final db = ref.watch(databaseProvider);
   final rows = await (db.select(
     db.appSettings,
   )..where((t) => t.key.equals(key))).get();
