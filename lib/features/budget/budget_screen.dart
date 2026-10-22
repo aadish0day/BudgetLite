@@ -313,7 +313,8 @@ class _BudgetScreenState extends ConsumerState<BudgetScreen> {
                 ],
               ),
               const SizedBox(height: 12),
-              ...categories.map((cat) {
+              ...categories.asMap().entries.map((entry) {
+                final cat = entry.value;
                 final budget = budgets
                     .where((b) => b.categoryId == cat.id)
                     .firstOrNull;
@@ -333,7 +334,7 @@ class _BudgetScreenState extends ConsumerState<BudgetScreen> {
                           rollover: rollover,
                         );
                   },
-                );
+                ).animateFadeSlide(context, index: entry.key);
               }),
               const SizedBox(height: 16),
               OutlinedButton.icon(
@@ -1027,60 +1028,50 @@ class _BudgetScreenSkeleton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final baseColor = colorScheme.surfaceContainerHighest.withValues(alpha: 0.7);
     return ListView(
+      physics: const NeverScrollableScrollPhysics(),
       padding: AppConstants.screenPadding,
       children: [
         // Income card skeleton
         Container(
-              height: 120,
-              decoration: BoxDecoration(
-                color: colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(AppConstants.cardRadius),
-              ),
-            )
-            .animate(onPlay: (c) => c.repeat())
-            .shimmer(
-              duration: 1200.ms,
-              color: colorScheme.primary.withValues(alpha: 0.08),
-            ),
+          height: 120,
+          decoration: BoxDecoration(
+            color: baseColor,
+            borderRadius: BorderRadius.circular(AppConstants.cardRadius),
+          ),
+        ).animateShimmer(context),
         const SizedBox(height: 24),
         // Section header skeleton
         Container(
-              width: 160,
-              height: 18,
-              decoration: BoxDecoration(
-                color: colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(4),
-              ),
-            )
-            .animate(onPlay: (c) => c.repeat())
-            .shimmer(
-              duration: 1200.ms,
-              delay: 200.ms,
-              color: colorScheme.primary.withValues(alpha: 0.08),
-            ),
+          width: 160,
+          height: 18,
+          decoration: BoxDecoration(
+            color: baseColor,
+            borderRadius: BorderRadius.circular(4),
+          ),
+        ).animateShimmer(
+          context,
+          delay: const Duration(milliseconds: 200),
+        ),
         const SizedBox(height: 16),
         // Budget slot skeletons
         ...List.generate(
           4,
           (i) => Padding(
             padding: const EdgeInsets.only(bottom: 12),
-            child:
-                Container(
-                      height: 68,
-                      decoration: BoxDecoration(
-                        color: colorScheme.surfaceContainerHighest,
-                        borderRadius: BorderRadius.circular(
-                          AppConstants.cardRadiusSmall,
-                        ),
-                      ),
-                    )
-                    .animate(onPlay: (c) => c.repeat())
-                    .shimmer(
-                      duration: 1200.ms,
-                      delay: ((i + 2) * 150).ms,
-                      color: colorScheme.primary.withValues(alpha: 0.08),
-                    ),
+            child: Container(
+              height: 68,
+              decoration: BoxDecoration(
+                color: baseColor,
+                borderRadius: BorderRadius.circular(
+                  AppConstants.cardRadiusSmall,
+                ),
+              ),
+            ).animateShimmer(
+              context,
+              delay: Duration(milliseconds: (i + 2) * 150),
+            ),
           ),
         ),
       ],

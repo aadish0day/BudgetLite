@@ -118,11 +118,11 @@ class HomeScreen extends ConsumerWidget {
               initialBalance: initialBalance,
               onEditBalance: () =>
                   _showEditBalanceDialog(context, ref, initialBalance),
-            ),
+            ).animateFadeSlide(context),
             const SizedBox(height: 28),
 
             // ── Pending Reimbursements Banner ──
-            const _ReimbursementBanner(),
+            const _ReimbursementBanner().animateFadeSlide(context, index: 1),
 
             // ── Budget Overview Section (Conditional) ──
             Consumer(
@@ -135,7 +135,8 @@ class HomeScreen extends ConsumerWidget {
                     budgets.when(
                       data: (budgetList) => budgetList.isEmpty
                           ? _QuickBudgetSetup()
-                          : _BudgetOverview(budgets: budgetList),
+                          : _BudgetOverview(budgets: budgetList)
+                              .animateFadeSlide(context, index: 2),
                       loading: () => const _BudgetSkeleton(),
                       error: (_, _) => _QuickBudgetSetup(),
                     ),
@@ -146,7 +147,7 @@ class HomeScreen extends ConsumerWidget {
             ),
 
             // ── Upcoming Payments / Subscriptions ──
-            const _UpcomingPayments(),
+            const _UpcomingPayments().animateFadeSlide(context, index: 3),
             const SizedBox(height: 28),
 
             // ── Recent transactions header ──
@@ -187,9 +188,11 @@ class HomeScreen extends ConsumerWidget {
               data: (txns) => txns.isEmpty
                   ? const EmptyState()
                   : Column(
-                      children: txns
-                          .map((t) => TransactionRow(transaction: t))
-                          .toList(),
+                      children: [
+                        for (int i = 0; i < txns.length; i++)
+                          TransactionRow(transaction: txns[i])
+                              .animateFadeSlide(context, index: i),
+                      ],
                     ),
               loading: () => const TransactionSkeleton(),
               error: (_, _) => const EmptyState(),
@@ -625,37 +628,28 @@ class _BudgetSkeleton extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
-              width: 160,
-              height: 18,
-              decoration: BoxDecoration(
-                color: colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(4),
-              ),
-            )
-            .animate(onPlay: (controller) => controller.repeat())
-            .shimmer(
-              duration: 1200.ms,
-              color: colorScheme.primary.withValues(alpha: 0.08),
-            ),
+          width: 160,
+          height: 18,
+          decoration: BoxDecoration(
+            color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.7),
+            borderRadius: BorderRadius.circular(4),
+          ),
+        ).animateShimmer(context),
         const SizedBox(height: 14),
         ...List.generate(
           3,
           (i) => Padding(
             padding: const EdgeInsets.only(bottom: 10),
-            child:
-                Container(
-                      height: 64,
-                      decoration: BoxDecoration(
-                        color: colorScheme.surfaceContainerHighest,
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                    )
-                    .animate(onPlay: (controller) => controller.repeat())
-                    .shimmer(
-                      duration: 1200.ms,
-                      delay: (i * 200).ms,
-                      color: colorScheme.primary.withValues(alpha: 0.08),
-                    ),
+            child: Container(
+              height: 64,
+              decoration: BoxDecoration(
+                color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.7),
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ).animateShimmer(
+              context,
+              delay: Duration(milliseconds: (i + 1) * 150),
+            ),
           ),
         ),
       ],

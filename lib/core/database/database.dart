@@ -50,6 +50,9 @@ class AppDatabase extends _$AppDatabase {
         );
       }
     },
+    beforeOpen: (details) async {
+      await customStatement('PRAGMA foreign_keys = ON;');
+    },
   );
 
   /// Migrate existing transaction data: copies legacy merchant names from 'note' into 'payee' and clears 'note'
@@ -196,7 +199,11 @@ class AppDatabase extends _$AppDatabase {
     });
   }
 
-  /// Delete ALL stored data (transactions, budgets, goals, recurring definitions, settings, tags)
+  /// Force a WAL checkpoint to truncate journal frames into the main database file.
+  Future<void> checkpointWal() async {
+    await customStatement('PRAGMA wal_checkpoint(TRUNCATE);');
+  }
+
   /// Watch recent transactions limited to [limit] rows for lightweight list display
   Stream<List<Transaction>> watchRecentTransactions({int limit = 5}) {
     return (select(transactions)
@@ -218,6 +225,7 @@ class AppDatabase extends _$AppDatabase {
         .watch();
   }
 
+  /// Delete ALL stored data (transactions, budgets, goals, recurring definitions, settings, tags)
   /// and re-seed default account and categories.
   Future<void> clearAllData() async {
     await transaction(() async {

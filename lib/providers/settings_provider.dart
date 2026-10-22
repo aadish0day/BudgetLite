@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:csv/csv.dart';
 import 'package:drift/drift.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
@@ -111,6 +112,10 @@ class SettingsNotifier extends StateNotifier<AsyncValue<void>> {
   }
 
   Future<String> exportDatabase() async {
+    final db = ref.read(databaseProvider);
+    // Flush all uncheckpointed WAL frames into the main database file before copying
+    await db.checkpointWal();
+
     final dbFolder = await getApplicationDocumentsDirectory();
     final file = File(p.join(dbFolder.path, 'budget_lite.db'));
     if (!file.existsSync()) throw Exception('Database not found');
@@ -153,6 +158,7 @@ class SettingsNotifier extends StateNotifier<AsyncValue<void>> {
               'icon': c.icon,
               'color': c.color,
               'type': c.type,
+              'sortOrder': c.sortOrder,
             },
           )
           .toList(),
@@ -274,6 +280,7 @@ class SettingsNotifier extends StateNotifier<AsyncValue<void>> {
                 icon: Value(m['icon'] as String? ?? 'category'),
                 color: Value(m['color'] as int? ?? 0xFF0D7377),
                 type: Value(m['type'] as String? ?? 'expense'),
+                sortOrder: Value(m['sortOrder'] as int? ?? 0),
               ),
             ),
       );
@@ -352,6 +359,24 @@ class SettingsNotifier extends StateNotifier<AsyncValue<void>> {
       );
 
       await processList(
+        'monthlyIncome',
+        (m) async => db
+            .into(db.monthlyIncome)
+            .insertOnConflictUpdate(
+              MonthlyIncomeCompanion.insert(
+                id: m['id'] as String,
+                month: m['month'] as String,
+                amount: (m['amount'] as num).toDouble(),
+                createdAt: Value(
+                  m['createdAt'] != null
+                      ? DateTime.parse(m['createdAt'] as String)
+                      : DateTime.now(),
+                ),
+              ),
+            ),
+      );
+
+      await processList(
         'settings',
         (m) async => db
             .into(db.appSettings)
@@ -366,6 +391,65 @@ class SettingsNotifier extends StateNotifier<AsyncValue<void>> {
 
     ref.invalidate(databaseProvider);
     return importedCount;
+  }
+
+  /// Export all transactions to a clean, spreadsheet-friendly CSV format.
+  Future<String> exportTransactionsCsv() async {
+    final db = ref.read(databaseProvider);
+    final transactions = await (db.select(db.transactions)
+          ..orderBy([
+            (t) => OrderingTerm(expression: t.date, mode: OrderingMode.desc),
+          ]))
+        .get();
+    final categories = await db.select(db.categories).get();
+    final catMap = {for (final c in categories) c.id: c.name};
+
+    final rows = <List<dynamic>>[
+      [
+        'Date',
+        'Time',
+        'Type',
+        'Amount',
+        'Category',
+        'Payee',
+        'Note',
+        'Payment Method',
+        'Recurring',
+      ],
+    ];
+
+    for (final t in transactions) {
+      final isIncome = t.amount < 0;
+      final typeStr = isIncome ? 'Income' : 'Expense';
+      final formattedAmount = t.amount.abs().toStringAsFixed(2);
+      final dateStr =
+          '${t.date.year.toString().padLeft(4, '0')}-${t.date.month.toString().padLeft(2, '0')}-${t.date.day.toString().padLeft(2, '0')}';
+      final timeStr =
+          '${t.date.hour.toString().padLeft(2, '0')}:${t.date.minute.toString().padLeft(2, '0')}';
+
+      rows.add([
+        dateStr,
+        timeStr,
+        typeStr,
+        formattedAmount,
+        catMap[t.categoryId] ?? t.categoryId,
+        t.payee ?? '',
+        t.note ?? '',
+        t.paymentMethod,
+        if (t.isRecurring) 'Yes' else 'No',
+      ]);
+    }
+
+    final csvData = const ListToCsvConverter().convert(rows);
+    final tempDir = await getTemporaryDirectory();
+    final file = File(
+      p.join(
+        tempDir.path,
+        'budget_lite_transactions_${DateTime.now().millisecondsSinceEpoch}.csv',
+      ),
+    );
+    await file.writeAsString(csvData);
+    return file.path;
   }
 
   Future<void> importDatabase(String filePath) async {
@@ -469,6 +553,19 @@ class SettingsNotifier extends StateNotifier<AsyncValue<void>> {
     ref.invalidate(budgetModuleEnabledProvider);
   }
 
+  Future<bool> getAnimationsEnabled() async {
+    final val = await getSetting('animations_enabled');
+    final enabled = val != 'false';
+    AccessibilityUtils.animationsEnabled = enabled;
+    return enabled;
+  }
+
+  Future<void> setAnimationsEnabled(bool value) async {
+    await setSetting('animations_enabled', value.toString());
+    AccessibilityUtils.animationsEnabled = value;
+    ref.invalidate(animationsEnabledProvider);
+  }
+
   // ── Subscription Review Tracking ──
   /// Mark a subscription transaction as reviewed/used by the user.
   /// Stores a set of reviewed transaction IDs in AppSettings.
@@ -553,6 +650,11 @@ final accentColorProvider = FutureProvider<int?>((ref) async {
 final budgetModuleEnabledProvider = FutureProvider<bool>((ref) async {
   final settings = ref.read(settingsNotifierProvider.notifier);
   return settings.getBudgetModuleEnabled();
+});
+
+final animationsEnabledProvider = FutureProvider<bool>((ref) async {
+  final settings = ref.read(settingsNotifierProvider.notifier);
+  return settings.getAnimationsEnabled();
 });
 
 final smsAutoNoteEnabledProvider = FutureProvider<bool>((ref) async {

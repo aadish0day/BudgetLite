@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:drift/drift.dart' show Value;
 import 'package:file_picker/file_picker.dart';
@@ -6,6 +7,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -19,6 +22,7 @@ import '../../core/utils/icon_helper.dart';
 import '../../core/utils/sms_parser.dart';
 import '../../providers/budget_provider.dart';
 import '../../providers/database_provider.dart';
+import '../../providers/goal_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../providers/transaction_provider.dart';
 import '../sms/sms_review_queue_screen.dart';
@@ -145,7 +149,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             style: const ButtonStyle(
                               visualDensity: VisualDensity(horizontal: -1),
                               tapTargetSize: MaterialTapTargetSize.padded,
-                              minimumSize: WidgetStatePropertyAll(Size(0, 44)),
+                              minimumSize: WidgetStatePropertyAll(Size(0, 48)),
                             ),
                           ),
                         );
@@ -173,6 +177,42 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     );
                   },
                 ),
+                onTap: () {
+                  final hidden =
+                      ref.read(balanceHiddenProvider).valueOrNull ?? false;
+                  ref
+                      .read(settingsNotifierProvider.notifier)
+                      .setBalanceHidden(!hidden);
+                },
+              ),
+              const Divider(height: 1, indent: 56),
+              _SettingTile(
+                icon: LucideIcons.sparkles,
+                title: 'App Animations',
+                subtitle:
+                    'Fluid motion, shimmers & effects (turn off for low-end device mode)',
+                trailing: Consumer(
+                  builder: (context, ref, _) {
+                    final enabled =
+                        ref.watch(animationsEnabledProvider).valueOrNull ??
+                        true;
+                    return Switch.adaptive(
+                      value: enabled,
+                      onChanged: (v) {
+                        ref
+                            .read(settingsNotifierProvider.notifier)
+                            .setAnimationsEnabled(v);
+                      },
+                    );
+                  },
+                ),
+                onTap: () {
+                  final enabled =
+                      ref.read(animationsEnabledProvider).valueOrNull ?? true;
+                  ref
+                      .read(settingsNotifierProvider.notifier)
+                      .setAnimationsEnabled(!enabled);
+                },
               ),
               const Divider(height: 1, indent: 56),
               _SettingTile(
@@ -233,6 +273,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     );
                   },
                 ),
+                onTap: () {
+                  final enabled =
+                      ref.read(budgetModuleEnabledProvider).valueOrNull ?? true;
+                  ref
+                      .read(settingsNotifierProvider.notifier)
+                      .setBudgetModuleEnabled(!enabled);
+                },
               ),
             ],
           ),
@@ -249,6 +296,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   value: biometricLock,
                   onChanged: (v) => _toggleBiometricLock(context, ref, v),
                 ),
+                onTap: () => _toggleBiometricLock(context, ref, !biometricLock),
               ),
               const Divider(height: 1, indent: 56),
               Opacity(
@@ -304,6 +352,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   value: smsParsing,
                   onChanged: (v) => _toggleSmsParsing(context, ref, v),
                 ),
+                onTap: () => _toggleSmsParsing(context, ref, !smsParsing),
               ),
               const Divider(height: 1, indent: 56),
               _SettingTile(
@@ -421,14 +470,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ],
           ),
           const SizedBox(height: 24),
-          const _SectionHeader(title: 'Data & Local Storage'),
+          const _SectionHeader(title: 'Local Data & Backup'),
+          const SizedBox(height: 12),
+          const _LocalPrivacyBanner(),
           const SizedBox(height: 12),
           _SettingsCard(
             children: [
               _SettingTile(
                 icon: LucideIcons.upload,
-                title: 'Export Database',
-                subtitle: 'Save a backup of your data',
+                title: 'Export & Backup',
+                subtitle: 'Export SQLite DB, JSON backup, or CSV',
                 trailing: const Icon(LucideIcons.chevronRight),
                 onTap: () => _exportData(context, ref),
               ),
@@ -436,7 +487,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               _SettingTile(
                 icon: LucideIcons.download,
                 title: 'Restore from Backup',
-                subtitle: 'Import a previously saved backup',
+                subtitle: 'Restore from a .db or .json backup file',
                 trailing: const Icon(LucideIcons.chevronRight),
                 onTap: () => _restoreData(context, ref),
               ),
@@ -447,6 +498,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 subtitle: 'Import transactions from a CSV bank statement',
                 trailing: const Icon(LucideIcons.chevronRight),
                 onTap: () => _showCsvImport(context),
+              ),
+              const Divider(height: 1, indent: 56),
+              _SettingTile(
+                icon: LucideIcons.database,
+                title: 'Database & Storage Stats',
+                subtitle: 'Inspect local SQLite records and file size',
+                trailing: const Icon(LucideIcons.chevronRight),
+                onTap: () => _showDatabaseStats(context),
               ),
               const Divider(height: 1, indent: 56),
               _SettingTile(
@@ -477,13 +536,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               _SettingTile(
                 icon: LucideIcons.info,
                 title: 'Version',
-                subtitle: '1.0.0',
+                subtitle: '1.0.0 • Local-First Personal Budgeting',
                 trailing: Text(
                   '1.0.0',
                   style: AppTheme.bodyStyle(
                     color: colorScheme.onSurfaceVariant,
                   ),
                 ),
+              ),
+              const Divider(height: 1, indent: 56),
+              const _SettingTile(
+                icon: LucideIcons.shieldCheck,
+                title: 'Data Architecture',
+                subtitle: 'Drift SQLite • 100% Offline • Zero Tracking',
               ),
             ],
           ),
@@ -842,18 +907,115 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _exportData(BuildContext context, WidgetRef ref) async {
-    try {
-      final path = await ref
-          .read(settingsNotifierProvider.notifier)
-          .exportDatabase();
-      await SharePlus.instance.share(ShareParams(files: [XFile(path)]));
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Export failed: $e')));
-      }
-    }
+    await showModalBottomSheet(
+      context: context,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (bottomSheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Text(
+                  'Export Data',
+                  style: AppTheme.displayStyle().copyWith(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 20,
+                  ),
+                ),
+              ),
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(LucideIcons.database, color: AppColors.primary),
+                ),
+                title: const Text('SQLite Database (.db)'),
+                subtitle: const Text('Full raw database snapshot (WAL-checkpointed)'),
+                onTap: () async {
+                  Navigator.pop(bottomSheetContext);
+                  try {
+                    final path = await ref
+                        .read(settingsNotifierProvider.notifier)
+                        .exportDatabase();
+                    await SharePlus.instance.share(ShareParams(files: [XFile(path)]));
+                  } catch (e) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Export failed: $e')),
+                      );
+                    }
+                  }
+                },
+              ),
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppColors.accent.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(LucideIcons.fileJson, color: AppColors.accent),
+                ),
+                title: const Text('JSON Backup (.json)'),
+                subtitle: const Text('Structured export of accounts, budgets, goals & txns'),
+                onTap: () async {
+                  Navigator.pop(bottomSheetContext);
+                  try {
+                    final path = await ref
+                        .read(settingsNotifierProvider.notifier)
+                        .exportJsonBackup();
+                    await SharePlus.instance.share(ShareParams(files: [XFile(path)]));
+                  } catch (e) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Export failed: $e')),
+                      );
+                    }
+                  }
+                },
+              ),
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppColors.success.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(LucideIcons.fileSpreadsheet, color: AppColors.success),
+                ),
+                title: const Text('Transactions CSV (.csv)'),
+                subtitle: const Text('Spreadsheet format compatible with Excel & Sheets'),
+                onTap: () async {
+                  Navigator.pop(bottomSheetContext);
+                  try {
+                    final path = await ref
+                        .read(settingsNotifierProvider.notifier)
+                        .exportTransactionsCsv();
+                    await SharePlus.instance.share(ShareParams(files: [XFile(path)]));
+                  } catch (e) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Export failed: $e')),
+                      );
+                    }
+                  }
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _restoreData(BuildContext context, WidgetRef ref) async {
@@ -861,25 +1023,41 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       final result = await FilePicker.pickFiles();
       if (result.isNotEmpty && result.first.path != null) {
         final path = result.first.path!;
-        if (!path.endsWith('.db')) {
+        if (path.endsWith('.db')) {
+          await ref.read(settingsNotifierProvider.notifier).importDatabase(path);
+          _invalidateAllDataProviders(ref);
           if (context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('Invalid backup file. Please select a .db file.'),
-                backgroundColor: Colors.redAccent,
+                content: Text('SQLite database restored successfully!'),
+                backgroundColor: AppColors.success,
               ),
             );
           }
-          return;
-        }
-        await ref.read(settingsNotifierProvider.notifier).importDatabase(path);
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Database restored successfully!'),
-              backgroundColor: Colors.green,
-            ),
-          );
+        } else if (path.endsWith('.json')) {
+          final count = await ref
+              .read(settingsNotifierProvider.notifier)
+              .importJsonBackup(path);
+          _invalidateAllDataProviders(ref);
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'JSON backup restored successfully! ($count records imported)',
+                ),
+                backgroundColor: AppColors.success,
+              ),
+            );
+          }
+        } else {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Invalid backup file. Please select a .db or .json file.'),
+                backgroundColor: AppColors.error,
+              ),
+            );
+          }
         }
       }
     } catch (e) {
@@ -889,6 +1067,277 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ).showSnackBar(SnackBar(content: Text('Restore failed: $e')));
       }
     }
+  }
+
+  void _invalidateAllDataProviders(WidgetRef ref) {
+    ref.invalidate(transactionsProvider);
+    ref.invalidate(thisMonthTransactionsProvider);
+    ref.invalidate(totalSpentThisMonthProvider);
+    ref.invalidate(totalIncomeThisMonthProvider);
+    ref.invalidate(thisMonthBudgetsProvider);
+    ref.invalidate(monthlyIncomeProvider);
+    ref.invalidate(categoriesProvider);
+    ref.invalidate(expenseCategoriesProvider);
+    ref.invalidate(categoryMapProvider);
+    ref.invalidate(accountsProvider);
+    ref.invalidate(goalsProvider);
+    ref.invalidate(databaseProvider);
+  }
+
+  Future<void> _showDatabaseStats(BuildContext context) async {
+    final db = ref.read(databaseProvider);
+    final txns = await db.select(db.transactions).get();
+    final cats = await db.select(db.categories).get();
+    final buds = await db.select(db.budgets).get();
+    final goals = await db.select(db.goals).get();
+    final accs = await db.select(db.accounts).get();
+    final recurringCount =
+        txns.where((t) => t.isRecurring && !t.isRecurringInstance).length;
+
+    final dbFolder = await getApplicationDocumentsDirectory();
+    final file = File(p.join(dbFolder.path, 'budget_lite.db'));
+    int totalBytes = 0;
+    if (file.existsSync()) {
+      totalBytes += file.lengthSync();
+    }
+    final wal = File('${file.path}-wal');
+    if (wal.existsSync()) {
+      totalBytes += wal.lengthSync();
+    }
+    final shm = File('${file.path}-shm');
+    if (shm.existsSync()) {
+      totalBytes += shm.lengthSync();
+    }
+
+    final sizeStr = totalBytes < 1024
+        ? '$totalBytes B'
+        : totalBytes < 1024 * 1024
+            ? '${(totalBytes / 1024).toStringAsFixed(1)} KB'
+            : '${(totalBytes / (1024 * 1024)).toStringAsFixed(2)} MB';
+
+    if (!context.mounted) return;
+    await showModalBottomSheet(
+      context: context,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(
+                          LucideIcons.database,
+                          size: 20,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        'Database & Storage Stats',
+                        style: AppTheme.displayStyle(size: 17),
+                      ),
+                    ],
+                  ),
+                  IconButton(
+                    icon: const Icon(LucideIcons.x, size: 20),
+                    onPressed: () => Navigator.pop(ctx),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Theme.of(ctx).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: Theme.of(ctx).colorScheme.outline.withValues(alpha: 0.12),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'DB FILE SIZE',
+                            style: AppTheme.bodyStyle(
+                              size: 10,
+                              weight: FontWeight.w700,
+                              color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            sizeStr,
+                            style: AppTheme.financialStyle(
+                              size: 20,
+                              weight: FontWeight.w700,
+                              color: AppColors.primary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      height: 36,
+                      width: 1,
+                      color: Theme.of(ctx).colorScheme.outline.withValues(alpha: 0.2),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'ENGINE MODE',
+                            style: AppTheme.bodyStyle(
+                              size: 10,
+                              weight: FontWeight.w700,
+                              color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'SQLite WAL',
+                            style: AppTheme.bodyStyle(
+                              size: 16,
+                              weight: FontWeight.w600,
+                              color: Theme.of(ctx).colorScheme.onSurface,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Record Counts',
+                style: AppTheme.bodyStyle(
+                  size: 12,
+                  weight: FontWeight.w600,
+                  color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  _statChip(ctx, 'Txns', txns.length, LucideIcons.receipt),
+                  const SizedBox(width: 8),
+                  _statChip(ctx, 'Categories', cats.length, LucideIcons.tags),
+                  const SizedBox(width: 8),
+                  _statChip(ctx, 'Budgets', buds.length, LucideIcons.pieChart),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  _statChip(ctx, 'Goals', goals.length, LucideIcons.target),
+                  const SizedBox(width: 8),
+                  _statChip(ctx, 'Accounts', accs.length, LucideIcons.wallet),
+                  const SizedBox(width: 8),
+                  _statChip(ctx, 'Recurring', recurringCount, LucideIcons.repeat),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.success.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: AppColors.success.withValues(alpha: 0.2),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      LucideIcons.shieldCheck,
+                      size: 18,
+                      color: AppColors.success,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        '100% Offline: Data never leaves this device. All queries run in-process SQLite with sub-millisecond latency.',
+                        style: AppTheme.bodyStyle(
+                          size: 11.5,
+                          color: Theme.of(ctx).colorScheme.onSurface,
+                          height: 1.35,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _statChip(BuildContext context, String label, int count, IconData icon) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        decoration: BoxDecoration(
+          color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: colorScheme.outline.withValues(alpha: 0.08)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, size: 14, color: colorScheme.onSurfaceVariant),
+                const Spacer(),
+                Text(
+                  '$count',
+                  style: AppTheme.financialStyle(
+                    size: 14,
+                    weight: FontWeight.w700,
+                    color: colorScheme.onSurface,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: AppTheme.bodyStyle(
+                size: 11,
+                weight: FontWeight.w500,
+                color: colorScheme.onSurfaceVariant,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   void _showSmsReviewQueue(BuildContext context) {
@@ -1753,6 +2202,64 @@ class _SettingTile extends StatelessWidget {
         trailing: trailing,
         onTap: onTap,
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+      ),
+    );
+  }
+}
+
+class _LocalPrivacyBanner extends StatelessWidget {
+  const _LocalPrivacyBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: AppColors.primary.withValues(alpha: 0.2),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.15),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              LucideIcons.shieldCheck,
+              size: 20,
+              color: AppColors.primary,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '100% Offline & Private',
+                  style: AppTheme.bodyStyle(
+                    size: 13,
+                    weight: FontWeight.w600,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'All financial records, budgets, and settings live strictly on your device in local SQLite storage. No accounts, no cloud sync, and zero trackers.',
+                  style: AppTheme.bodyStyle(
+                    size: 11,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

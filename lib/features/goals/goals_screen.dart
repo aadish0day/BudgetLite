@@ -34,7 +34,7 @@ class GoalsScreen extends ConsumerWidget {
       floatingActionButton: FloatingActionButton(
         onPressed: () => _showAddGoalSheet(context, ref),
         child: const Icon(LucideIcons.plus),
-      ),
+      ).animateScalePop(context),
       body: goals.when(
         data: (goalList) {
           if (goalList.isEmpty) return _EmptyGoals();
@@ -48,7 +48,8 @@ class GoalsScreen extends ConsumerWidget {
             padding: AppConstants.screenPadding,
             children: [
               if (allAchieved) _AllGoalsAchieved(count: goalList.length),
-              _GoalsPortfolioHeader(goals: goalList),
+              _GoalsPortfolioHeader(goals: goalList)
+                  .animateFadeSlide(context),
               const SizedBox(height: 16),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -74,7 +75,10 @@ class GoalsScreen extends ConsumerWidget {
                 ],
               ),
               const SizedBox(height: 10),
-              ...goalList.map((goal) => _GoalCard(goal: goal, ref: ref)),
+              ...goalList.asMap().entries.map(
+                    (entry) => _GoalCard(goal: entry.value, ref: ref)
+                        .animateFadeSlide(context, index: entry.key + 1),
+                  ),
             ],
           );
         },
@@ -1079,102 +1083,98 @@ class _GoalsSkeleton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final baseColor = colorScheme.surfaceContainerHighest.withValues(alpha: 0.7);
     return ListView(
+      physics: const NeverScrollableScrollPhysics(),
       padding: AppConstants.screenPadding,
       children: List.generate(
         3,
         (i) => Padding(
           padding: const EdgeInsets.only(bottom: 16),
-          child:
-              Container(
-                    height: 180,
-                    decoration: BoxDecoration(
-                      color: colorScheme.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(
-                        AppConstants.cardRadius,
+          child: Container(
+            height: 180,
+            decoration: BoxDecoration(
+              color: baseColor,
+              borderRadius: BorderRadius.circular(
+                AppConstants.cardRadius,
+              ),
+            ),
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: colorScheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(
+                          AppConstants.cardRadiusSmall,
+                        ),
                       ),
                     ),
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Container(
-                              width: 48,
-                              height: 48,
-                              decoration: BoxDecoration(
-                                color: colorScheme.surfaceContainerHighest,
-                                borderRadius: BorderRadius.circular(
-                                  AppConstants.cardRadiusSmall,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Container(
-                                    width: 140,
-                                    height: 16,
-                                    decoration: BoxDecoration(
-                                      color:
-                                          colorScheme.surfaceContainerHighest,
-                                      borderRadius: BorderRadius.circular(4),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Container(
-                                    width: 100,
-                                    height: 12,
-                                    decoration: BoxDecoration(
-                                      color:
-                                          colorScheme.surfaceContainerHighest,
-                                      borderRadius: BorderRadius.circular(4),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Container(
-                              width: 56,
-                              height: 56,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: colorScheme.surfaceContainerHighest,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const Spacer(),
-                        Container(
-                          height: 8,
-                          decoration: BoxDecoration(
-                            color: colorScheme.surfaceContainerHighest,
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Container(
-                          width: double.infinity,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: colorScheme.surfaceContainerHighest,
-                            borderRadius: BorderRadius.circular(
-                              AppConstants.cardRadiusSmall,
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            width: 140,
+                            height: 16,
+                            decoration: BoxDecoration(
+                              color: colorScheme.surfaceContainerHighest,
+                              borderRadius: BorderRadius.circular(4),
                             ),
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 8),
+                          Container(
+                            width: 100,
+                            height: 12,
+                            decoration: BoxDecoration(
+                              color: colorScheme.surfaceContainerHighest,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  )
-                  .animate(onPlay: (c) => c.repeat())
-                  .shimmer(
-                    duration: 1200.ms,
-                    delay: (i * 200).ms,
-                    color: colorScheme.primary.withValues(alpha: 0.08),
+                    Container(
+                      width: 56,
+                      height: 56,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: colorScheme.surfaceContainerHighest,
+                      ),
+                    ),
+                  ],
+                ),
+                const Spacer(),
+                Container(
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(4),
                   ),
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  width: double.infinity,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(
+                      AppConstants.cardRadiusSmall,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ).animateShimmer(
+            context,
+            delay: Duration(milliseconds: i * 150),
+          ),
         ),
       ),
     );

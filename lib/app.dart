@@ -8,6 +8,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'core/theme/app_theme.dart';
 import 'core/theme/colors.dart';
+import 'core/utils/accessibility_utils.dart';
 import 'core/utils/formatters.dart';
 import 'core/utils/notification_service.dart';
 import 'core/utils/sms_parser.dart';
@@ -262,6 +263,10 @@ class _MainShellState extends ConsumerState<_MainShell> {
     final rawTab = ref.watch(currentTabProvider);
     final isBudgetEnabled =
         ref.watch(budgetModuleEnabledProvider).valueOrNull ?? true;
+    final animationsEnabled =
+        ref.watch(animationsEnabledProvider).valueOrNull ?? true;
+    AccessibilityUtils.animationsEnabled = animationsEnabled;
+    final shouldAnimate = AccessibilityUtils.shouldAnimate(context);
 
     final navLabels = [
       'Home',
@@ -345,10 +350,37 @@ class _MainShellState extends ConsumerState<_MainShell> {
         }
       },
       child: Scaffold(
-        body: IndexedStack(
-          index: currentTab,
-          children: screens,
-        ),
+        body: shouldAnimate
+            ? AnimatedSwitcher(
+                duration: const Duration(milliseconds: 280),
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeInCubic,
+                transitionBuilder: (child, animation) {
+                  return FadeTransition(
+                    opacity: CurvedAnimation(
+                      parent: animation,
+                      curve: Curves.easeOutCubic,
+                    ),
+                    child: ScaleTransition(
+                      scale: Tween<double>(begin: 0.98, end: 1).animate(
+                        CurvedAnimation(
+                          parent: animation,
+                          curve: Curves.easeOutCubic,
+                        ),
+                      ),
+                      child: child,
+                    ),
+                  );
+                },
+                child: KeyedSubtree(
+                  key: ValueKey<int>(currentTab),
+                  child: screens[currentTab],
+                ),
+              )
+            : IndexedStack(
+                index: currentTab,
+                children: screens,
+              ),
         bottomNavigationBar: SafeArea(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
@@ -453,7 +485,7 @@ class _MainShellState extends ConsumerState<_MainShell> {
                 },
                 icon: const Icon(LucideIcons.plus, size: 20),
                 label: const Text('Add'),
-              )
+              ).animateScalePop(context)
             : null,
       ),
     );

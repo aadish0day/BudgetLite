@@ -460,7 +460,9 @@ class _SpendCalendarState extends ConsumerState<SpendCalendar> {
     final isDark = colorScheme.brightness == Brightness.dark;
     final categories = ref.watch(categoriesProvider).valueOrNull ?? [];
     final accounts = ref.watch(accountsProvider).valueOrNull ?? [];
-    final allTransactions = ref.watch(transactionsProvider).valueOrNull ?? [];
+    final monthKey = Formatters.formatMonthKey(_currentMonth);
+    final monthTransactions =
+        ref.watch(transactionsByMonthProvider(monthKey)).valueOrNull ?? [];
 
     // Listen for calendar focus target from the bar chart (must be inside build)
     ref.listen<DateTime?>(calendarFocusTargetProvider, (_, next) {
@@ -494,19 +496,16 @@ class _SpendCalendarState extends ConsumerState<SpendCalendar> {
     final dailyTxns = <int, List<Transaction>>{};
     double monthTotal = 0;
 
-    for (final t in allTransactions) {
-      if (t.date.year == _currentMonth.year &&
-          t.date.month == _currentMonth.month) {
-        final isExpense =
-            t.amount > 0 &&
-            t.categoryId != 'transfer' &&
-            !incomeCatIds.contains(t.categoryId);
-        if (isExpense) {
-          if (_filterCategoryId == null || t.categoryId == _filterCategoryId) {
-            dailyTxns.putIfAbsent(t.date.day, () => []);
-            dailyTxns[t.date.day]!.add(t);
-            monthTotal += t.amount;
-          }
+    for (final t in monthTransactions) {
+      final isExpense =
+          t.amount > 0 &&
+          t.categoryId != 'transfer' &&
+          !incomeCatIds.contains(t.categoryId);
+      if (isExpense) {
+        if (_filterCategoryId == null || t.categoryId == _filterCategoryId) {
+          dailyTxns.putIfAbsent(t.date.day, () => []);
+          dailyTxns[t.date.day]!.add(t);
+          monthTotal += t.amount;
         }
       }
     }

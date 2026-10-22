@@ -203,7 +203,7 @@ class _SubscriptionAuditScreenState
           dueSoonCount: dueSoonCount,
           unusedCount: unusedCount,
           colorScheme: colorScheme,
-        ),
+        ).animateFadeSlide(context),
         const SizedBox(height: 20),
 
         // ── Filter chips ──
@@ -307,15 +307,18 @@ class _SubscriptionAuditScreenState
           ),
           ...filtered
               .where((p) => p.isDueSoon || p.isDueToday)
+              .toList()
+              .asMap()
+              .entries
               .map(
-                (p) => _SubscriptionCard(
-                  payment: p,
+                (entry) => _SubscriptionCard(
+                  payment: entry.value,
                   colorScheme: colorScheme,
-                  onMarkPaid: () => markRecurringAsPaid(context, ref, p),
-                  onMarkReviewed: () => _markReviewed(p.transaction.id),
-                  onEdit: () => _editTransaction(p.transaction),
-                  onDelete: () => _deleteSubscription(p),
-                ),
+                  onMarkPaid: () => markRecurringAsPaid(context, ref, entry.value),
+                  onMarkReviewed: () => _markReviewed(entry.value.transaction.id),
+                  onEdit: () => _editTransaction(entry.value.transaction),
+                  onDelete: () => _deleteSubscription(entry.value),
+                ).animateFadeSlide(context, index: entry.key + 1),
               ),
           const SizedBox(height: 12),
         ],
@@ -343,15 +346,15 @@ class _SubscriptionAuditScreenState
               ],
             ),
           ),
-          ...upcoming.map(
-            (p) => _SubscriptionCard(
-              payment: p,
+          ...upcoming.asMap().entries.map(
+            (entry) => _SubscriptionCard(
+              payment: entry.value,
               colorScheme: colorScheme,
-              onMarkPaid: () => markRecurringAsPaid(context, ref, p),
-              onMarkReviewed: () => _markReviewed(p.transaction.id),
-              onEdit: () => _editTransaction(p.transaction),
-              onDelete: () => _deleteSubscription(p),
-            ),
+              onMarkPaid: () => markRecurringAsPaid(context, ref, entry.value),
+              onMarkReviewed: () => _markReviewed(entry.value.transaction.id),
+              onEdit: () => _editTransaction(entry.value.transaction),
+              onDelete: () => _deleteSubscription(entry.value),
+            ).animateFadeSlide(context, index: entry.key + 1),
           ),
         ],
 
@@ -1101,112 +1104,102 @@ class _SubscriptionsSkeleton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final baseColor = colorScheme.surfaceContainerHighest.withValues(alpha: 0.7);
     return ListView(
+      physics: const NeverScrollableScrollPhysics(),
       padding: AppConstants.screenPadding,
       children: [
         // Stats header skeleton
         Container(
-              height: 90,
-              decoration: BoxDecoration(
-                color: colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(AppConstants.cardRadius),
-              ),
-            )
-            .animate(onPlay: (c) => c.repeat())
-            .shimmer(
-              duration: 1200.ms,
-              color: colorScheme.primary.withValues(alpha: 0.08),
-            ),
+          height: 90,
+          decoration: BoxDecoration(
+            color: baseColor,
+            borderRadius: BorderRadius.circular(AppConstants.cardRadius),
+          ),
+        ).animateShimmer(context),
         const SizedBox(height: 20),
         // Section header
         Container(
-              width: 120,
-              height: 16,
-              decoration: BoxDecoration(
-                color: colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(4),
-              ),
-            )
-            .animate(onPlay: (c) => c.repeat())
-            .shimmer(
-              duration: 1200.ms,
-              delay: 200.ms,
-              color: colorScheme.primary.withValues(alpha: 0.08),
-            ),
+          width: 120,
+          height: 16,
+          decoration: BoxDecoration(
+            color: colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(4),
+          ),
+        ).animateShimmer(
+          context,
+          delay: const Duration(milliseconds: 200),
+        ),
         const SizedBox(height: 12),
         // Subscription card skeletons
         ...List.generate(
           4,
           (i) => Padding(
             padding: const EdgeInsets.only(bottom: 12),
-            child:
-                Container(
-                      height: 76,
-                      decoration: BoxDecoration(
-                        color: colorScheme.surfaceContainerHighest,
-                        borderRadius: BorderRadius.circular(
-                          AppConstants.cardRadiusSmall,
-                        ),
+            child: Container(
+              height: 76,
+              decoration: BoxDecoration(
+                color: baseColor,
+                borderRadius: BorderRadius.circular(
+                  AppConstants.cardRadiusSmall,
+                ),
+              ),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 12,
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(
+                        AppConstants.cardRadiusIcon,
                       ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 40,
-                            height: 40,
-                            decoration: BoxDecoration(
-                              color: colorScheme.surfaceContainerHighest,
-                              borderRadius: BorderRadius.circular(
-                                AppConstants.cardRadiusIcon,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Container(
-                                  width: 130,
-                                  height: 14,
-                                  decoration: BoxDecoration(
-                                    color: colorScheme.surfaceContainerHighest,
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Container(
-                                  width: 90,
-                                  height: 10,
-                                  decoration: BoxDecoration(
-                                    color: colorScheme.surfaceContainerHighest,
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Container(
-                            width: 60,
-                            height: 16,
-                            decoration: BoxDecoration(
-                              color: colorScheme.surfaceContainerHighest,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                    .animate(onPlay: (c) => c.repeat())
-                    .shimmer(
-                      duration: 1200.ms,
-                      delay: ((i + 2) * 150).ms,
-                      color: colorScheme.primary.withValues(alpha: 0.08),
                     ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          width: 130,
+                          height: 14,
+                          decoration: BoxDecoration(
+                            color: colorScheme.surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Container(
+                          width: 90,
+                          height: 10,
+                          decoration: BoxDecoration(
+                            color: colorScheme.surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    width: 60,
+                    height: 16,
+                    decoration: BoxDecoration(
+                      color: colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                ],
+              ),
+            ).animateShimmer(
+              context,
+              delay: Duration(milliseconds: (i + 2) * 150),
+            ),
           ),
         ),
       ],

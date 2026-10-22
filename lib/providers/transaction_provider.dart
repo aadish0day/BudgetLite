@@ -46,6 +46,18 @@ final transactionsByMonthProvider = StreamProvider.autoDispose
           .watch();
     });
 
+final transactionsByYearProvider = StreamProvider.autoDispose
+    .family<List<Transaction>, int>((ref, year) {
+      final db = ref.watch(databaseProvider);
+      return (db.select(db.transactions)
+            ..where((t) => t.date.isBiggerOrEqualValue(DateTime(year)))
+            ..where((t) => t.date.isSmallerThanValue(DateTime(year + 1)))
+            ..orderBy([
+              (t) => OrderingTerm(expression: t.date, mode: OrderingMode.desc),
+            ]))
+          .watch();
+    });
+
 final thisMonthTransactionsProvider =
     StreamProvider.autoDispose<List<Transaction>>((ref) {
       final asyncTxns = ref.watch(

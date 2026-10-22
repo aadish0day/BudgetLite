@@ -53,11 +53,11 @@ class _ContributionGraphState extends ConsumerState<ContributionGraph> {
   }
 
   /// Build the per-day spend map for the selected year.
-  Map<DateTime, double> _buildDailySpend(List<Transaction> allTransactions) {
+  Map<DateTime, double> _buildDailySpend(List<Transaction> transactions) {
     final daily = <DateTime, double>{};
     // Exclude transfers — balance-neutral, consistent with the calendar and
     // every other spending view.
-    for (final t in allTransactions.where(
+    for (final t in transactions.where(
       (t) => t.amount > 0 && t.categoryId != 'transfer',
     )) {
       if (t.date.year != _selectedYear) continue;
@@ -165,11 +165,11 @@ class _ContributionGraphState extends ConsumerState<ContributionGraph> {
     BuildContext context,
     DateTime date,
     double spent,
-    List<Transaction> allTransactions,
+    List<Transaction> transactions,
     List<Category> categories,
   ) {
     // Get transactions for this specific day
-    final dayTxns = allTransactions
+    final dayTxns = transactions
         .where(
           (t) =>
               t.amount > 0 &&

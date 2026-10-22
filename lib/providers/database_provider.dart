@@ -1,3 +1,4 @@
+import 'package:drift/drift.dart' show OrderingTerm;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/database/database.dart';
 
@@ -11,7 +12,9 @@ final categoriesProvider = FutureProvider.autoDispose<List<Category>>((
   ref,
 ) async {
   final db = ref.watch(databaseProvider);
-  return db.select(db.categories).get();
+  return (db.select(db.categories)
+        ..orderBy([(c) => OrderingTerm(expression: c.sortOrder)]))
+      .get();
 });
 
 /// O(1) hash map of category ID -> Category for zero-overhead widget lookups
@@ -31,7 +34,10 @@ final expenseCategoriesProvider = FutureProvider.autoDispose<List<Category>>((
   final db = ref.watch(databaseProvider);
   return (db.select(
     db.categories,
-  )..where((tbl) => tbl.type.equals('expense'))).get();
+  )
+        ..where((tbl) => tbl.type.equals('expense'))
+        ..orderBy([(c) => OrderingTerm(expression: c.sortOrder)]))
+      .get();
 });
 
 /// Stream-based provider for the default account's initial/starting balance.

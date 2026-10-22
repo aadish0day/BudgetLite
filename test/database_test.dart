@@ -231,5 +231,81 @@ void main() {
       expect(recurring.first.amount, 99.0);
       expect(recurring.first.isRecurringInstance, isFalse);
     });
+
+    test('checkpointWal executes SQLite wal_checkpoint without error', () async {
+      await expectLater(db.checkpointWal(), completes);
+    });
+
+    test('categories are seeded with valid sortOrder and default categories', () async {
+      final categories = await (db.select(db.categories)
+            ..orderBy([(c) => drift.OrderingTerm(expression: c.sortOrder)]))
+          .get();
+      expect(categories.length, greaterThanOrEqualTo(8));
+      for (int i = 0; i < categories.length - 1; i++) {
+        expect(categories[i].sortOrder <= categories[i + 1].sortOrder, isTrue);
+      }
+    });
+
+    test('clearAllData wipes all tables and reseeds default account and categories', () async {
+      final defaultAccount = await db.getDefaultAccount();
+      final cat = (await db.select(db.categories).get()).first;
+
+      await db.into(db.transactions).insert(
+            TransactionsCompanion.insert(
+              id: uuid.v4(),
+              accountId: defaultAccount.id,
+              categoryId: cat.id,
+              amount: 500,
+              date: DateTime.now(),
+            ),
+          );
+
+      await db.into(db.goals).insert(
+            GoalsCompanion.insert(
+              id: uuid.v4(),
+              name: 'Emergency Fund',
+              targetAmount: 50000,
+              targetDate: DateTime.now().add(const Duration(days: 365)),
+            ),
+          );
+
+      await db.into(db.monthlyIncome).insert(
+            MonthlyIncomeCompanion.insert(
+              id: uuid.v4(),
+              month: '2026-07',
+              amount: 60000,
+            ),
+          );
+
+      await db.into(db.appSettings).insert(
+            AppSettingsCompanion.insert(
+              key: 'test_key',
+              value: 'test_val',
+            ),
+          );
+
+      // Verify records exist
+      expect((await db.select(db.transactions).get()).length, 1);
+      expect((await db.select(db.goals).get()).length, 1);
+      expect((await db.select(db.monthlyIncome).get()).length, 1);
+      expect((await db.select(db.appSettings).get()).length, 1);
+
+      // Clear all
+      await db.clearAllData();
+
+      // Verify all tables emptied except seeded defaults
+      expect(await db.select(db.transactions).get(), isEmpty);
+      expect(await db.select(db.goals).get(), isEmpty);
+      expect(await db.select(db.monthlyIncome).get(), isEmpty);
+      expect(await db.select(db.appSettings).get(), isEmpty);
+      expect(await db.select(db.budgets).get(), isEmpty);
+
+      // Accounts and categories reseeded
+      final accounts = await db.select(db.accounts).get();
+      expect(accounts.length, 1);
+      expect(accounts.first.id, 'default');
+      final newCats = await db.select(db.categories).get();
+      expect(newCats.length, 8);
+    });
   });
 }
