@@ -52,6 +52,12 @@ class AppDatabase extends _$AppDatabase {
     },
     beforeOpen: (details) async {
       await customStatement('PRAGMA foreign_keys = ON;');
+      await customStatement(
+        'CREATE INDEX IF NOT EXISTS idx_transactions_date_category ON transactions (date, category_id);',
+      );
+      await customStatement(
+        'CREATE INDEX IF NOT EXISTS idx_transactions_recurring_active ON transactions (is_recurring, is_recurring_instance);',
+      );
       final rentCategory = await (select(categories)..where((c) => c.id.equals('rent'))).getSingleOrNull();
       if (rentCategory != null) {
         await transaction(() async {
@@ -271,12 +277,6 @@ LazyDatabase _openConnection() {
         rawDb.execute('PRAGMA cache_size = -2000;');
         rawDb.execute('PRAGMA mmap_size = 33554432;');
         rawDb.execute('PRAGMA wal_autocheckpoint = 1000;');
-        rawDb.execute(
-          'CREATE INDEX IF NOT EXISTS idx_transactions_date_category ON transactions (date, category_id);',
-        );
-        rawDb.execute(
-          'CREATE INDEX IF NOT EXISTS idx_transactions_recurring_active ON transactions (is_recurring, is_recurring_instance);',
-        );
       },
     );
   });
