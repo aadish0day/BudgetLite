@@ -16,6 +16,7 @@ import '../../core/database/database.dart';
 import '../../core/services/sms_listener_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/colors.dart';
+import '../../core/utils/backup_encryption_service.dart';
 import '../../core/utils/constants.dart';
 import '../../core/utils/demo_data.dart';
 import '../../core/utils/icon_helper.dart';
@@ -934,6 +935,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 leading: Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
+                    color: Colors.amber.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(LucideIcons.lock, color: Colors.amber),
+                ),
+                title: const Text('Encrypted Backup (.enc)'),
+                subtitle: const Text('Password-protected archive with AES-256 encryption'),
+                onTap: () {
+                  Navigator.pop(bottomSheetContext);
+                  _showEncryptedExportDialog(context, ref);
+                },
+              ),
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
                     color: AppColors.primary.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
@@ -1023,7 +1040,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       final result = await FilePicker.pickFiles();
       if (result.isNotEmpty && result.first.path != null) {
         final path = result.first.path!;
-        if (path.endsWith('.db')) {
+        if (path.endsWith('.enc')) {
+          if (context.mounted) {
+            await _promptPasswordAndRestoreEncrypted(context, ref, path);
+          }
+        } else if (path.endsWith('.db')) {
           await ref.read(settingsNotifierProvider.notifier).importDatabase(path);
           _invalidateAllDataProviders(ref);
           if (context.mounted) {
@@ -1035,25 +1056,43 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             );
           }
         } else if (path.endsWith('.json')) {
-          final count = await ref
-              .read(settingsNotifierProvider.notifier)
-              .importJsonBackup(path);
-          _invalidateAllDataProviders(ref);
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  'JSON backup restored successfully! ($count records imported)',
+          final fileStr = await File(path).readAsString();
+          if (BackupEncryptionService.isEncryptedBackup(fileStr)) {
+            if (context.mounted) {
+              await _promptPasswordAndRestoreEncrypted(context, ref, path);
+            }
+          } else {
+            final count = await ref
+                .read(settingsNotifierProvider.notifier)
+                .importJsonBackup(path);
+            _invalidateAllDataProviders(ref);
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    'JSON backup restored successfully! ($count records imported)',
+                  ),
+                  backgroundColor: AppColors.success,
                 ),
-                backgroundColor: AppColors.success,
-              ),
-            );
+              );
+            }
           }
         } else {
+          // Check if contents are encrypted container regardless of extension
+          try {
+            final fileStr = await File(path).readAsString();
+            if (BackupEncryptionService.isEncryptedBackup(fileStr)) {
+              if (context.mounted) {
+                await _promptPasswordAndRestoreEncrypted(context, ref, path);
+              }
+              return;
+            }
+          } catch (_) {}
+
           if (context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('Invalid backup file. Please select a .db or .json file.'),
+                content: Text('Invalid backup file. Please select a .enc, .db, or .json file.'),
                 backgroundColor: AppColors.error,
               ),
             );
@@ -1082,6 +1121,271 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     ref.invalidate(accountsProvider);
     ref.invalidate(goalsProvider);
     ref.invalidate(databaseProvider);
+  }
+
+  Future<void> _showEncryptedExportDialog(BuildContext context, WidgetRef ref) async {
+    final passwordController = TextEditingController();
+    final confirmController = TextEditingController();
+    bool asSqlite = false;
+    bool obscurePassword = true;
+    String? errorMessage;
+
+    await showDialog(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.amber.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(LucideIcons.lock, color: Colors.amber, size: 20),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  'Encrypted Backup',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Your backup will be encrypted using AES-256 and PBKDF2 key derivation. Keep your password safe—it cannot be reset or recovered.',
+                  style: AppTheme.bodyStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                SegmentedButton<bool>(
+                  segments: const [
+                    ButtonSegment(value: false, label: Text('JSON Archive')),
+                    ButtonSegment(value: true, label: Text('Raw SQLite')),
+                  ],
+                  selected: {asSqlite},
+                  onSelectionChanged: (val) {
+                    setDialogState(() => asSqlite = val.first);
+                  },
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: passwordController,
+                  obscureText: obscurePassword,
+                  decoration: InputDecoration(
+                    labelText: 'Password (min. 6 characters)',
+                    prefixIcon: const Icon(LucideIcons.keyRound, size: 18),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        obscurePassword ? LucideIcons.eyeOff : LucideIcons.eye,
+                        size: 18,
+                      ),
+                      onPressed: () => setDialogState(() => obscurePassword = !obscurePassword),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: confirmController,
+                  obscureText: obscurePassword,
+                  decoration: const InputDecoration(
+                    labelText: 'Confirm Password',
+                    prefixIcon: Icon(LucideIcons.shieldCheck, size: 18),
+                  ),
+                ),
+                if (errorMessage != null) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    errorMessage!,
+                    style: const TextStyle(color: AppColors.error, fontSize: 13),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () async {
+                final pwd = passwordController.text;
+                final confirm = confirmController.text;
+                if (pwd.length < 6) {
+                  setDialogState(() => errorMessage = 'Password must be at least 6 characters.');
+                  return;
+                }
+                if (pwd != confirm) {
+                  setDialogState(() => errorMessage = 'Passwords do not match.');
+                  return;
+                }
+
+                Navigator.pop(dialogContext);
+                try {
+                  final path = await ref
+                      .read(settingsNotifierProvider.notifier)
+                      .exportEncryptedBackup(password: pwd, asSqlite: asSqlite);
+                  await SharePlus.instance.share(ShareParams(files: [XFile(path)]));
+                } catch (e) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Encryption export failed: $e')),
+                    );
+                  }
+                }
+              },
+              child: const Text('Export & Encrypt'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _promptPasswordAndRestoreEncrypted(
+    BuildContext context,
+    WidgetRef ref,
+    String filePath,
+  ) async {
+    final passwordController = TextEditingController();
+    bool obscurePassword = true;
+    String? errorMessage;
+    bool isProcessing = false;
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.amber.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(LucideIcons.lock, color: Colors.amber, size: 20),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  'Decrypt & Restore',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'This backup is protected with AES-256 encryption. Enter the password chosen during export.',
+                style: AppTheme.bodyStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: passwordController,
+                obscureText: obscurePassword,
+                autofocus: true,
+                decoration: InputDecoration(
+                  labelText: 'Password',
+                  prefixIcon: const Icon(LucideIcons.keyRound, size: 18),
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      obscurePassword ? LucideIcons.eyeOff : LucideIcons.eye,
+                      size: 18,
+                    ),
+                    onPressed: () => setDialogState(() => obscurePassword = !obscurePassword),
+                  ),
+                ),
+              ),
+              if (errorMessage != null) ...[
+                const SizedBox(height: 12),
+                Text(
+                  errorMessage!,
+                  style: const TextStyle(color: AppColors.error, fontSize: 13),
+                ),
+              ],
+              if (isProcessing) ...[
+                const SizedBox(height: 16),
+                const Center(child: CircularProgressIndicator()),
+              ],
+            ],
+          ),
+          actions: isProcessing
+              ? []
+              : [
+                  TextButton(
+                    onPressed: () => Navigator.pop(dialogContext),
+                    child: const Text('Cancel'),
+                  ),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.white,
+                    ),
+                    onPressed: () async {
+                      final pwd = passwordController.text;
+                      if (pwd.isEmpty) {
+                        setDialogState(() => errorMessage = 'Please enter password.');
+                        return;
+                      }
+
+                      setDialogState(() {
+                        errorMessage = null;
+                        isProcessing = true;
+                      });
+
+                      try {
+                        final count = await ref
+                            .read(settingsNotifierProvider.notifier)
+                            .importEncryptedBackup(filePath: filePath, password: pwd);
+                        _invalidateAllDataProviders(ref);
+                        if (dialogContext.mounted) Navigator.pop(dialogContext);
+
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                'Encrypted backup restored successfully! ($count items)',
+                              ),
+                              backgroundColor: AppColors.success,
+                            ),
+                          );
+                        }
+                      } catch (e) {
+                        setDialogState(() {
+                          isProcessing = false;
+                          errorMessage = e is InvalidBackupPasswordException
+                              ? e.message
+                              : 'Decryption failed: $e';
+                        });
+                      }
+                    },
+                    child: const Text('Decrypt & Restore'),
+                  ),
+                ],
+        ),
+      ),
+    );
   }
 
   Future<void> _showDatabaseStats(BuildContext context) async {

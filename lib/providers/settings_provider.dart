@@ -10,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../core/database/database.dart';
 import '../core/utils/accessibility_utils.dart';
+import '../core/utils/backup_encryption_service.dart';
 import '../core/utils/categorization_rule.dart';
 import 'database_provider.dart';
 
@@ -475,6 +476,93 @@ class SettingsNotifier extends StateNotifier<AsyncValue<void>> {
 
     await source.copy(dest.path);
     ref.invalidate(databaseProvider);
+  }
+
+  /// Export database entities to an encrypted, password-protected archive (.enc).
+  Future<String> exportEncryptedBackup({
+    required String password,
+    bool asSqlite = false,
+  }) async {
+    final tempDir = await getTemporaryDirectory();
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final file = File(p.join(tempDir.path, 'budget_lite_backup_$timestamp.enc'));
+
+    if (asSqlite) {
+      final db = ref.read(databaseProvider);
+      await db.checkpointWal();
+      final dbFolder = await getApplicationDocumentsDirectory();
+      final dbFile = File(p.join(dbFolder.path, 'budget_lite.db'));
+      if (!dbFile.existsSync()) throw Exception('Database not found');
+      final dbBytes = await dbFile.readAsBytes();
+
+      final encrypted = BackupEncryptionService.encrypt(
+        payloadBytes: dbBytes,
+        password: password,
+        type: 'sqlite',
+      );
+      await file.writeAsString(encrypted);
+    } else {
+      final jsonPath = await exportJsonBackup();
+      final jsonFile = File(jsonPath);
+      final jsonBytes = await jsonFile.readAsBytes();
+
+      final encrypted = BackupEncryptionService.encrypt(
+        payloadBytes: jsonBytes,
+        password: password,
+        type: 'json',
+      );
+      await file.writeAsString(encrypted);
+      try {
+        await jsonFile.delete();
+      } catch (_) {}
+    }
+
+    return file.path;
+  }
+
+  /// Import an encrypted archive (.enc) with password verification.
+  Future<int> importEncryptedBackup({
+    required String filePath,
+    required String password,
+  }) async {
+    final file = File(filePath);
+    if (!file.existsSync()) throw Exception('Backup file not found');
+    final encryptedContent = await file.readAsString();
+
+    final result = BackupEncryptionService.decrypt(
+      containerJson: encryptedContent,
+      password: password,
+    );
+
+    if (result.type == 'sqlite') {
+      final dbFolder = await getApplicationDocumentsDirectory();
+      final dest = File(p.join(dbFolder.path, 'budget_lite.db'));
+
+      final oldDb = ref.read(databaseProvider);
+      await oldDb.close();
+      for (final suffix in ['-wal', '-shm']) {
+        final sidecar = File('${dest.path}$suffix');
+        if (sidecar.existsSync()) {
+          try {
+            await sidecar.delete();
+          } catch (_) {}
+        }
+      }
+      await dest.writeAsBytes(result.data);
+      ref.invalidate(databaseProvider);
+      return 1;
+    } else {
+      final tempDir = await getTemporaryDirectory();
+      final tempFile = File(
+        p.join(tempDir.path, 'decrypted_restore_${DateTime.now().millisecondsSinceEpoch}.json'),
+      );
+      await tempFile.writeAsBytes(result.data);
+      final importedCount = await importJsonBackup(tempFile.path);
+      try {
+        await tempFile.delete();
+      } catch (_) {}
+      return importedCount;
+    }
   }
 
   /// Mark a budget threshold as notified for a category (prevents repeated alerts).
