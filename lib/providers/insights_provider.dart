@@ -7,29 +7,6 @@ import 'budget_provider.dart';
 import 'database_provider.dart';
 import 'transaction_provider.dart';
 
-/// Monthly income totals (amount < 0)
-final incomeByMonthProvider = FutureProvider.autoDispose.family<double, String>(
-  (ref, monthKey) async {
-    final db = ref.read(databaseProvider);
-    final year = int.parse(monthKey.split('-')[0]);
-    final month = int.parse(monthKey.split('-')[1]);
-    // Compare against local month-boundary instants instead of extracting
-    // year/month components — drift stores DateTimes as UTC instants and
-    // component extraction reads UTC parts, which mis-buckets transactions
-    // created between midnight and the UTC offset in timezones ahead of UTC.
-    final transactions =
-        await (db.select(db.transactions)
-              ..where((t) => t.date.isBiggerOrEqualValue(DateTime(year, month)))
-              ..where(
-                (t) => t.date.isSmallerThanValue(DateTime(year, month + 1)),
-              ))
-            .get();
-    return transactions
-        .where((t) => t.amount < 0)
-        .fold<double>(0, (sum, t) => sum + t.amount.abs());
-  },
-);
-
 /// Monthly spending totals (amount > 0, excluding transfers)
 final spendingByMonthProvider = FutureProvider.autoDispose
     .family<double, String>((ref, monthKey) async {
@@ -49,16 +26,6 @@ final spendingByMonthProvider = FutureProvider.autoDispose
           .where((t) => t.amount > 0 && t.categoryId != 'transfer')
           .fold<double>(0, (sum, t) => sum + t.amount);
     });
-
-/// Monthly net (income - spending)
-final netByMonthProvider = FutureProvider.autoDispose.family<double, String>((
-  ref,
-  monthKey,
-) async {
-  final income = await ref.watch(incomeByMonthProvider(monthKey).future);
-  final spending = await ref.watch(spendingByMonthProvider(monthKey).future);
-  return income - spending;
-});
 
 /// Transactions within a date range, optionally filtered by categories
 final transactionsByDateRangeProvider = FutureProvider.autoDispose
@@ -118,23 +85,6 @@ final dailySpendingProvider = FutureProvider.autoDispose
       return daily;
     });
 
-/// Daily income totals for a given year
-final dailyIncomeProvider = FutureProvider.autoDispose
-    .family<Map<DateTime, double>, int>((ref, year) async {
-      final db = ref.read(databaseProvider);
-      final transactions =
-          await (db.select(db.transactions)
-                ..where((t) => t.date.isBiggerOrEqualValue(DateTime(year)))
-                ..where((t) => t.date.isSmallerThanValue(DateTime(year + 1))))
-              .get();
-      final daily = <DateTime, double>{};
-      for (final t in transactions.where((t) => t.amount < 0)) {
-        final dayKey = DateTime(t.date.year, t.date.month, t.date.day);
-        daily[dayKey] = (daily[dayKey] ?? 0.0) + t.amount.abs();
-      }
-      return daily;
-    });
-
 /// Budget health for current month: utilization %, status, remaining
 final budgetHealthProvider = FutureProvider.autoDispose<BudgetHealth>((
   ref,
@@ -152,22 +102,12 @@ final budgetHealthProvider = FutureProvider.autoDispose<BudgetHealth>((
 
   double totalBudget = 0;
   double totalSpent = 0;
-  final categoryHealth = <String, CategoryBudgetHealth>{};
 
   for (final budget in budgets) {
     final spent = categorySpending[budget.categoryId] ?? 0.0;
     final allocated = budget.allocatedAmount;
     totalBudget += allocated;
     totalSpent += spent;
-
-    final pct = allocated > 0 ? (spent / allocated * 100) : 0.0;
-    categoryHealth[budget.categoryId] = CategoryBudgetHealth(
-      categoryId: budget.categoryId,
-      allocated: allocated,
-      spent: spent,
-      percentUsed: pct,
-      status: _budgetStatus(pct),
-    );
   }
 
   final overallPct = totalBudget > 0 ? (totalSpent / totalBudget * 100) : 0.0;
@@ -178,7 +118,6 @@ final budgetHealthProvider = FutureProvider.autoDispose<BudgetHealth>((
     percentUsed: overallPct,
     status: _budgetStatus(overallPct),
     remaining: totalBudget - totalSpent,
-    categoryHealth: categoryHealth,
   );
 });
 
@@ -609,32 +548,15 @@ class BudgetHealth {
     required this.percentUsed,
     required this.status,
     required this.remaining,
-    required this.categoryHealth,
   });
   final double totalBudget;
   final double totalSpent;
   final double percentUsed;
   final BudgetStatus status;
   final double remaining;
-  final Map<String, CategoryBudgetHealth> categoryHealth;
 }
 
 enum BudgetStatus { healthy, warning, critical }
-
-class CategoryBudgetHealth {
-  const CategoryBudgetHealth({
-    required this.categoryId,
-    required this.allocated,
-    required this.spent,
-    required this.percentUsed,
-    required this.status,
-  });
-  final String categoryId;
-  final double allocated;
-  final double spent;
-  final double percentUsed;
-  final BudgetStatus status;
-}
 
 class SpendingVelocity {
   const SpendingVelocity({

@@ -339,9 +339,9 @@ class SmsParser {
       }
     }
 
-    // DD Mon YYYY or DD Mon YY (e.g. "22 Jul 2026", "22 Jul 26")
+    // DD Mon YYYY, DD-Mon-YY, DD/Mon/YYYY (e.g. "21-Oct-26", "22 Jul 2026", "22 Jul 26")
     final dMonY = RegExp(
-      r'(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{2,4})',
+      r'(\d{1,2})[\s\-/]+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[\s\-/]+(\d{2,4})',
       caseSensitive: false,
     ).firstMatch(body);
     if (dMonY != null) {

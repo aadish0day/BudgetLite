@@ -1,7 +1,6 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
 /// Accessibility utilities for motion, animation, and visual preferences.
@@ -22,32 +21,12 @@ abstract final class AccessibilityUtils {
   static Curve animationCurve(BuildContext context, Curve normal) =>
       shouldAnimate(context) ? normal : Curves.linear;
 
-  /// Trigger haptic feedback only on devices that support it.
-  static void lightImpact() => HapticFeedback.lightImpact();
-  static void selectionClick() => HapticFeedback.selectionClick();
-  static void mediumImpact() => HapticFeedback.mediumImpact();
-
-  /// Semantic label helper for accessibility.
-  static String? semanticLabel(String? label) => label;
-
   /// Encode a JSON map safely (reusable helper).
-  static String encodeJson(Map<String, dynamic> map) =>
-      const JsonEncoder().convert(map);
+  static String encodeJson(Map<String, dynamic> map) => jsonEncode(map);
 
   /// Decode a JSON string to a map safely.
   static Map<String, dynamic> decodeJson(String json) =>
-      Map<String, dynamic>.from(const JsonDecoder().convert(json) as Map);
-
-  /// Decode a JSON string to a list safely.
-  static List<T> decodeList<T>(
-    String json,
-    T Function(Map<String, dynamic>) fromJson,
-  ) {
-    final list = const JsonDecoder().convert(json) as List;
-    return list
-        .map((e) => fromJson(Map<String, dynamic>.from(e as Map)))
-        .toList();
-  }
+      jsonDecode(json) as Map<String, dynamic>;
 }
 
 /// Extension methods for clean, high-performance animations that automatically

@@ -27,19 +27,97 @@ class SmsReviewQueueScreen extends ConsumerStatefulWidget {
 }
 
 class _SmsReviewQueueScreenState extends ConsumerState<SmsReviewQueueScreen> {
+  int? _filterMonths;
+  bool _isScanning = false;
+
+  DateTime _calculateCutoff(int months) {
+    final now = DateTime.now();
+    var y = now.year;
+    var m = now.month - months;
+    while (m <= 0) {
+      m += 12;
+      y -= 1;
+    }
+    return DateTime(y, m, now.day.clamp(1, 28));
+  }
+
+  List<ParsedSmsTxn> _getFilteredQueue(List<ParsedSmsTxn> queue) {
+    if (_filterMonths == null) return queue;
+    final cutoff = _calculateCutoff(_filterMonths!);
+    return queue
+        .where(
+          (t) =>
+              t.date.isAfter(cutoff) || t.date.isAtSameMomentAs(cutoff),
+        )
+        .toList();
+  }
+
+  int _countForMonths(List<ParsedSmsTxn> queue, int months) {
+    final cutoff = _calculateCutoff(months);
+    return queue
+        .where(
+          (t) =>
+              t.date.isAfter(cutoff) || t.date.isAtSameMomentAs(cutoff),
+        )
+        .length;
+  }
+
+  Widget _buildFilterChip(
+    String label,
+    int count,
+    bool isSelected,
+    VoidCallback onTap,
+    ColorScheme colorScheme,
+  ) {
+    return FilterChip(
+      selected: isSelected,
+      label: Text(
+        '$label ($count)',
+        style: AppTheme.bodyStyle(
+          size: 12,
+          weight: isSelected ? FontWeight.w600 : FontWeight.w400,
+          color: isSelected
+              ? colorScheme.onPrimaryContainer
+              : colorScheme.onSurfaceVariant,
+        ),
+      ),
+      backgroundColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+      selectedColor: colorScheme.primaryContainer,
+      checkmarkColor: colorScheme.primary,
+      showCheckmark: false,
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(
+          color: isSelected
+              ? colorScheme.primary.withValues(alpha: 0.3)
+              : colorScheme.outline.withValues(alpha: 0.1),
+        ),
+      ),
+      onSelected: (_) => onTap(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final queue = ref.watch(smsReviewQueueProvider);
+    final filteredQueue = _getFilteredQueue(queue);
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('SMS Review Queue'),
         actions: [
           IconButton(
-            icon: const Icon(LucideIcons.scanLine, size: 20),
+            icon: _isScanning
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(LucideIcons.scanLine, size: 20),
             tooltip: 'Scan SMS Inbox',
-            onPressed: _scanSmsInbox,
+            onPressed: _isScanning ? null : _showScanPeriodSheet,
           ),
           if (queue.isNotEmpty)
             PopupMenuButton<String>(
@@ -49,24 +127,40 @@ class _SmsReviewQueueScreenState extends ConsumerState<SmsReviewQueueScreen> {
                 color: colorScheme.onSurfaceVariant,
               ),
               onSelected: (v) {
+                if (v == 'confirm_filtered') _confirmFiltered(filteredQueue);
+                if (v == 'discard_filtered') _discardFiltered(filteredQueue);
                 if (v == 'confirm_all') _confirmAll();
                 if (v == 'discard_all') _discardAll();
               },
               itemBuilder: (_) => [
-                const PopupMenuItem(
+                if (_filterMonths != null) ...[
+                  PopupMenuItem(
+                    value: 'confirm_filtered',
+                    child: Text('Confirm visible (${filteredQueue.length})'),
+                  ),
+                  PopupMenuItem(
+                    value: 'discard_filtered',
+                    child: Text('Discard visible (${filteredQueue.length})'),
+                  ),
+                  const PopupMenuDivider(),
+                ],
+                PopupMenuItem(
                   value: 'confirm_all',
-                  child: Text('Confirm all'),
+                  child: Text('Confirm all (${queue.length})'),
                 ),
-                const PopupMenuItem(
+                PopupMenuItem(
                   value: 'discard_all',
-                  child: Text('Discard all'),
+                  child: Text('Discard all (${queue.length})'),
                 ),
               ],
             ),
         ],
       ),
       body: queue.isEmpty
-          ? _EmptyQueue(colorScheme: colorScheme, onScanInbox: _scanSmsInbox)
+          ? _EmptyQueue(
+              colorScheme: colorScheme,
+              onScanInbox: _showScanPeriodSheet,
+            )
           : ListView(
               padding: AppConstants.screenPadding,
               children: [
@@ -95,14 +189,18 @@ class _SmsReviewQueueScreenState extends ConsumerState<SmsReviewQueueScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              '${queue.length} pending transaction${queue.length != 1 ? 's' : ''}',
+                              _filterMonths != null
+                                  ? '${filteredQueue.length} of ${queue.length} pending'
+                                  : '${queue.length} pending transaction${queue.length != 1 ? 's' : ''}',
                               style: AppTheme.displayStyle(
                                 size: 16,
                                 color: colorScheme.onSurface,
                               ),
                             ),
                             Text(
-                              'Review and confirm each to add to your ledger',
+                              _filterMonths != null
+                                  ? 'Filtered to last ${_filterMonths == 12 ? '1 year' : '$_filterMonths months'}'
+                                  : 'Review and confirm each to add to your ledger',
                               style: AppTheme.bodyStyle(
                                 size: 12,
                                 color: colorScheme.onSurfaceVariant,
@@ -115,17 +213,90 @@ class _SmsReviewQueueScreenState extends ConsumerState<SmsReviewQueueScreen> {
                   ),
                 ).animate().fadeIn(duration: 200.ms),
 
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
+
+                // Timeframe filter chips
+                SizedBox(
+                  height: 38,
+                  child: ListView(
+                    scrollDirection: Axis.horizontal,
+                    children: [
+                      _buildFilterChip(
+                        'All',
+                        queue.length,
+                        _filterMonths == null,
+                        () => setState(() => _filterMonths = null),
+                        colorScheme,
+                      ),
+                      const SizedBox(width: 8),
+                      _buildFilterChip(
+                        '1M',
+                        _countForMonths(queue, 1),
+                        _filterMonths == 1,
+                        () => setState(() => _filterMonths = 1),
+                        colorScheme,
+                      ),
+                      const SizedBox(width: 8),
+                      _buildFilterChip(
+                        '2M',
+                        _countForMonths(queue, 2),
+                        _filterMonths == 2,
+                        () => setState(() => _filterMonths = 2),
+                        colorScheme,
+                      ),
+                      const SizedBox(width: 8),
+                      _buildFilterChip(
+                        '3M',
+                        _countForMonths(queue, 3),
+                        _filterMonths == 3,
+                        () => setState(() => _filterMonths = 3),
+                        colorScheme,
+                      ),
+                      const SizedBox(width: 8),
+                      _buildFilterChip(
+                        '6M',
+                        _countForMonths(queue, 6),
+                        _filterMonths == 6,
+                        () => setState(() => _filterMonths = 6),
+                        colorScheme,
+                      ),
+                      const SizedBox(width: 8),
+                      _buildFilterChip(
+                        '9M',
+                        _countForMonths(queue, 9),
+                        _filterMonths == 9,
+                        () => setState(() => _filterMonths = 9),
+                        colorScheme,
+                      ),
+                      const SizedBox(width: 8),
+                      _buildFilterChip(
+                        '1Y',
+                        _countForMonths(queue, 12),
+                        _filterMonths == 12,
+                        () => setState(() => _filterMonths = 12),
+                        colorScheme,
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 12),
 
                 // Bulk actions
                 Row(
                   children: [
                     Expanded(
                       child: FilledButton.icon(
-                        onPressed: _confirmAll,
+                        onPressed: filteredQueue.isEmpty
+                            ? null
+                            : () => _filterMonths != null
+                                ? _confirmFiltered(filteredQueue)
+                                : _confirmAll(),
                         icon: const Icon(LucideIcons.checkCheck, size: 16),
                         label: Text(
-                          'Confirm all (${queue.length})',
+                          _filterMonths != null
+                              ? 'Confirm visible (${filteredQueue.length})'
+                              : 'Confirm all (${queue.length})',
                           style: AppTheme.bodyStyle(
                             size: 13,
                             weight: FontWeight.w600,
@@ -143,10 +314,16 @@ class _SmsReviewQueueScreenState extends ConsumerState<SmsReviewQueueScreen> {
                     const SizedBox(width: 10),
                     Expanded(
                       child: OutlinedButton.icon(
-                        onPressed: _discardAll,
+                        onPressed: filteredQueue.isEmpty
+                            ? null
+                            : () => _filterMonths != null
+                                ? _discardFiltered(filteredQueue)
+                                : _discardAll(),
                         icon: const Icon(LucideIcons.x, size: 16),
                         label: Text(
-                          'Discard all',
+                          _filterMonths != null
+                              ? 'Discard visible'
+                              : 'Discard all',
                           style: AppTheme.bodyStyle(
                             size: 13,
                             weight: FontWeight.w500,
@@ -184,20 +361,64 @@ class _SmsReviewQueueScreenState extends ConsumerState<SmsReviewQueueScreen> {
                   ),
                 ),
 
-                // Queue items
-                ...queue.map(
-                  (txn) => _QueueItemCard(
-                    txn: txn,
-                    colorScheme: colorScheme,
-                    onConfirm: () => _confirmItem(txn.id),
-                    onConfirmWithCategory: (catId, note) => _confirmItem(
-                      txn.id,
-                      overrideCategory: catId,
-                      overrideNote: note,
+                // Queue items or empty filtered state
+                if (filteredQueue.isEmpty)
+                  Container(
+                    margin: const EdgeInsets.symmetric(vertical: 24),
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: colorScheme.outline.withValues(alpha: 0.1),
+                      ),
                     ),
-                    onDiscard: () => _discardItem(txn.id),
+                    child: Column(
+                      children: [
+                        Icon(
+                          LucideIcons.calendarX,
+                          size: 32,
+                          color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          'No pending transactions in this period',
+                          style: AppTheme.bodyStyle(
+                            weight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Select another timeframe filter or scan older messages.',
+                          textAlign: TextAlign.center,
+                          style: AppTheme.bodyStyle(
+                            size: 12,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        TextButton.icon(
+                          onPressed: () => setState(() => _filterMonths = null),
+                          icon: const Icon(LucideIcons.layers, size: 14),
+                          label: Text('Show all (${queue.length})'),
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  ...filteredQueue.map(
+                    (txn) => _QueueItemCard(
+                      txn: txn,
+                      colorScheme: colorScheme,
+                      onConfirm: () => _confirmItem(txn.id),
+                      onConfirmWithCategory: (catId, note) => _confirmItem(
+                        txn.id,
+                        overrideCategory: catId,
+                        overrideNote: note,
+                      ),
+                      onDiscard: () => _discardItem(txn.id),
+                    ),
                   ),
-                ),
                 const SizedBox(height: 80),
               ],
             ),
@@ -361,64 +582,319 @@ class _SmsReviewQueueScreenState extends ConsumerState<SmsReviewQueueScreen> {
     }
   }
 
-  Future<void> _scanSmsInbox() async {
-    final listener = SmsListenerService();
-    final granted = await listener.isPermissionGranted();
-    if (!granted) {
-      final req = await listener.requestPermission();
-      if (!req && mounted) {
+  Future<void> _confirmFiltered(List<ParsedSmsTxn> items) async {
+    if (!mounted || items.isEmpty) return;
+    final localColorScheme = Theme.of(context).colorScheme;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: [
+            const Icon(
+              LucideIcons.checkCheck,
+              size: 20,
+              color: AppColors.success,
+            ),
+            const SizedBox(width: 8),
+            Text('Confirm visible?', style: AppTheme.displayStyle()),
+          ],
+        ),
+        content: Text(
+          'Add ${items.length} visible transaction${items.length != 1 ? 's' : ''} to your ledger?',
+          style: AppTheme.bodyStyle(),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(
+              'Cancel',
+              style: AppTheme.bodyStyle(
+                color: localColorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Confirm'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) {
+      final notifier = ref.read(smsReviewQueueProvider.notifier);
+      await notifier.confirmItems(items.map((t) => t.id).toList());
+      ref.invalidate(transactionsProvider);
+      if (mounted) {
+        final colorScheme = Theme.of(context).colorScheme;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '${items.length} transaction${items.length != 1 ? 's' : ''} confirmed ✓',
+              style: AppTheme.bodyStyle(
+                size: 13,
+                weight: FontWeight.w500,
+                color: colorScheme.onSurface,
+              ),
+            ),
+            backgroundColor: colorScheme.surfaceContainerHighest,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 2),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+              side: BorderSide(
+                color: colorScheme.outline.withValues(alpha: 0.12),
+              ),
+            ),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _discardFiltered(List<ParsedSmsTxn> items) async {
+    if (!mounted || items.isEmpty) return;
+    final localColorScheme = Theme.of(context).colorScheme;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: [
+            const Icon(LucideIcons.x, size: 20, color: AppColors.error),
+            const SizedBox(width: 8),
+            Text('Discard visible?', style: AppTheme.displayStyle()),
+          ],
+        ),
+        content: Text(
+          'Remove ${items.length} visible pending SMS transaction${items.length != 1 ? 's' : ''}? This cannot be undone.',
+          style: AppTheme.bodyStyle(),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(
+              'Cancel',
+              style: AppTheme.bodyStyle(
+                color: localColorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.error.withValues(alpha: 0.15),
+              foregroundColor: AppColors.error,
+            ),
+            child: const Text('Discard'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) {
+      final notifier = ref.read(smsReviewQueueProvider.notifier);
+      await notifier.discardItems(items.map((t) => t.id).toList());
+    }
+  }
+
+  void _showScanPeriodSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        final colorScheme = Theme.of(ctx).colorScheme;
+        final options = [
+          (1, '1 Month', 'Past 30 days'),
+          (2, '2 Months', 'Past 60 days'),
+          (3, '3 Months', 'Past 90 days (Quarter)'),
+          (6, '6 Months', 'Past 180 days (Half year)'),
+          (9, '9 Months', 'Past 270 days'),
+          (12, '12 Months / 1 Year', 'Past year (365 days)'),
+          (null, 'All SMS', 'Full inbox search without time limit'),
+        ];
+
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: colorScheme.outline.withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Icon(
+                      LucideIcons.scanLine,
+                      color: colorScheme.primary,
+                      size: 22,
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      'Scan SMS Inbox',
+                      style: AppTheme.displayStyle(),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Select how far back to look for UPI transaction messages:',
+                  style: AppTheme.bodyStyle(
+                    size: 13,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                ...options.map((opt) {
+                  return ListTile(
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: colorScheme.primary.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(
+                        opt.$1 == null
+                            ? LucideIcons.inbox
+                            : LucideIcons.calendar,
+                        size: 18,
+                        color: colorScheme.primary,
+                      ),
+                    ),
+                    title: Text(
+                      opt.$2,
+                      style: AppTheme.bodyStyle(
+                        weight: FontWeight.w600,
+                      ),
+                    ),
+                    subtitle: Text(
+                      opt.$3,
+                      style: AppTheme.bodyStyle(
+                        size: 12,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    trailing: const Icon(LucideIcons.chevronRight, size: 16),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      _scanSmsInbox(months: opt.$1);
+                    },
+                  );
+                }),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _scanSmsInbox({int? months}) async {
+    if (_isScanning) return;
+    setState(() => _isScanning = true);
+    try {
+      final listener = SmsListenerService();
+      final granted = await listener.isPermissionGranted();
+      if (!granted) {
+        final req = await listener.requestPermission();
+        if (!req && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('SMS permission is required to scan inbox'),
+            ),
+          );
+          return;
+        }
+      }
+
+      if (mounted) {
+        final label = months == null
+            ? 'entire inbox'
+            : months == 12
+                ? 'last 1 year'
+                : 'last $months months';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Scanning $label for UPI messages...'),
+            duration: const Duration(seconds: 1),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+
+      final messages = await listener.scanInbox(months: months);
+      if (!mounted) return;
+      if (messages.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('SMS permission is required to scan inbox'),
+            content: Text('No new SMS transactions found in inbox'),
+            behavior: SnackBarBehavior.floating,
           ),
         );
         return;
       }
-    }
-    final messages = await listener.scanInbox();
-    if (!mounted) return;
-    if (messages.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No new SMS transactions found in inbox')),
-      );
-      return;
-    }
-    final userRules = ref.read(autoCategorizationRulesProvider);
-    final Map<String, String> keywordToCategory = {};
-    for (final rule in userRules) {
-      keywordToCategory[rule.keyword.toLowerCase()] = rule.categoryId;
-    }
-    final queueNotifier = ref.read(smsReviewQueueProvider.notifier);
-    int added = 0;
-    for (final sms in messages) {
-      final parsed = SmsParser.parseMessage(
-        sms.body,
-        keywordToCategory: keywordToCategory.isNotEmpty
-            ? keywordToCategory
-            : null,
-        dateOverride: DateTime.fromMillisecondsSinceEpoch(
-          sms.timestamp,
-          isUtc: true,
-        ).toLocal(),
-      );
-      if (parsed != null &&
-          !queueNotifier.isProcessed(parsed.id) &&
-          !queueNotifier.isAlreadyInQueue(parsed.id)) {
-        unawaited(queueNotifier.addToQueue(parsed));
-        added++;
+      final userRules = ref.read(autoCategorizationRulesProvider);
+      final Map<String, String> keywordToCategory = {};
+      for (final rule in userRules) {
+        keywordToCategory[rule.keyword.toLowerCase()] = rule.categoryId;
       }
-    }
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            added > 0
-                ? 'Found $added new transaction${added != 1 ? 's' : ''}'
-                : 'No new SMS transactions found',
+      final queueNotifier = ref.read(smsReviewQueueProvider.notifier);
+      int added = 0;
+      for (final sms in messages) {
+        final parsed = SmsParser.parseMessage(
+          sms.body,
+          keywordToCategory: keywordToCategory.isNotEmpty
+              ? keywordToCategory
+              : null,
+          dateOverride: DateTime.fromMillisecondsSinceEpoch(
+            sms.timestamp,
+            isUtc: true,
+          ).toLocal(),
+        );
+        if (parsed != null &&
+            !queueNotifier.isProcessed(parsed.id) &&
+            !queueNotifier.isAlreadyInQueue(parsed.id)) {
+          unawaited(queueNotifier.addToQueue(parsed));
+          added++;
+        }
+      }
+      if (mounted) {
+        if (months != null) {
+          setState(() => _filterMonths = months);
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              added > 0
+                  ? 'Found $added new transaction${added != 1 ? 's' : ''}'
+                  : 'No new SMS transactions found',
+            ),
+            behavior: SnackBarBehavior.floating,
           ),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isScanning = false);
+      }
     }
   }
 }

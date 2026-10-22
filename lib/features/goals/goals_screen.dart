@@ -10,7 +10,6 @@ import '../../core/utils/accessibility_utils.dart';
 import '../../core/utils/constants.dart';
 import '../../core/utils/formatters.dart';
 import '../../providers/goal_provider.dart';
-import 'what_if_simulator_sheet.dart';
 
 class GoalsScreen extends ConsumerWidget {
   const GoalsScreen({super.key});
@@ -23,13 +22,6 @@ class GoalsScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: Text('Savings Goals', style: AppTheme.displayStyle(size: 17)),
-        actions: [
-          IconButton(
-            tooltip: 'What-If Simulator',
-            onPressed: () => _showSimulator(context),
-            icon: const Icon(LucideIcons.flaskConical, size: 18),
-          ),
-        ],
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _showAddGoalSheet(context, ref),
@@ -51,28 +43,12 @@ class GoalsScreen extends ConsumerWidget {
               _GoalsPortfolioHeader(goals: goalList)
                   .animateFadeSlide(context),
               const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Your Goals (${goalList.length})',
-                    style: AppTheme.displayStyle(
-                      size: 15,
-                      color: colorScheme.onSurface,
-                    ),
-                  ),
-                  TextButton.icon(
-                    onPressed: () => _showSimulator(context),
-                    icon: const Icon(LucideIcons.flaskConical, size: 14),
-                    label: const Text(
-                      'Simulate All',
-                      style: TextStyle(fontSize: 12),
-                    ),
-                    style: TextButton.styleFrom(
-                      visualDensity: VisualDensity.compact,
-                    ),
-                  ),
-                ],
+              Text(
+                'Your Goals (${goalList.length})',
+                style: AppTheme.displayStyle(
+                  size: 15,
+                  color: colorScheme.onSurface,
+                ),
               ),
               const SizedBox(height: 10),
               ...goalList.asMap().entries.map(
@@ -93,18 +69,6 @@ class GoalsScreen extends ConsumerWidget {
       context: context,
       isScrollControlled: true,
       builder: (_) => const _AddGoalSheet(),
-    );
-  }
-
-  void _showSimulator(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (_) => const WhatIfSimulatorSheet(),
     );
   }
 }
@@ -588,31 +552,6 @@ class _GoalCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  IconButton.outlined(
-                    onPressed: () {
-                      showModalBottomSheet(
-                        context: context,
-                        isScrollControlled: true,
-                        useSafeArea: true,
-                        shape: const RoundedRectangleBorder(
-                          borderRadius: BorderRadius.vertical(
-                            top: Radius.circular(24),
-                          ),
-                        ),
-                        builder: (_) => const WhatIfSimulatorSheet(),
-                      );
-                    },
-                    icon: const Icon(LucideIcons.flaskConical, size: 16),
-                    tooltip: 'Simulate',
-                    style: IconButton.styleFrom(
-                      side: BorderSide(
-                        color: colorScheme.outline.withValues(alpha: 0.2),
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  ),
                   IconButton.outlined(
                     onPressed: () => _confirmDelete(context),
                     icon: const Icon(

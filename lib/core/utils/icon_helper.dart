@@ -12,7 +12,6 @@ IconData getCategoryIcon(String iconName) {
     'transport': LucideIcons.carFront,
     'car': LucideIcons.carFront,
     'home': LucideIcons.house,
-    'rent': LucideIcons.house,
     'shopping_bag': LucideIcons.shoppingBag,
     'shopping': LucideIcons.shoppingBag,
     'receipt': LucideIcons.receiptText,

@@ -52,6 +52,29 @@ class AppDatabase extends _$AppDatabase {
     },
     beforeOpen: (details) async {
       await customStatement('PRAGMA foreign_keys = ON;');
+      final rentCategory = await (select(categories)..where((c) => c.id.equals('rent'))).getSingleOrNull();
+      if (rentCategory != null) {
+        await transaction(() async {
+          final otherCategory = await (select(categories)..where((c) => c.id.equals('other'))).getSingleOrNull();
+          if (otherCategory == null) {
+            await into(categories).insert(
+              CategoriesCompanion.insert(
+                id: 'other',
+                name: 'Other',
+                icon: const Value('more_horiz'),
+                color: const Value(0xFF6B7280),
+                type: const Value('expense'),
+                sortOrder: const Value(99),
+              ),
+            );
+          }
+          await (update(transactions)..where((t) => t.categoryId.equals('rent'))).write(
+            const TransactionsCompanion(categoryId: Value('other')),
+          );
+          await (delete(budgets)..where((b) => b.categoryId.equals('rent'))).go();
+          await (delete(categories)..where((c) => c.id.equals('rent'))).go();
+        });
+      }
     },
   );
 
@@ -94,20 +117,12 @@ class AppDatabase extends _$AppDatabase {
           sortOrder: const Value(2),
         ),
         CategoriesCompanion.insert(
-          id: 'rent',
-          name: 'Rent',
-          icon: const Value('home'),
-          color: const Value(0xFF8B5CF6),
-          type: const Value('expense'),
-          sortOrder: const Value(3),
-        ),
-        CategoriesCompanion.insert(
           id: 'shopping',
           name: 'Shopping',
           icon: const Value('shopping_bag'),
           color: const Value(0xFFEC4899),
           type: const Value('expense'),
-          sortOrder: const Value(4),
+          sortOrder: const Value(3),
         ),
         CategoriesCompanion.insert(
           id: 'bills',
@@ -115,7 +130,7 @@ class AppDatabase extends _$AppDatabase {
           icon: const Value('receipt'),
           color: const Value(0xFF0D7377),
           type: const Value('expense'),
-          sortOrder: const Value(5),
+          sortOrder: const Value(4),
         ),
         CategoriesCompanion.insert(
           id: 'entertainment',
@@ -123,7 +138,7 @@ class AppDatabase extends _$AppDatabase {
           icon: const Value('gamepad_2'),
           color: const Value(0xFF8B5CF6),
           type: const Value('expense'),
-          sortOrder: const Value(6),
+          sortOrder: const Value(5),
         ),
         CategoriesCompanion.insert(
           id: 'other',
@@ -131,7 +146,7 @@ class AppDatabase extends _$AppDatabase {
           icon: const Value('more_horiz'),
           color: const Value(0xFF6B7280),
           type: const Value('expense'),
-          sortOrder: const Value(7),
+          sortOrder: const Value(6),
         ),
         CategoriesCompanion.insert(
           id: 'income',
@@ -139,7 +154,7 @@ class AppDatabase extends _$AppDatabase {
           icon: const Value('account_balance'),
           color: const Value(0xFF10B981),
           type: const Value('income'),
-          sortOrder: const Value(8),
+          sortOrder: const Value(7),
         ),
       ]);
     });

@@ -46,10 +46,6 @@ class CategorizationRule {
       categoryId: 'transport',
     ),
     CategorizationRule(
-      keyword: 'rent, maintenance, society, housing, landlord',
-      categoryId: 'rent',
-    ),
-    CategorizationRule(
       keyword: 'amazon, flipkart, myntra, zara, shopping, clothes, mall',
       categoryId: 'shopping',
     ),

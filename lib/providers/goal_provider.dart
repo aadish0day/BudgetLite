@@ -39,7 +39,6 @@ class GoalNotifier extends StateNotifier<AsyncValue<void>> {
             icon: Value(icon),
           ),
         );
-    ref.invalidate(goalsProvider);
   }
 
   Future<void> updateGoalProgress(String id, double amount) async {
@@ -88,13 +87,11 @@ class GoalNotifier extends StateNotifier<AsyncValue<void>> {
     await (db.update(db.goals)..where((t) => t.id.equals(id))).write(
       GoalsCompanion(currentAmount: Value(newAmount)),
     );
-    ref.invalidate(goalsProvider);
   }
 
   Future<void> deleteGoal(String id) async {
     final db = ref.read(databaseProvider);
     await (db.delete(db.goals)..where((t) => t.id.equals(id))).go();
-    ref.invalidate(goalsProvider);
   }
 }
 

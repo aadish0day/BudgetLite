@@ -8,6 +8,7 @@ void main() {
       expect(rules.isNotEmpty, true);
       expect(rules.any((r) => r.categoryId == 'food'), true);
       expect(rules.any((r) => r.categoryId == 'transport'), true);
+      expect(rules.any((r) => r.categoryId == 'rent'), false);
     });
 
     test('toRegExp matches keywords from comma-separated string', () {

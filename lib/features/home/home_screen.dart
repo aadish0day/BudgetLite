@@ -26,7 +26,6 @@ import '../../providers/settings_provider.dart';
 import '../../providers/transaction_provider.dart';
 import '../settings/settings_screen.dart';
 import '../subscriptions/subscriptions_screen.dart';
-import 'reimbursement_tracker_sheet.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -120,9 +119,6 @@ class HomeScreen extends ConsumerWidget {
                   _showEditBalanceDialog(context, ref, initialBalance),
             ).animateFadeSlide(context),
             const SizedBox(height: 28),
-
-            // ── Pending Reimbursements Banner ──
-            const _ReimbursementBanner().animateFadeSlide(context, index: 1),
 
             // ── Budget Overview Section (Conditional) ──
             Consumer(
@@ -1172,132 +1168,4 @@ void _markAsPaid(
       duration: const Duration(seconds: 3),
     ),
   );
-}
-
-class _ReimbursementBanner extends ConsumerWidget {
-  const _ReimbursementBanner();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final pendingAsync = ref.watch(pendingReimbursementsProvider);
-    final totalPendingAsync = ref.watch(totalPendingReimbursementProvider);
-    final colorScheme = Theme.of(context).colorScheme;
-    final isDark = colorScheme.brightness == Brightness.dark;
-
-    return pendingAsync.when(
-      data: (txns) {
-        if (txns.isEmpty) return const SizedBox.shrink();
-        final total = totalPendingAsync.valueOrNull ?? 0.0;
-
-        return GestureDetector(
-          onTap: () {
-            HapticFeedback.lightImpact();
-            showModalBottomSheet(
-              context: context,
-              isScrollControlled: true,
-              useSafeArea: true,
-              shape: const RoundedRectangleBorder(
-                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-              ),
-              builder: (_) => const ReimbursementTrackerSheet(),
-            );
-          },
-          child: Container(
-            margin: const EdgeInsets.only(bottom: 28),
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(AppConstants.cardRadius),
-              color: isDark ? AppColors.cardDark : AppColors.cardLight,
-              border: Border.all(
-                color: colorScheme.primary.withValues(alpha: 0.3),
-              ),
-              boxShadow: isDark
-                  ? AppColors.cardShadowDark
-                  : AppColors.cardShadowLight,
-            ),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(12),
-                    color: colorScheme.primary.withValues(alpha: 0.12),
-                  ),
-                  child: Icon(
-                    LucideIcons.handCoins,
-                    size: 20,
-                    color: colorScheme.primary,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Text(
-                            'Owed to You',
-                            style: AppTheme.bodyStyle(
-                              size: 13,
-                              weight: FontWeight.w600,
-                              color: colorScheme.onSurface,
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(8),
-                              color: colorScheme.primary.withValues(
-                                alpha: 0.15,
-                              ),
-                            ),
-                            child: Text(
-                              '${txns.length} item${txns.length == 1 ? "" : "s"}',
-                              style: AppTheme.bodyStyle(
-                                size: 10,
-                                weight: FontWeight.w600,
-                                color: colorScheme.primary,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      Text(
-                        'Click to view & settle reimbursements',
-                        style: AppTheme.bodyStyle(
-                          size: 11,
-                          color: colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Text(
-                  Formatters.formatCurrency(total),
-                  style: AppTheme.financialStyle(
-                    size: 15,
-                    weight: FontWeight.w700,
-                    color: colorScheme.primary,
-                  ),
-                ),
-                const SizedBox(width: 4),
-                Icon(
-                  LucideIcons.chevronRight,
-                  size: 16,
-                  color: colorScheme.onSurfaceVariant,
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-      loading: () => const SizedBox.shrink(),
-      error: (_, _) => const SizedBox.shrink(),
-    );
-  }
 }

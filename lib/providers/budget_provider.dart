@@ -11,11 +11,6 @@ import 'database_provider.dart';
 import 'settings_provider.dart';
 import 'transaction_provider.dart';
 
-final budgetsProvider = StreamProvider.autoDispose<List<Budget>>((ref) {
-  final db = ref.watch(databaseProvider);
-  return db.select(db.budgets).watch();
-});
-
 final budgetsByMonthProvider = StreamProvider.autoDispose
     .family<List<Budget>, String>((ref, monthKey) {
       final db = ref.watch(databaseProvider);
@@ -35,14 +30,7 @@ final thisMonthBudgetsProvider = StreamProvider.autoDispose<List<Budget>>((
   );
 });
 
-final monthlyIncomeProvider = StreamProvider.autoDispose<double>((ref) {
-  final asyncIncome = ref.watch(totalIncomeThisMonthProvider);
-  return asyncIncome.when(
-    data: Stream.value,
-    error: Stream.error,
-    loading: () => const Stream.empty(),
-  );
-});
+final monthlyIncomeProvider = totalIncomeThisMonthProvider;
 
 final totalBudgetThisMonthProvider = StreamProvider.autoDispose<double>((ref) {
   final asyncBudgets = ref.watch(thisMonthBudgetsProvider);
@@ -107,7 +95,6 @@ class BudgetNotifier extends StateNotifier<AsyncValue<void>> {
             ),
           );
     }
-    ref.invalidate(budgetsProvider);
     ref.invalidate(thisMonthBudgetsProvider);
     ref.invalidate(totalBudgetThisMonthProvider);
     ref.invalidate(effectiveCategoryBudgetProvider(categoryId));
@@ -261,16 +248,6 @@ final effectiveCategoryBudgetProvider = FutureProvider.autoDispose
         spent: spent,
         rollover: rollover,
       );
-    });
-
-/// Provider for the used budget ratio per category (using effective budget with rollover)
-final categoryBudgetUsageProvider = FutureProvider.autoDispose
-    .family<double, String>((ref, categoryId) async {
-      final info = await ref.watch(
-        effectiveCategoryBudgetProvider(categoryId).future,
-      );
-      if (info.effectiveAllocated <= 0) return 0.0;
-      return (info.spent / info.effectiveAllocated).clamp(0, 2).toDouble();
     });
 
 /// Pre-computed map of category ID -> total spent this month for fine-grained select()

@@ -55,7 +55,7 @@ class SmsService(private val activity: Activity, private val engine: FlutterEngi
                 "isSmsPermissionGranted" -> result.success(isSmsPermissionGranted())
                 "startListening" -> startListening(result)
                 "stopListening" -> stopListening(result)
-                "scanInbox" -> scanInbox(result)
+                "scanInbox" -> scanInbox(call, result)
                 "startSmsRetriever" -> startSmsRetriever(result)
                 "stopSmsRetriever" -> stopSmsRetriever(result)
                 else -> result.notImplemented()
@@ -188,10 +188,20 @@ class SmsService(private val activity: Activity, private val engine: FlutterEngi
         result.success(true)
     }
 
-    private fun scanInbox(result: Result) {
+    private fun scanInbox(call: MethodCall, result: Result) {
         if (ContextCompat.checkSelfPermission(activity, READ_SMS_PERMISSION) != PackageManager.PERMISSION_GRANTED) {
             result.success(emptyList<Map<String, Any>>())
             return
+        }
+
+        val months = (call.argument<Any>("months") as? Number)?.toInt()
+        var sinceTimestamp = (call.argument<Any>("sinceTimestamp") as? Number)?.toLong()
+        val queryLimit = (call.argument<Any>("limit") as? Number)?.toInt() ?: 2000
+
+        if (sinceTimestamp == null && months != null && months > 0) {
+            val cal = java.util.Calendar.getInstance()
+            cal.add(java.util.Calendar.MONTH, -months)
+            sinceTimestamp = cal.timeInMillis
         }
 
         Thread {
@@ -217,17 +227,31 @@ class SmsService(private val activity: Activity, private val engine: FlutterEngi
                 Telephony.Sms.Inbox.ADDRESS,
                 Telephony.Sms.Inbox.DATE
             )
-            val selection = "${Telephony.Sms.Inbox.ADDRESS} LIKE ? OR ${Telephony.Sms.Inbox.BODY} LIKE ? OR ${Telephony.Sms.Inbox.BODY} LIKE ?"
-            val selectionArgs = arrayOf(
-                "%UPI%",                           // UPI-sender addresses
-                "%Rs.%",                           // contains amount format
-                "%₹%",                             // contains rupee symbol
-            )
+
+            val selection: String
+            val selectionArgs: Array<String>
+
+            if (sinceTimestamp != null) {
+                selection = "(${Telephony.Sms.Inbox.DATE} >= ?) AND (${Telephony.Sms.Inbox.ADDRESS} LIKE ? OR ${Telephony.Sms.Inbox.BODY} LIKE ? OR ${Telephony.Sms.Inbox.BODY} LIKE ?)"
+                selectionArgs = arrayOf(
+                    sinceTimestamp.toString(),
+                    "%UPI%",                           // UPI-sender addresses
+                    "%Rs.%",                           // contains amount format
+                    "%₹%",                             // contains rupee symbol
+                )
+            } else {
+                selection = "${Telephony.Sms.Inbox.ADDRESS} LIKE ? OR ${Telephony.Sms.Inbox.BODY} LIKE ? OR ${Telephony.Sms.Inbox.BODY} LIKE ?"
+                selectionArgs = arrayOf(
+                    "%UPI%",                           // UPI-sender addresses
+                    "%Rs.%",                           // contains amount format
+                    "%₹%",                             // contains rupee symbol
+                )
+            }
 
             try {
                 val cursor: Cursor? = activity.contentResolver.query(
                     uri, projection, selection, selectionArgs,
-                    "${Telephony.Sms.Inbox.DATE} DESC LIMIT 100"
+                    "${Telephony.Sms.Inbox.DATE} DESC LIMIT $queryLimit"
                 )
                 cursor?.use { c ->
                     while (c.moveToNext()) {

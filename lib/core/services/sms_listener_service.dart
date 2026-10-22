@@ -101,9 +101,33 @@ class SmsListenerService {
 
   /// Scan the SMS inbox for recent UPI messages.
   /// Returns a list of [SmsMessage] with body and device timestamp.
-  Future<List<SmsMessage>> scanInbox() async {
+  Future<List<SmsMessage>> scanInbox({
+    int? months,
+    DateTime? sinceDate,
+    int limit = 2000,
+  }) async {
     try {
-      final result = await _channel.invokeMethod<List<dynamic>>('scanInbox');
+      int? sinceTimestamp;
+      if (sinceDate != null) {
+        sinceTimestamp = sinceDate.millisecondsSinceEpoch;
+      } else if (months != null && months > 0) {
+        final now = DateTime.now();
+        sinceTimestamp = DateTime(
+          now.year,
+          now.month - months,
+          now.day,
+          now.hour,
+          now.minute,
+          now.second,
+          now.millisecond,
+        ).millisecondsSinceEpoch;
+      }
+
+      final result = await _channel.invokeMethod<List<dynamic>>('scanInbox', {
+        'months': months,
+        'sinceTimestamp': sinceTimestamp,
+        'limit': limit,
+      });
       if (result == null) return [];
       return result.map((e) {
         final map = Map<String, dynamic>.from(e as Map);

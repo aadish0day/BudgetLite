@@ -1,10 +1,14 @@
+import 'dart:io';
+
 import 'package:budget_lite/core/database/database.dart';
 import 'package:drift/drift.dart' as drift;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
 
 void main() {
+  drift.driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
   const uuid = Uuid();
   late AppDatabase db;
 
@@ -22,6 +26,7 @@ void main() {
       expect(categories, isNotEmpty);
       expect(categories.any((c) => c.name == 'Food'), isTrue);
       expect(categories.any((c) => c.name == 'Income'), isTrue);
+      expect(categories.any((c) => c.id == 'rent'), isFalse);
     });
 
     test('can create accounts and insert transactions', () async {
@@ -240,7 +245,8 @@ void main() {
       final categories = await (db.select(db.categories)
             ..orderBy([(c) => drift.OrderingTerm(expression: c.sortOrder)]))
           .get();
-      expect(categories.length, greaterThanOrEqualTo(8));
+      expect(categories.length, greaterThanOrEqualTo(7));
+      expect(categories.any((c) => c.id == 'rent'), isFalse);
       for (int i = 0; i < categories.length - 1; i++) {
         expect(categories[i].sortOrder <= categories[i + 1].sortOrder, isTrue);
       }
@@ -305,7 +311,87 @@ void main() {
       expect(accounts.length, 1);
       expect(accounts.first.id, 'default');
       final newCats = await db.select(db.categories).get();
-      expect(newCats.length, 8);
+      expect(newCats.length, 7);
+      expect(newCats.any((c) => c.id == 'rent'), isFalse);
+    });
+
+    test('rent category is not seeded and is migrated if present in existing db', () async {
+      // 1. Verify not seeded by default
+      final defaultCats = await db.select(db.categories).get();
+      expect(defaultCats.any((c) => c.id == 'rent'), isFalse);
+
+      // 2. Test migration on database open when 'rent' is present
+      final tempDir = Directory.systemTemp.createTempSync('budget_rent_migration_');
+      final dbFile = File(p.join(tempDir.path, 'rent_test.db'));
+
+      try {
+        // Step A: Open a temporary database, insert 'rent' category, a transaction with categoryId: 'rent',
+        // and a budget with categoryId: 'rent'.
+        final db1 = AppDatabase.forTesting(NativeDatabase(dbFile));
+        final defaultAccount = await db1.getDefaultAccount();
+
+        // Insert 'rent' category directly
+        await db1.into(db1.categories).insert(
+          CategoriesCompanion.insert(
+            id: 'rent',
+            name: 'Rent',
+            icon: const drift.Value('home'),
+            color: const drift.Value(0xFF8B5CF6),
+            type: const drift.Value('expense'),
+            sortOrder: const drift.Value(99),
+          ),
+        );
+
+        final txnId = uuid.v4();
+        await db1.into(db1.transactions).insert(
+          TransactionsCompanion.insert(
+            id: txnId,
+            accountId: defaultAccount.id,
+            categoryId: 'rent',
+            amount: 15000,
+            date: DateTime.now(),
+          ),
+        );
+
+        final budgetId = uuid.v4();
+        await db1.into(db1.budgets).insert(
+          BudgetsCompanion.insert(
+            id: budgetId,
+            categoryId: 'rent',
+            month: '2026-10',
+            allocatedAmount: 20000,
+          ),
+        );
+
+        // Verify they were inserted
+        expect((await (db1.select(db1.categories)..where((c) => c.id.equals('rent'))).get()).length, 1);
+        expect((await (db1.select(db1.transactions)..where((t) => t.id.equals(txnId))).get()).first.categoryId, 'rent');
+        expect((await (db1.select(db1.budgets)..where((b) => b.id.equals(budgetId))).get()).length, 1);
+
+        await db1.close();
+
+        // Step B: Re-open the database with AppDatabase.
+        // beforeOpen callback should run and migrate:
+        // a) transactions with 'rent' -> 'other'
+        // b) budgets with 'rent' deleted
+        // c) 'rent' category deleted
+        final db2 = AppDatabase.forTesting(NativeDatabase(dbFile));
+
+        final migratedTxn = await (db2.select(db2.transactions)..where((t) => t.id.equals(txnId))).getSingle();
+        expect(migratedTxn.categoryId, 'other');
+
+        final remainingBudgets = await (db2.select(db2.budgets)..where((b) => b.categoryId.equals('rent'))).get();
+        expect(remainingBudgets, isEmpty);
+
+        final rentCats = await (db2.select(db2.categories)..where((c) => c.id.equals('rent'))).get();
+        expect(rentCats, isEmpty);
+
+        await db2.close();
+      } finally {
+        if (tempDir.existsSync()) {
+          tempDir.deleteSync(recursive: true);
+        }
+      }
     });
   });
 }

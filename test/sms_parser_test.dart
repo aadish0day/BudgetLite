@@ -87,6 +87,76 @@ void main() {
       expect(parsed.date.day, 5);
       expect(parsed.payee?.toLowerCase(), contains('parvati.das27'));
     });
+
+    test('Kotak Sample 7: Sent Rs.25.00 to Satyanarayan Communi', () {
+      const sms =
+          'Sent Rs.25.00 from XX5729 to Satyanarayan Communi on 21-Oct-26. UPI ref no. 666023848846. Not you? Tap https://kotk.in/KOTAKD/IHUiNB to report -Kotak';
+      final parsed = SmsParser.parseMessage(sms);
+
+      expect(parsed, isNotNull);
+      expect(parsed!.amount, 25.00);
+      expect(parsed.isIncome, false);
+      expect(parsed.date.year, 2026);
+      expect(parsed.date.month, 10);
+      expect(parsed.date.day, 21);
+      expect(parsed.payee, contains('Satyanarayan Communi'));
+    });
+
+    test('Kotak Sample 8: Sent Rs.60.00 to Satyanarayan Communi', () {
+      const sms =
+          'Sent Rs.60.00 from XX5729 to Satyanarayan Communi on 21-Oct-26. UPI ref no. 666005835083. Not you? Tap https://kotk.in/KOTAKD/IHUF8G to report -Kotak';
+      final parsed = SmsParser.parseMessage(sms);
+
+      expect(parsed, isNotNull);
+      expect(parsed!.amount, 60.00);
+      expect(parsed.isIncome, false);
+      expect(parsed.date.year, 2026);
+      expect(parsed.date.month, 10);
+      expect(parsed.date.day, 21);
+      expect(parsed.payee, contains('Satyanarayan Communi'));
+    });
+
+    test('Kotak Sample 9: Sent Rs.90.00 to Baba diffin 2', () {
+      const sms =
+          'Sent Rs.90.00 from XX5729 to Baba diffin 2 on 20-Oct-26. UPI ref no. 665908577493. Not you? Tap https://kotk.in/KOTAKD/IFqGHw to report -Kotak';
+      final parsed = SmsParser.parseMessage(sms);
+
+      expect(parsed, isNotNull);
+      expect(parsed!.amount, 90.00);
+      expect(parsed.isIncome, false);
+      expect(parsed.date.year, 2026);
+      expect(parsed.date.month, 10);
+      expect(parsed.date.day, 20);
+      expect(parsed.payee, contains('Baba diffin 2'));
+    });
+
+    test('Kotak Sample 10: Sent Rs.20.00 to SONU KAMLASHANKER GO', () {
+      const sms =
+          'Sent Rs.20.00 from XX5729 to SONU KAMLASHANKER GO on 19-Oct-26. UPI ref no. 665828531895. Not you? Tap https://kotk.in/KOTAKD/IFids8 to report -Kotak';
+      final parsed = SmsParser.parseMessage(sms);
+
+      expect(parsed, isNotNull);
+      expect(parsed!.amount, 20.00);
+      expect(parsed.isIncome, false);
+      expect(parsed.date.year, 2026);
+      expect(parsed.date.month, 10);
+      expect(parsed.date.day, 19);
+      expect(parsed.payee, contains('SONU KAMLASHANKER GO'));
+    });
+
+    test('Kotak Sample 11: Sent Rs.5.00 to KHANVILKAR ANAND MAH', () {
+      const sms =
+          'Sent Rs.5.00 from XX5729 to KHANVILKAR ANAND MAH on 19-Oct-26. UPI ref no. 665822489731. Not you? Tap https://kotk.in/KOTAKD/IFbgdu to report -Kotak';
+      final parsed = SmsParser.parseMessage(sms);
+
+      expect(parsed, isNotNull);
+      expect(parsed!.amount, 5.00);
+      expect(parsed.isIncome, false);
+      expect(parsed.date.year, 2026);
+      expect(parsed.date.month, 10);
+      expect(parsed.date.day, 19);
+      expect(parsed.payee, contains('KHANVILKAR ANAND MAH'));
+    });
   });
 
   group('SmsParser - 12-hour AM/PM Time Parsing Tests', () {

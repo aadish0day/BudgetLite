@@ -935,10 +935,6 @@ class _CsvImportSheetState extends ConsumerState<CsvImportSheet> {
             desc.contains('railway') ||
             desc.contains('cab')) {
           categoryId = 'transport';
-        } else if (desc.contains('rent') ||
-            desc.contains('housing') ||
-            desc.contains('pg ')) {
-          categoryId = 'rent';
         } else if (desc.contains('amazon') ||
             desc.contains('flipkart') ||
             desc.contains('myntra') ||

@@ -11,9 +11,7 @@ import '../core/utils/duplicate_detector.dart';
 import '../core/utils/formatters.dart';
 import '../core/utils/notification_service.dart';
 import '../core/utils/sms_parser.dart';
-import 'budget_provider.dart';
 import 'database_provider.dart';
-import 'insights_provider.dart';
 import 'settings_provider.dart';
 
 typedef TransactionCompanion = TransactionsCompanion;
@@ -40,18 +38,6 @@ final transactionsByMonthProvider = StreamProvider.autoDispose
       return (db.select(db.transactions)
             ..where((t) => t.date.isBiggerOrEqualValue(DateTime(year, month)))
             ..where((t) => t.date.isSmallerThanValue(DateTime(year, month + 1)))
-            ..orderBy([
-              (t) => OrderingTerm(expression: t.date, mode: OrderingMode.desc),
-            ]))
-          .watch();
-    });
-
-final transactionsByYearProvider = StreamProvider.autoDispose
-    .family<List<Transaction>, int>((ref, year) {
-      final db = ref.watch(databaseProvider);
-      return (db.select(db.transactions)
-            ..where((t) => t.date.isBiggerOrEqualValue(DateTime(year)))
-            ..where((t) => t.date.isSmallerThanValue(DateTime(year + 1)))
             ..orderBy([
               (t) => OrderingTerm(expression: t.date, mode: OrderingMode.desc),
             ]))
@@ -164,63 +150,7 @@ class TransactionNotifier extends StateNotifier<AsyncValue<void>> {
             ),
           );
 
-      ref.invalidate(transactionsProvider);
-      ref.invalidate(thisMonthTransactionsProvider);
-      ref.invalidate(totalSpentThisMonthProvider);
-      ref.invalidate(totalIncomeThisMonthProvider);
-      ref.invalidate(budgetHealthProvider);
-      ref.invalidate(spendingVelocityProvider);
-      ref.invalidate(spendingInsightsProvider);
-      ref.invalidate(effectiveCategoryBudgetProvider(categoryId));
-
       unawaited(_checkBudgetAlerts(categoryId, date));
-      state = const AsyncData(null);
-    } catch (e, st) {
-      state = AsyncError(e, st);
-      rethrow;
-    }
-  }
-
-  /// Add multiple split transactions atomically inside a single SQLite transaction.
-  /// Invalidates providers once after completion.
-  Future<void> addSplitTransactions({
-    required List<TransactionsCompanion> items,
-    required double totalAmount,
-  }) async {
-    state = const AsyncLoading();
-    try {
-      final db = ref.read(databaseProvider);
-      final categoryIds = <String>{};
-      DateTime? alertDate;
-
-      await db.transaction(() async {
-        for (final item in items) {
-          await db.into(db.transactions).insert(item);
-          if (item.categoryId.present) {
-            categoryIds.add(item.categoryId.value);
-          }
-          if (item.date.present && alertDate == null) {
-            alertDate = item.date.value;
-          }
-        }
-      });
-
-      ref.invalidate(transactionsProvider);
-      ref.invalidate(thisMonthTransactionsProvider);
-      ref.invalidate(totalSpentThisMonthProvider);
-      ref.invalidate(totalIncomeThisMonthProvider);
-      ref.invalidate(budgetHealthProvider);
-      ref.invalidate(spendingVelocityProvider);
-      ref.invalidate(spendingInsightsProvider);
-      for (final catId in categoryIds) {
-        ref.invalidate(effectiveCategoryBudgetProvider(catId));
-      }
-
-      if (alertDate != null) {
-        for (final catId in categoryIds) {
-          unawaited(_checkBudgetAlerts(catId, alertDate!));
-        }
-      }
       state = const AsyncData(null);
     } catch (e, st) {
       state = AsyncError(e, st);
@@ -233,14 +163,6 @@ class TransactionNotifier extends StateNotifier<AsyncValue<void>> {
     try {
       final db = ref.read(databaseProvider);
       await db.update(db.transactions).replace(transaction);
-      ref.invalidate(transactionsProvider);
-      ref.invalidate(thisMonthTransactionsProvider);
-      ref.invalidate(totalSpentThisMonthProvider);
-      ref.invalidate(totalIncomeThisMonthProvider);
-      ref.invalidate(budgetHealthProvider);
-      ref.invalidate(spendingVelocityProvider);
-      ref.invalidate(spendingInsightsProvider);
-      ref.invalidate(effectiveCategoryBudgetProvider(transaction.categoryId));
 
       unawaited(_checkBudgetAlerts(transaction.categoryId, transaction.date));
       state = const AsyncData(null);
@@ -267,14 +189,6 @@ class TransactionNotifier extends StateNotifier<AsyncValue<void>> {
 
       if (transaction != null) {
         await (db.delete(db.transactions)..where((t) => t.id.equals(id))).go();
-        ref.invalidate(transactionsProvider);
-        ref.invalidate(thisMonthTransactionsProvider);
-        ref.invalidate(totalSpentThisMonthProvider);
-        ref.invalidate(totalIncomeThisMonthProvider);
-        ref.invalidate(budgetHealthProvider);
-        ref.invalidate(spendingVelocityProvider);
-        ref.invalidate(spendingInsightsProvider);
-        ref.invalidate(effectiveCategoryBudgetProvider(transaction.categoryId));
 
         unawaited(_checkBudgetAlerts(transaction.categoryId, transaction.date));
       }
@@ -447,13 +361,6 @@ class TransactionNotifier extends StateNotifier<AsyncValue<void>> {
     // Update last check time outside the transaction so it's only written
     // if the DB batch succeeded
     await settings.setSetting('last_recurring_check', now.toIso8601String());
-
-    if (postedCount > 0) {
-      ref.invalidate(transactionsProvider);
-      ref.invalidate(thisMonthTransactionsProvider);
-      ref.invalidate(totalIncomeThisMonthProvider);
-      ref.invalidate(totalSpentThisMonthProvider);
-    }
 
     return postedCount;
   }
@@ -665,6 +572,39 @@ class SmsReviewQueueNotifier extends StateNotifier<List<ParsedSmsTxn>> {
     await _persist();
   }
 
+  /// Confirm a subset of pending items in batch
+  Future<void> confirmItems(List<String> ids) async {
+    final idSet = ids.toSet();
+    final itemsToConfirm = state.where((t) => idSet.contains(t.id)).toList();
+    if (itemsToConfirm.isEmpty) return;
+
+    final notifier = ref.read(transactionNotifierProvider.notifier);
+    for (final txn in itemsToConfirm) {
+      await notifier.addTransaction(
+        amount: txn.amount,
+        categoryId: txn.categoryId,
+        note: txn.note.isNotEmpty ? txn.note : null,
+        date: txn.date,
+        paymentMethod: 'UPI',
+        isIncome: txn.isIncome,
+        payee: txn.payee,
+      );
+      _processedIds.add(txn.id);
+    }
+    state = state.where((t) => !idSet.contains(t.id)).toList();
+    await _persist();
+  }
+
+  /// Discard a subset of pending items
+  Future<void> discardItems(List<String> ids) async {
+    final idSet = ids.toSet();
+    for (final id in idSet) {
+      _processedIds.add(id);
+    }
+    state = state.where((t) => !idSet.contains(t.id)).toList();
+    await _persist();
+  }
+
   /// Confirm all pending items in batch
   Future<void> confirmAll() async {
     final list = state.toList();
@@ -811,39 +751,3 @@ class RecurringPaymentInfo {
   /// Annual cost for comparison
   double get annualCost => monthlyCost * 12;
 }
-
-/// Provider for pending reimbursements (transactions marked with [Owed by: ...] or #reimburse)
-final pendingReimbursementsProvider =
-    StreamProvider.autoDispose<List<Transaction>>((ref) {
-      final asyncTxns = ref.watch(transactionsProvider);
-      return asyncTxns.when(
-        data: (txns) {
-          final pending = txns.where((t) {
-            final note = (t.note ?? '').toLowerCase();
-            final payee = (t.payee ?? '').toLowerCase();
-            return (note.contains('[owed by:') ||
-                note.contains('#reimburse') ||
-                payee.contains('[owed by:') ||
-                payee.contains('#reimburse'));
-          }).toList();
-          return Stream.value(pending);
-        },
-        error: Stream.error,
-        loading: () => const Stream.empty(),
-      );
-    });
-
-/// Total pending reimbursement amount owed to user
-final totalPendingReimbursementProvider = StreamProvider.autoDispose<double>((
-  ref,
-) {
-  final asyncPending = ref.watch(pendingReimbursementsProvider);
-  return asyncPending.when(
-    data: (txns) {
-      final total = txns.fold<double>(0, (sum, t) => sum + t.amount.abs());
-      return Stream.value(total);
-    },
-    error: Stream.error,
-    loading: () => const Stream.empty(),
-  );
-});

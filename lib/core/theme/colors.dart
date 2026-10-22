@@ -63,34 +63,15 @@ class AppColors {
     ),
   ];
 
-  static List<BoxShadow> get borderShadowLightHover => [
-    const BoxShadow(color: Color(0x14000000), blurRadius: 1),
-    const BoxShadow(
-      color: Color(0x12000000),
-      blurRadius: 2,
-      offset: Offset(0, 1),
-    ),
-    const BoxShadow(
-      color: Color(0x0E000000),
-      blurRadius: 4,
-      offset: Offset(0, 2),
-    ),
-  ];
-
   // ── Shadows as borders — dark mode ──
   // Dark mode simplifies to a single white ring (layered depth not visible).
   static List<BoxShadow> get borderShadowDark => [
     const BoxShadow(color: Color(0x14FFFFFF), blurRadius: 1),
   ];
 
-  static List<BoxShadow> get borderShadowDarkHover => [
-    const BoxShadow(color: Color(0x21FFFFFF), blurRadius: 1),
-  ];
-
   // ── Legacy shadows (keep for backward compat) ──
   static List<BoxShadow> get cardShadowLight => borderShadowLight;
   static List<BoxShadow> get cardShadowDark => borderShadowDark;
-  static List<BoxShadow> get cardShadowDarkHover => borderShadowDarkHover;
 
   // ── Category colors (unchanged — they're good) ──
   static const List<Color> categoryColors = [
@@ -118,18 +99,4 @@ class AppColors {
     'entertainment',
     'more_horiz',
   ];
-
-  // ── Glass surface (for signature moments) ──
-  static BoxDecoration glassDecoration({required bool isDark, Color? tint}) {
-    final surface = isDark ? cardDark : cardLight;
-    final borderColor = isDark
-        ? const Color(0x14FFFFFF)
-        : const Color(0x0F000000);
-    return BoxDecoration(
-      color: tint?.withValues(alpha: 0.03) ?? surface,
-      borderRadius: BorderRadius.circular(16),
-      border: Border.all(color: borderColor),
-      boxShadow: isDark ? borderShadowDark : borderShadowLight,
-    );
-  }
 }

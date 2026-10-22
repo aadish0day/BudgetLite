@@ -62,25 +62,12 @@ class SettingsNotifier extends StateNotifier<AsyncValue<void>> {
     if (val == 'light') return ThemeModeOption.light;
     if (val == 'dark') return ThemeModeOption.dark;
     if (val == 'system') return ThemeModeOption.system;
-    final isDark = await getDarkMode();
-    return isDark ? ThemeModeOption.dark : ThemeModeOption.light;
+    return ThemeModeOption.system;
   }
 
   Future<void> setThemeMode(ThemeModeOption mode) async {
     await setSetting('theme_mode', mode.name);
-    await setDarkMode(mode == ThemeModeOption.dark);
     ref.invalidate(themeModeProvider);
-    ref.invalidate(darkModeProvider);
-  }
-
-  Future<bool> getDarkMode() async {
-    final val = await getSetting('dark_mode');
-    return val == 'true';
-  }
-
-  Future<void> setDarkMode(bool value) async {
-    await setSetting('dark_mode', value.toString());
-    ref.invalidate(darkModeProvider);
   }
 
   Future<bool> getBiometricLock() async {
@@ -101,15 +88,6 @@ class SettingsNotifier extends StateNotifier<AsyncValue<void>> {
   Future<void> setSmsParsing(bool value) async {
     await setSetting('sms_parsing', value.toString());
     ref.invalidate(smsParsingEnabledProvider);
-  }
-
-  Future<double> getNotificationThreshold() async {
-    final val = await getSetting('notification_threshold');
-    return double.tryParse(val ?? '') ?? 90;
-  }
-
-  Future<void> setNotificationThreshold(double value) async {
-    await setSetting('notification_threshold', value.toString());
   }
 
   Future<String> exportDatabase() async {
@@ -683,27 +661,12 @@ class SettingsNotifier extends StateNotifier<AsyncValue<void>> {
       return false;
     }
   }
-
-  Future<void> resetSubscriptionReview(String transactionId) async {
-    final stored = await getSetting('subscription_reviewed');
-    if (stored == null || stored.isEmpty) return;
-    try {
-      final set = Set<String>.from(const JsonDecoder().convert(stored) as List);
-      set.remove(transactionId);
-      await setSetting('subscription_reviewed', jsonEncode(set.toList()));
-    } catch (_) {}
-  }
 }
 
 final settingsNotifierProvider =
     StateNotifierProvider<SettingsNotifier, AsyncValue<void>>((ref) {
       return SettingsNotifier(ref);
     });
-
-final darkModeProvider = FutureProvider<bool>((ref) async {
-  final settings = ref.read(settingsNotifierProvider.notifier);
-  return settings.getDarkMode();
-});
 
 final themeModeProvider = FutureProvider<ThemeModeOption>((ref) async {
   final settings = ref.read(settingsNotifierProvider.notifier);
