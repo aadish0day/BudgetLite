@@ -411,10 +411,12 @@ class _SmsReviewQueueScreenState extends ConsumerState<SmsReviewQueueScreen> {
                       txn: txn,
                       colorScheme: colorScheme,
                       onConfirm: () => _confirmItem(txn.id),
-                      onConfirmWithCategory: (catId, note) => _confirmItem(
+                      onConfirmWithCategory: (catId, note, applyRuleToAll, tagToApply) => _confirmItem(
                         txn.id,
                         overrideCategory: catId,
                         overrideNote: note,
+                        applyRuleToAll: applyRuleToAll,
+                        tagToApply: tagToApply,
                       ),
                       onDiscard: () => _discardItem(txn.id),
                     ),
@@ -429,21 +431,28 @@ class _SmsReviewQueueScreenState extends ConsumerState<SmsReviewQueueScreen> {
     String id, {
     String? overrideCategory,
     String? overrideNote,
+    bool applyRuleToAll = false,
+    String? tagToApply,
   }) async {
     if (!mounted) return;
     final notifier = ref.read(smsReviewQueueProvider.notifier);
-    await notifier.confirmItem(
+    final pastUpdated = await notifier.confirmItem(
       id,
       overrideCategory: overrideCategory,
       overrideNote: overrideNote,
+      applyRuleToAll: applyRuleToAll,
+      tagToApply: tagToApply,
     );
     ref.invalidate(transactionsProvider);
     if (mounted) {
       final colorScheme = Theme.of(context).colorScheme;
+      final msg = pastUpdated > 0
+          ? 'Confirmed & updated $pastUpdated past transaction${pastUpdated != 1 ? "s" : ""} ✓'
+          : 'Transaction confirmed ✓';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Transaction confirmed ✓',
+            msg,
             style: AppTheme.bodyStyle(
               size: 13,
               weight: FontWeight.w500,
@@ -949,7 +958,7 @@ class _EmptyQueue extends StatelessWidget {
   }
 }
 
-/// Individual queue item with swipe-to-discard, duplicate detection, pocket money linking, editable note, and category picker
+/// Individual queue item with swipe-to-discard, duplicate detection, pocket money linking, editable note, tag manager, payee auto-rule toggle, and category picker
 class _QueueItemCard extends ConsumerStatefulWidget {
   const _QueueItemCard({
     required this.txn,
@@ -961,7 +970,12 @@ class _QueueItemCard extends ConsumerStatefulWidget {
   final ParsedSmsTxn txn;
   final ColorScheme colorScheme;
   final VoidCallback onConfirm;
-  final void Function(String catId, String? note) onConfirmWithCategory;
+  final void Function(
+    String catId,
+    String? note,
+    bool applyRuleToAll,
+    String? tagToApply,
+  ) onConfirmWithCategory;
   final VoidCallback onDiscard;
 
   @override
@@ -971,20 +985,77 @@ class _QueueItemCard extends ConsumerStatefulWidget {
 class _QueueItemCardState extends ConsumerState<_QueueItemCard> {
   String? _editingCategory;
   bool _showCategoryPicker = false;
+  bool _showTagPicker = false;
+  bool _applyRuleToAll = false;
   late TextEditingController _noteCtrl;
+  late TextEditingController _tagCtrl;
   final FocusNode _noteFocus = FocusNode();
+  final FocusNode _tagFocus = FocusNode();
+
+  static const List<String> _suggestedTags = [
+    'Cig',
+    'Chai',
+    'Food',
+    'Snacks',
+    'Grocery',
+    'Travel',
+    'Personal',
+    'Bills',
+    'Medicine',
+  ];
+
+  static final RegExp _tagRegex = RegExp(r'\s*\[([^\]]+)\]\s*$');
 
   @override
   void initState() {
     super.initState();
-    _noteCtrl = TextEditingController(text: '');
+    final note = widget.txn.note;
+    final match = _tagRegex.firstMatch(note);
+    if (match != null) {
+      _noteCtrl = TextEditingController(
+        text: note.substring(0, match.start).trim(),
+      );
+      _tagCtrl = TextEditingController(text: match.group(1)?.trim() ?? '');
+    } else {
+      _noteCtrl = TextEditingController(text: note);
+      _tagCtrl = TextEditingController(text: '');
+    }
+
+    if (widget.txn.payee != null && widget.txn.payee!.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final rule = ref.read(payeeTagRulesProvider.notifier).findRuleForPayee(widget.txn.payee);
+        if (rule != null) {
+          if (_tagCtrl.text.isEmpty) {
+            setState(() {
+              _tagCtrl.text = rule.tag;
+              if (rule.categoryId != null && _editingCategory == null) {
+                _editingCategory = rule.categoryId;
+              }
+            });
+          }
+        }
+      });
+    }
   }
 
   @override
   void dispose() {
     _noteCtrl.dispose();
+    _tagCtrl.dispose();
     _noteFocus.dispose();
+    _tagFocus.dispose();
     super.dispose();
+  }
+
+  String? _buildFinalNote() {
+    final base = _noteCtrl.text.trim();
+    final tag = _tagCtrl.text.replaceAll('[', '').replaceAll(']', '').trim();
+    if (base.isEmpty && tag.isEmpty) return null;
+    if (tag.isNotEmpty) {
+      return base.isNotEmpty ? '$base [$tag]' : '[$tag]';
+    }
+    return base;
   }
 
   @override
@@ -1002,6 +1073,9 @@ class _QueueItemCardState extends ConsumerState<_QueueItemCard> {
     );
     final hasDuplicate = dupResult.isNotEmpty;
     final matchedDup = hasDuplicate ? dupResult.first : null;
+
+    final rulesNotifier = ref.watch(payeeTagRulesProvider.notifier);
+    final matchedRule = rulesNotifier.findRuleForPayee(widget.txn.payee);
 
     return Dismissible(
       key: Key('sms_${widget.txn.id}'),
@@ -1045,6 +1119,67 @@ class _QueueItemCardState extends ConsumerState<_QueueItemCard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Payee / Merchant header if present
+            if (widget.txn.payee != null && widget.txn.payee!.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  children: [
+                    Icon(
+                      widget.txn.isIncome
+                          ? LucideIcons.userCheck
+                          : LucideIcons.store,
+                      size: 14,
+                      color: widget.colorScheme.primary,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        '${widget.txn.isIncome ? "From" : "Paid to"}: ${widget.txn.payee!}',
+                        style: AppTheme.bodyStyle(
+                          size: 13,
+                          weight: FontWeight.w700,
+                          color: widget.colorScheme.onSurface,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (matchedRule != null)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: widget.colorScheme.primary.withValues(
+                            alpha: 0.12,
+                          ),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              LucideIcons.sparkles,
+                              size: 10,
+                              color: widget.colorScheme.primary,
+                            ),
+                            const SizedBox(width: 3),
+                            Text(
+                              'Auto-rule',
+                              style: AppTheme.bodyStyle(
+                                size: 9,
+                                weight: FontWeight.w600,
+                                color: widget.colorScheme.primary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+
             // Duplicate warning banner if detected
             if (hasDuplicate && matchedDup != null)
               Container(
@@ -1259,6 +1394,247 @@ class _QueueItemCardState extends ConsumerState<_QueueItemCard> {
               ),
             ),
 
+            // Tag chips & tag editor
+            Padding(
+              padding: const EdgeInsets.only(top: 6, left: 48),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      if (_tagCtrl.text.isNotEmpty)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: widget.colorScheme.secondaryContainer
+                                .withValues(alpha: 0.4),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: widget.colorScheme.secondary.withValues(
+                                alpha: 0.3,
+                              ),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                LucideIcons.tag,
+                                size: 12,
+                                color: widget.colorScheme.secondary,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                _tagCtrl.text,
+                                style: AppTheme.bodyStyle(
+                                  size: 11,
+                                  weight: FontWeight.w600,
+                                  color: widget.colorScheme.secondary,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              GestureDetector(
+                                onTap: () => setState(() => _tagCtrl.clear()),
+                                child: Icon(
+                                  LucideIcons.x,
+                                  size: 12,
+                                  color: widget.colorScheme.secondary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      else
+                        GestureDetector(
+                          onTap: () => setState(
+                            () => _showTagPicker = !_showTagPicker,
+                          ),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: widget
+                                  .colorScheme
+                                  .surfaceContainerHighest
+                                  .withValues(alpha: 0.3),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: widget.colorScheme.outline.withValues(
+                                  alpha: 0.2,
+                                ),
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  LucideIcons.tag,
+                                  size: 12,
+                                  color: widget.colorScheme.onSurfaceVariant,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  '+ Add Tag',
+                                  style: AppTheme.bodyStyle(
+                                    size: 11,
+                                    weight: FontWeight.w500,
+                                    color:
+                                        widget.colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      const SizedBox(width: 8),
+                      if (!_showTagPicker)
+                        GestureDetector(
+                          onTap: () => setState(() => _showTagPicker = true),
+                          child: Text(
+                            'Edit tag',
+                            style: AppTheme.bodyStyle(
+                              size: 11,
+                              color: widget.colorScheme.primary,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  if (_showTagPicker) ...[
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      children: _suggestedTags.map((t) {
+                        final isSel =
+                            _tagCtrl.text.toLowerCase() == t.toLowerCase();
+                        return GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              _tagCtrl.text = isSel ? '' : t;
+                              if (widget.txn.payee != null &&
+                                  widget.txn.payee!.isNotEmpty &&
+                                  !isSel) {
+                                _applyRuleToAll = true;
+                              }
+                            });
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: isSel
+                                  ? widget.colorScheme.primary.withValues(
+                                      alpha: 0.15,
+                                    )
+                                  : widget.colorScheme.surfaceContainerHighest
+                                      .withValues(alpha: 0.25),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                color: isSel
+                                    ? widget.colorScheme.primary
+                                    : widget.colorScheme.outline.withValues(
+                                        alpha: 0.15,
+                                      ),
+                              ),
+                            ),
+                            child: Text(
+                              t,
+                              style: AppTheme.bodyStyle(
+                                size: 11,
+                                weight: isSel
+                                    ? FontWeight.w700
+                                    : FontWeight.w500,
+                                color: isSel
+                                    ? widget.colorScheme.primary
+                                    : widget.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: _tagCtrl,
+                      focusNode: _tagFocus,
+                      style: AppTheme.bodyStyle(size: 12),
+                      decoration: InputDecoration(
+                        hintText: 'Custom tag (e.g. cig)...',
+                        hintStyle: AppTheme.bodyStyle(
+                          size: 12,
+                          color: widget.colorScheme.onSurfaceVariant.withValues(
+                            alpha: 0.5,
+                          ),
+                        ),
+                        prefixIcon: const Icon(LucideIcons.tag, size: 14),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        isDense: true,
+                      ),
+                      onChanged: (val) {
+                        if (val.trim().isNotEmpty &&
+                            widget.txn.payee != null &&
+                            widget.txn.payee!.isNotEmpty) {
+                          setState(() => _applyRuleToAll = true);
+                        }
+                      },
+                    ),
+                  ],
+                ],
+              ),
+            ),
+
+            // Payee Auto-rule toggle
+            if (widget.txn.payee != null &&
+                widget.txn.payee!.isNotEmpty &&
+                _tagCtrl.text.trim().isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 8, left: 48),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: Checkbox(
+                        value: _applyRuleToAll,
+                        onChanged: (val) =>
+                            setState(() => _applyRuleToAll = val ?? false),
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        visualDensity: VisualDensity.compact,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () =>
+                            setState(() => _applyRuleToAll = !_applyRuleToAll),
+                        child: Text(
+                          'Apply "${_tagCtrl.text.trim()}" to all past & future from ${widget.txn.payee!}',
+                          style: AppTheme.bodyStyle(
+                            size: 11,
+                            weight: FontWeight.w600,
+                            color: widget.colorScheme.primary,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
             // Category picker (expandable)
             if (_showCategoryPicker)
               Padding(
@@ -1308,10 +1684,18 @@ class _QueueItemCardState extends ConsumerState<_QueueItemCard> {
                 const SizedBox(width: 8),
 
                 GestureDetector(
-                  onTap: () => widget.onConfirmWithCategory(
-                    _editingCategory ?? widget.txn.categoryId,
-                    _noteCtrl.text.trim(),
-                  ),
+                  onTap: () {
+                    final cleanTag = _tagCtrl.text
+                        .replaceAll('[', '')
+                        .replaceAll(']', '')
+                        .trim();
+                    widget.onConfirmWithCategory(
+                      _editingCategory ?? widget.txn.categoryId,
+                      _buildFinalNote(),
+                      _applyRuleToAll,
+                      cleanTag.isNotEmpty ? cleanTag : null,
+                    );
+                  },
                   child: Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 14,

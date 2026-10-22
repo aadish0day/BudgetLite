@@ -199,6 +199,77 @@ class TransactionNotifier extends StateNotifier<AsyncValue<void>> {
     }
   }
 
+  /// Retroactively updates all past transactions matching [payee] (case-insensitive).
+  /// Appends or updates the tag [tag] in the transaction's note (e.g. "[cig]"),
+  /// and optionally updates the [categoryId] if provided.
+  /// Returns the number of transactions updated.
+  Future<int> updateTransactionsForPayee({
+    required String payee,
+    required String tag,
+    String? categoryId,
+  }) async {
+    final db = ref.read(databaseProvider);
+    final cleanPayee = payee.trim().toLowerCase();
+    final cleanTag = tag.replaceAll('[', '').replaceAll(']', '').trim();
+    if (cleanPayee.isEmpty || cleanTag.isEmpty) return 0;
+
+    // Fetch all transactions that have a non-null payee
+    final allWithPayee = await (db.select(db.transactions)
+          ..where((t) => t.payee.isNotNull()))
+        .get();
+
+    final matches = allWithPayee.where((t) {
+      final p = t.payee?.trim().toLowerCase();
+      if (p == null || p.isEmpty) return false;
+      return p == cleanPayee || p.contains(cleanPayee) || cleanPayee.contains(p);
+    }).toList();
+
+    if (matches.isEmpty) return 0;
+
+    int updatedCount = 0;
+    await db.transaction(() async {
+      for (final t in matches) {
+        // Merge tag into note
+        final currentNote = t.note ?? '';
+        final tagRegex = RegExp(r'\s*\[([^\]]+)\]\s*$');
+        final match = tagRegex.firstMatch(currentNote);
+
+        String baseNote = currentNote;
+        final Set<String> tagsSet = {};
+        if (match != null) {
+          baseNote = currentNote.substring(0, match.start).trim();
+          final rawTags = match.group(1)?.split(',') ?? [];
+          for (final tagItem in rawTags) {
+            final trimmed = tagItem.trim();
+            if (trimmed.isNotEmpty) tagsSet.add(trimmed);
+          }
+        }
+
+        // Add the new tag if not already present
+        if (!tagsSet.any((existing) => existing.toLowerCase() == cleanTag.toLowerCase())) {
+          tagsSet.add(cleanTag);
+        }
+
+        final newTagsStr = tagsSet.join(', ');
+        final newNote = baseNote.isNotEmpty
+            ? '$baseNote [$newTagsStr]'
+            : '[$newTagsStr]';
+
+        final companion = TransactionsCompanion(
+          note: Value(newNote),
+          categoryId: categoryId != null ? Value(categoryId) : const Value.absent(),
+        );
+
+        await (db.update(db.transactions)..where((tbl) => tbl.id.equals(t.id)))
+            .write(companion);
+        updatedCount++;
+      }
+    });
+
+    ref.invalidate(transactionsProvider);
+    return updatedCount;
+  }
+
   Future<void> _checkBudgetAlerts(String categoryId, DateTime date) async {
     try {
       final db = ref.read(databaseProvider);
@@ -536,33 +607,115 @@ class SmsReviewQueueNotifier extends StateNotifier<List<ParsedSmsTxn>> {
     if (isAlreadyInQueue(txn.id)) return;
     if (!force && isProcessed(txn.id)) return;
     _processedIds.remove(txn.id);
-    state = [...state, txn];
+
+    // Check payee tag rules to auto-tag and auto-categorize if a matching rule exists
+    ParsedSmsTxn effectiveTxn = txn;
+    if (txn.payee != null && txn.payee!.trim().isNotEmpty) {
+      final rule = ref.read(payeeTagRulesProvider.notifier).findRuleForPayee(txn.payee);
+      if (rule != null) {
+        final tagRegex = RegExp(r'\s*\[([^\]]+)\]\s*$');
+        String baseNote = txn.note;
+        final match = tagRegex.firstMatch(baseNote);
+        if (match != null) {
+          baseNote = baseNote.substring(0, match.start).trim();
+        }
+        final noteWithTag = baseNote.isNotEmpty
+            ? '$baseNote [${rule.tag}]'
+            : '[${rule.tag}]';
+        effectiveTxn = ParsedSmsTxn(
+          id: txn.id,
+          amount: txn.amount,
+          note: noteWithTag,
+          categoryId: rule.categoryId ?? txn.categoryId,
+          date: txn.date,
+          detectedAt: txn.detectedAt,
+          isIncome: txn.isIncome,
+          payee: txn.payee,
+        );
+      }
+    }
+
+    state = [...state, effectiveTxn];
     await _persist();
   }
 
   /// Confirm (add as transaction) a single item and remove from queue
-  Future<void> confirmItem(
+  Future<int> confirmItem(
     String id, {
     String? overrideCategory,
     String? overrideNote,
+    bool applyRuleToAll = false,
+    String? tagToApply,
   }) async {
     final txn = state.where((t) => t.id == id).firstOrNull;
-    if (txn == null) return;
+    if (txn == null) return 0;
+
+    final finalCategory = overrideCategory ?? txn.categoryId;
+    final finalNote = overrideNote ?? (txn.note.isNotEmpty ? txn.note : null);
 
     final notifier = ref.read(transactionNotifierProvider.notifier);
     await notifier.addTransaction(
       amount: txn.amount,
-      categoryId: overrideCategory ?? txn.categoryId,
-      note: overrideNote ?? (txn.note.isNotEmpty ? txn.note : null),
+      categoryId: finalCategory,
+      note: finalNote,
       date: txn.date,
       paymentMethod: 'UPI',
       isIncome: txn.isIncome,
       payee: txn.payee,
     );
 
+    int pastUpdated = 0;
+    if (applyRuleToAll && txn.payee != null && txn.payee!.trim().isNotEmpty) {
+      final payee = txn.payee!.trim();
+      final tag = tagToApply?.replaceAll('[', '').replaceAll(']', '').trim() ?? '';
+      if (tag.isNotEmpty) {
+        // 1. Save rule to payeeTagRulesProvider
+        await ref.read(payeeTagRulesProvider.notifier).addOrUpdateRule(
+              payee: payee,
+              tag: tag,
+              categoryId: finalCategory,
+            );
+
+        // 2. Retroactively update all existing transactions with this payee
+        pastUpdated = await notifier.updateTransactionsForPayee(
+          payee: payee,
+          tag: tag,
+          categoryId: finalCategory,
+        );
+
+        // 3. Also update any remaining pending items in the queue with this payee
+        final tagRegex = RegExp(r'\s*\[([^\]]+)\]\s*$');
+        state = state.map((item) {
+          if (item.id != id && item.payee != null) {
+            final p = item.payee!.trim().toLowerCase();
+            if (p == payee.toLowerCase() || p.contains(payee.toLowerCase()) || payee.toLowerCase().contains(p)) {
+              String noteBase = item.note;
+              final match = tagRegex.firstMatch(noteBase);
+              if (match != null) {
+                noteBase = noteBase.substring(0, match.start).trim();
+              }
+              final updatedNote = noteBase.isNotEmpty ? '$noteBase [$tag]' : '[$tag]';
+              return ParsedSmsTxn(
+                id: item.id,
+                amount: item.amount,
+                note: updatedNote,
+                categoryId: finalCategory,
+                date: item.date,
+                detectedAt: item.detectedAt,
+                isIncome: item.isIncome,
+                payee: item.payee,
+              );
+            }
+          }
+          return item;
+        }).toList();
+      }
+    }
+
     _processedIds.add(id);
     state = state.where((t) => t.id != id).toList();
     await _persist();
+    return pastUpdated;
   }
 
   /// Discard (remove without adding) a single item

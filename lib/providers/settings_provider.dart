@@ -9,6 +9,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../core/database/database.dart';
+import '../core/models/payee_tag_rule.dart';
 import '../core/utils/accessibility_utils.dart';
 import '../core/utils/backup_encryption_service.dart';
 import '../core/utils/categorization_rule.dart';
@@ -776,6 +777,110 @@ class AutoCategorizationRulesNotifier
     for (final rule in state) {
       if (rule.toRegExp().hasMatch(note)) {
         return rule.categoryId;
+      }
+    }
+    return null;
+  }
+}
+/// Manages rules that map specific persons/merchants to tags and categories.
+final payeeTagRulesProvider =
+    NotifierProvider<PayeeTagRulesNotifier, List<PayeeTagRule>>(
+  PayeeTagRulesNotifier.new,
+);
+
+class PayeeTagRulesNotifier extends Notifier<List<PayeeTagRule>> {
+  final Completer<void> _loaded = Completer<void>();
+
+  @override
+  List<PayeeTagRule> build() {
+    _loadRules();
+    return [];
+  }
+
+  Future<void> _loadRules() async {
+    try {
+      final settings = ref.read(settingsNotifierProvider.notifier);
+      final stored = await settings.getSetting('payee_tag_rules');
+      if (stored != null && stored.isNotEmpty) {
+        try {
+          final list = (const JsonDecoder().convert(stored) as List)
+              .map(
+                (e) => PayeeTagRule.fromJson(
+                  Map<String, dynamic>.from(e as Map),
+                ),
+              )
+              .toList();
+          state = list;
+        } catch (_) {}
+      }
+    } finally {
+      if (!_loaded.isCompleted) _loaded.complete();
+    }
+  }
+
+  Future<void> _persist() async {
+    await _loaded.future;
+    final settings = ref.read(settingsNotifierProvider.notifier);
+    final jsonStr = const JsonEncoder().convert(
+      state.map((r) => r.toJson()).toList(),
+    );
+    await settings.setSetting('payee_tag_rules', jsonStr);
+  }
+
+  Future<void> setRules(List<PayeeTagRule> rules) async {
+    await _loaded.future;
+    state = rules;
+    await _persist();
+  }
+
+  /// Add or update a rule for a given payee.
+  /// If a rule already exists for this payee, it is updated; otherwise appended.
+  Future<PayeeTagRule> addOrUpdateRule({
+    required String payee,
+    required String tag,
+    String? categoryId,
+    String? note,
+  }) async {
+    await _loaded.future;
+    final cleanTag = tag.replaceAll('[', '').replaceAll(']', '').trim();
+    final existingIndex = state.indexWhere((r) => r.matches(payee));
+
+    PayeeTagRule rule;
+    if (existingIndex >= 0) {
+      rule = state[existingIndex].copyWith(
+        payee: payee.trim(),
+        tag: cleanTag,
+        categoryId: categoryId,
+        note: note,
+      );
+      final updated = List<PayeeTagRule>.from(state);
+      updated[existingIndex] = rule;
+      state = updated;
+    } else {
+      rule = PayeeTagRule(
+        payee: payee.trim(),
+        tag: cleanTag,
+        categoryId: categoryId,
+        note: note,
+      );
+      state = [...state, rule];
+    }
+    await _persist();
+    return rule;
+  }
+
+  Future<void> deleteRule(String id) async {
+    await _loaded.future;
+    state = state.where((r) => r.id != id).toList();
+    await _persist();
+  }
+
+  /// Find matching rule for a candidate payee.
+  PayeeTagRule? findRuleForPayee(String? payee) {
+    if (payee == null || payee.trim().isEmpty) return null;
+    for (final rule in state) {
+      if (rule.matches(payee)) {
+        return rule;
       }
     }
     return null;

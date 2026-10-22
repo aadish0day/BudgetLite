@@ -100,6 +100,8 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
   }
 
   static const List<String> _quickTags = [
+    'Cig',
+    'Chai',
     'Parents',
     'Friends',
     'Urgent',
@@ -111,6 +113,8 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
     'Bills',
     'Shopping',
   ];
+
+  bool _applyRuleToAll = false;
 
   Set<String> _getSelectedTagsList() {
     return _tagsCtrl.text
@@ -532,6 +536,45 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
                             : null,
                       ),
                     ),
+                    if (widget.transaction?.payee != null &&
+                        widget.transaction!.payee!.isNotEmpty &&
+                        _tagsCtrl.text.trim().isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Row(
+                          children: [
+                            SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: Checkbox(
+                                value: _applyRuleToAll,
+                                onChanged: (val) => setState(
+                                  () => _applyRuleToAll = val ?? false,
+                                ),
+                                materialTapTargetSize:
+                                    MaterialTapTargetSize.shrinkWrap,
+                                visualDensity: VisualDensity.compact,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: GestureDetector(
+                                onTap: () => setState(
+                                  () => _applyRuleToAll = !_applyRuleToAll,
+                                ),
+                                child: Text(
+                                  'Apply tag to all past & future from ${widget.transaction!.payee!}',
+                                  style: AppTheme.bodyStyle(
+                                    size: 11,
+                                    weight: FontWeight.w600,
+                                    color: colorScheme.primary,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                   ],
                 ),
                 const SizedBox(height: 16),
@@ -973,8 +1016,26 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
         recurringEndDate: _recurringEndDate,
         receiptImagePath: _receiptImagePath,
         createdAt: widget.transaction!.createdAt,
+        payee: widget.transaction!.payee,
       );
       await notifier.updateTransaction(updated);
+
+      if (_applyRuleToAll &&
+          widget.transaction?.payee != null &&
+          widget.transaction!.payee!.isNotEmpty &&
+          tagsText.isNotEmpty) {
+        final payee = widget.transaction!.payee!;
+        await ref.read(payeeTagRulesProvider.notifier).addOrUpdateRule(
+              payee: payee,
+              tag: tagsText,
+              categoryId: _selectedCategory,
+            );
+        await notifier.updateTransactionsForPayee(
+          payee: payee,
+          tag: tagsText,
+          categoryId: _selectedCategory,
+        );
+      }
     } else {
       await notifier.addTransaction(
         amount: amount,

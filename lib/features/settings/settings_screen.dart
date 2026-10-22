@@ -29,6 +29,7 @@ import '../../providers/transaction_provider.dart';
 import '../sms/sms_review_queue_screen.dart';
 import 'auto_category_rules_sheet.dart';
 import 'csv_import_sheet.dart';
+import 'payee_rules_sheet.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -422,6 +423,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 subtitle: 'Edit auto-category keyword mappings',
                 trailing: const Icon(LucideIcons.chevronRight),
                 onTap: () => _showAutoCategoryRules(context),
+              ),
+              const Divider(height: 1, indent: 56),
+              _SettingTile(
+                icon: LucideIcons.tags,
+                title: 'Merchant & Payee Rules',
+                subtitle: 'Auto-tag & categorize by person or shop',
+                trailing: const Icon(LucideIcons.chevronRight),
+                onTap: () => _showPayeeRules(context),
               ),
               const Divider(height: 1, indent: 56),
               Consumer(
@@ -1659,6 +1668,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (_) => const AutoCategoryRulesSheet(),
+    );
+  }
+
+  void _showPayeeRules(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => const PayeeRulesSheet(),
     );
   }
 

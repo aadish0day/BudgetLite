@@ -814,6 +814,19 @@ class _TransactionCard extends StatelessWidget {
     final isDark = colorScheme.brightness == Brightness.dark;
     final catColor = Color(category?.color ?? 0xFF6B7280);
 
+    final hasPayee =
+        transaction.payee != null && transaction.payee!.trim().isNotEmpty;
+    final titleText =
+        hasPayee ? transaction.payee!.trim() : (category?.name ?? 'Unknown');
+
+    final note = transaction.note ?? '';
+    final tagRegex = RegExp(r'\s*\[([^\]]+)\]\s*$');
+    final tagMatch = tagRegex.firstMatch(note);
+    final tag = tagMatch?.group(1)?.trim();
+    final cleanNote = tagMatch != null
+        ? note.substring(0, tagMatch.start).trim()
+        : note.trim();
+
     return Dismissible(
       key: Key(transaction.id),
       direction: DismissDirection.endToStart,
@@ -871,18 +884,19 @@ class _TransactionCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      category?.name ?? 'Unknown',
+                      titleText,
                       style: AppTheme.bodyStyle(
                         weight: FontWeight.w600,
                         color: colorScheme.onSurface,
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    if (transaction.note != null &&
-                        transaction.note!.isNotEmpty)
+                    if (cleanNote.isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.only(top: 2),
                         child: Text(
-                          transaction.note!,
+                          cleanNote,
                           style: AppTheme.bodyStyle(
                             size: 12,
                             color: colorScheme.onSurfaceVariant,
@@ -894,6 +908,17 @@ class _TransactionCard extends StatelessWidget {
                     const SizedBox(height: 2),
                     Row(
                       children: [
+                        if (hasPayee) ...[
+                          Text(
+                            '${category?.name ?? "Unknown"} · ',
+                            style: AppTheme.bodyStyle(
+                              size: 11,
+                              color: colorScheme.onSurfaceVariant.withValues(
+                                alpha: 0.7,
+                              ),
+                            ),
+                          ),
+                        ],
                         Text(
                           Formatters.formatDate(transaction.date),
                           style: AppTheme.bodyStyle(
@@ -903,6 +928,29 @@ class _TransactionCard extends StatelessWidget {
                             ),
                           ),
                         ),
+                        if (tag != null && tag.isNotEmpty) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 5,
+                              vertical: 1,
+                            ),
+                            decoration: BoxDecoration(
+                              color: colorScheme.secondaryContainer.withValues(
+                                alpha: 0.5,
+                              ),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              '[$tag]',
+                              style: AppTheme.bodyStyle(
+                                size: 9,
+                                weight: FontWeight.w600,
+                                color: colorScheme.secondary,
+                              ),
+                            ),
+                          ),
+                        ],
                         if (transaction.isRecurringInstance) ...[
                           const SizedBox(width: 6),
                           Icon(
