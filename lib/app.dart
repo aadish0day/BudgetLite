@@ -122,19 +122,30 @@ class _AppEntryState extends ConsumerState<_AppEntry>
   }
 
   Future<void> _checkOnboarding() async {
-    final settings = ref.read(settingsNotifierProvider.notifier);
-    final seen = await settings.getSetting('onboarding_seen');
-    final biometric = await settings.getSetting('biometric_lock') == 'true';
-    if (mounted) {
-      setState(() {
-        _showOnboarding = seen != 'true';
-        _biometricEnabled = biometric;
-        _isAuthenticated = !biometric;
-        _checkingAuth = false;
-      });
-      if (seen == 'true' && biometric) {
-        rootNavigatorKey.currentState?.popUntil((route) => route.isFirst);
-        unawaited(_authenticate());
+    try {
+      final settings = ref.read(settingsNotifierProvider.notifier);
+      final seen = await settings.getSetting('onboarding_seen');
+      final biometric = await settings.getSetting('biometric_lock') == 'true';
+      if (mounted) {
+        setState(() {
+          _showOnboarding = seen != 'true';
+          _biometricEnabled = biometric;
+          _isAuthenticated = !biometric;
+          _checkingAuth = false;
+        });
+        if (seen == 'true' && biometric) {
+          rootNavigatorKey.currentState?.popUntil((route) => route.isFirst);
+          unawaited(_authenticate());
+        }
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _showOnboarding = false;
+          _biometricEnabled = false;
+          _isAuthenticated = true;
+          _checkingAuth = false;
+        });
       }
     }
   }
